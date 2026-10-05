@@ -48,6 +48,20 @@ q3tui                                       # mở TUI
 - **Chỉ có intent** (`spec/intent.md`, vài câu mô tả bạn muốn thiết kế gì) — step `spec` tự soạn spec đầy đủ
   theo từng section, hỏi những gì còn mơ hồ, rồi mới chuyển cho `parse`.
 
+### Màn hình
+
+![Q3TUI dừng ở Gate 1: requirement chờ review](../images/tui-parse.svg)
+
+| Vùng | Hiển thị gì |
+|---|---|
+| **Pipeline** (trái) | Mọi step: icon trạng thái (chú thích ngay bên dưới), số thứ tự (`1`–`9` để nhảy tới), mode của gate hoặc thứ step đang chờ (`review 2?`). |
+| **Step view** (trên, phải) | Kết quả của step đang chọn, chia tab (Requirements / Parameters / Assertions / RTM / Files / Questions / …). Banner phía trên cho biết step cần gì từ bạn. |
+| **Activity** (dưới, phải) | Log trực tiếp của lần chạy, và câu trả lời của assistant. `z` để phóng to. |
+| **Thanh lệnh / chat** | `/command` (Tab để gợi ý, ↑/↓ lịch sử), hoặc gõ chữ thường để chat với assistant (`i` để focus). |
+| **Footer** | Phím tắt của vùng đang focus; `?` liệt kê tất cả. |
+
+Kéo các đường chia (hoặc `ctrl+mũi tên`) để đổi kích thước; kích thước được nhớ theo project.
+
 ## 3. Flow, từng bước
 
 ```text
@@ -96,6 +110,10 @@ Gate là điểm dừng chờ quyết định của bạn. Mỗi gate có 1 **mo
   RTM), nhưng **có** chặn `Approve` (`a`) thường trên gate `human`, trừ khi bạn bật
   `pipeline.auto_confirm_reviews`.
 
+![Hộp thoại review của gate](../images/tui-gate.svg)
+
+`a` mở hộp thoại review ở trên: approve, trả lời câu hỏi còn mở, edit kết quả, yêu cầu thay đổi, hoặc để sau.
+
 **Review và confirm** (theo từng step, trong tab panel riêng). Phím in hoa = **Shift + chữ đó**, là phím
 khác hẳn chữ thường (vd `C` không phải `c`):
 
@@ -112,6 +130,19 @@ khác hẳn chữ thường (vd `C` không phải `c`):
 | verify → RTM | `v` | Sign off requirement đang highlight (cần đủ 6 điều kiện RTM) |
 | | `V` (Shift+v) | Rút lại sign-off |
 | | `S` (Shift+s) | Sign off mọi requirement đã sẵn sàng (bỏ qua cái chưa đủ điều kiện, không báo lỗi) |
+
+<table>
+<tr>
+<td width="50%"><a href="../images/tui-sva.svg"><img src="../images/tui-sva.svg" alt="sva → Assertions"></a></td>
+<td width="50%"><a href="../images/tui-verify.svg"><img src="../images/tui-verify.svg" alt="verify → RTM"></a></td>
+</tr>
+<tr>
+<td><b>sva → Assertions</b> (Gate 3b): mọi property kèm module, requirement, loại và kiểm tra vacuous; ý nghĩa
+bằng lời của property đang highlight ở bên phải.</td>
+<td><b>verify → RTM</b> (Gate 5): 6 điều kiện của từng requirement — RTL, SVA, test case, simulation,
+mutation score, sign-off của bạn.</td>
+</tr>
+</table>
 
 `/approve <step> --force` và `/approve all` bỏ qua cả blocking question *lẫn* review chưa confirm — dùng khi
 bạn đã tự đánh giá là ổn, không nên dùng theo thói quen.

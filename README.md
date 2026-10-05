@@ -42,38 +42,26 @@ flowchart LR
 
 ## The TUI
 
-```mermaid
-flowchart TB
-    subgraph win["Q3TUI terminal window"]
-        direction LR
-        pipe["PIPELINE<br/>step list, status icons,<br/>gate-mode badges"]
-        subgraph right[" "]
-            direction TB
-            step["STEP VIEW<br/>the selected step's result:<br/>tabs (Requirements / Assertions /<br/>RTM / Files / Questions / …)"]
-            act["ACTIVITY<br/>live log of the running step(s)"]
-        end
-    end
-    win --> cmd["COMMAND / CHAT bar — full width<br/>/command, or free text to the assistant"]
-```
+![Q3TUI stopped at Gate 1 on an APB slave: requirements to review](docs/images/tui-parse.svg)
 
-```text
-┌─ Q3TUI · my_block · ~/proj/my_block ───────────────────────── claude-opus-5-5 · $0.42 ─┐
-│ PIPELINE            │ STEP parse · REQUIREMENTS   [Requirements] [Parameters] [Questions]│
-│                     │ ⚑ CONFIRM NEEDED — 2 item(s) not reviewed (REQ-004, REQ-007)        │
-│ ✔ spec              │ REQ-001  functional   0.12   ✔                                     │
-│ ⚑ parse             │ REQ-004  interface     0.41   review                                │
-│ · config            ├───────────────────────────────────────────────────────────────────┤
-│ · rtl                │ ACTIVITY — parse                                                   │
-│ · tb                 │ 14:02:11 parse   extracting requirements from spec/my_block_spec.md│
-│ · sva                │ 14:02:40 parse   12 requirement(s), 3 parameter(s); 2 need review   │
-│ · verify             │                                                                     │
-│ · doc                │                                                                     │
-├─────────────────────┴───────────────────────────────────────────────────────────────────┤
-│ > confirm REQ-004 and REQ-007, they look fine                                           │
-├─────────────────────────────────────────────────────────────────────────────────────────┤
-│ r run · x stop · a review · c confirm · o questions · i chat · ? help                   │
-└─────────────────────────────────────────────────────────────────────────────────────────┘
-```
+**Pipeline** (left): every step with its status icon, number and gate mode or what it is waiting for. **Step
+view** (top right): the selected step's result in tabs — here the requirements `parse` extracted, two flagged
+for your review, the highlighted one in detail. **Activity** (bottom right): the live log of the run.
+**Command / chat bar**: a `/command`, or plain text to the assistant. The footer lists the keys of what has
+focus.
+
+<table>
+<tr>
+<td width="33%"><a href="docs/images/tui-gate.svg"><img src="docs/images/tui-gate.svg" alt="The review dialog of a gate"></a></td>
+<td width="33%"><a href="docs/images/tui-sva.svg"><img src="docs/images/tui-sva.svg" alt="Gate 3b: the assertions to confirm"></a></td>
+<td width="33%"><a href="docs/images/tui-verify.svg"><img src="docs/images/tui-verify.svg" alt="Gate 5: the requirements traceability matrix"></a></td>
+</tr>
+<tr>
+<td><b>Review dialog</b> (<code>a</code>): approve, answer the open questions, edit, or request changes.</td>
+<td><b>Gate 3b · assertions</b>: each SVA property with its requirement, plain-English meaning and vacuity check — confirm (<code>c</code>) or reject with a reason (<code>x</code>).</td>
+<td><b>Gate 5 · sign-off</b>: the RTM — RTL, SVA, test case, simulation, mutation score per requirement; you sign off (<code>v</code>).</td>
+</tr>
+</table>
 
 ## Features
 

@@ -48,6 +48,20 @@ q3tui                                       # opens the TUI
 - **An intent only** (`spec/intent.md`, a short paragraph of what you want built) — the `spec` step drafts a
   full spec from it section by section, asks what's left open, and only then hands off to `parse`.
 
+### The screen
+
+![Q3TUI stopped at Gate 1: requirements to review](../images/tui-parse.svg)
+
+| Area | What it shows |
+|---|---|
+| **Pipeline** (left) | Every step: status icon (legend below it), number (`1`–`9` jump to it), gate mode or what it is waiting for (`review 2?`). |
+| **Step view** (top right) | The selected step's result, in tabs (Requirements / Parameters / Assertions / RTM / Files / Questions / …). A banner on top says what the step needs from you. |
+| **Activity** (bottom right) | The live log of the run, and the assistant's replies. `z` zooms it. |
+| **Command / chat bar** | `/command` (Tab completes, ↑/↓ history), or plain text to the assistant (`i` focuses it). |
+| **Footer** | The keys of whatever has focus; `?` lists them all. |
+
+Drag the dividers (or `ctrl+arrows`) to resize; sizes are kept per project.
+
 ## 3. The flow, step by step
 
 ```text
@@ -97,6 +111,11 @@ Change a gate's mode: `g` (picker) or `/gate <step> <mode>`. `pipeline.auto_appr
   items simply don't count toward the RTM), but they **do** block a plain `Approve` (`a`) on a `human` gate,
   unless you turn on `pipeline.auto_confirm_reviews`.
 
+![The review dialog of a gate](../images/tui-gate.svg)
+
+`a` opens the review dialog above: approve, answer the open questions, edit the result, request changes, or
+leave it for later.
+
 **Reviewing and confirming** (per step, in its own panel tab):
 
 Uppercase key = **Shift+that letter**, a separate key from its lowercase version (e.g. `C` is not `c`).
@@ -114,6 +133,19 @@ Uppercase key = **Shift+that letter**, a separate key from its lowercase version
 | verify → RTM | `v` | Sign off the highlighted requirement (needs all six RTM conditions) |
 | | `V` (Shift+v) | Withdraw its sign-off |
 | | `S` (Shift+s) | Sign off every requirement that is ready (skips the rest, no error) |
+
+<table>
+<tr>
+<td width="50%"><a href="../images/tui-sva.svg"><img src="../images/tui-sva.svg" alt="sva → Assertions"></a></td>
+<td width="50%"><a href="../images/tui-verify.svg"><img src="../images/tui-verify.svg" alt="verify → RTM"></a></td>
+</tr>
+<tr>
+<td><b>sva → Assertions</b> (Gate 3b): every property with its module, requirement, kind and vacuity check; the
+highlighted one's plain-English meaning on the right.</td>
+<td><b>verify → RTM</b> (Gate 5): the six conditions per requirement — RTL, SVA, test case, simulation,
+mutation score, your sign-off.</td>
+</tr>
+</table>
 
 `/approve <step> --force` and `/approve all` bypass blocking questions *and* unconfirmed reviews the same
 way `--force` always has — use it when you've judged it fine, not as a habit.
