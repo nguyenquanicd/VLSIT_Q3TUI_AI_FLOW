@@ -1,0 +1,29 @@
+# Q3TUI configuration — copy to ~/.q3tui/q3tui.yaml (user) or ./q3tui.yaml (project).
+# Full schema: docs/spec/config.md
+
+# pipeline:
+#   flow: vlsit          # default (q3tui flow list)
+#   auto_answer: false   # true: unattended — approve gates, confirm assertions, sign the ready requirements
+
+llm:
+  model: claude-sonnet-5-5
+  effort: high
+
+tools:
+  modules_init: /usr/share/modules/init/bash   # default: $MODULESHOME/init/bash
+  modules: []                                  # loaded before every EDA tool
+  timeout_s: 600
+
+  syntax:    {adapter: slang}
+  simulator:                                   # VCS + Verdi (Verdi needed for FSDB dumping)
+    adapter: vcs
+    bin: vcs
+    modules: [synopsys/vcs/X-2025.06, synopsys/verdi/X-2025.06]
+  lint:
+    adapter: spyglass
+    bin: sg_shell
+    modules: [synopsys/spyglass/T-2022.06]
+  debug:
+    adapter: verdi
+    bin: verdi
+    modules: [synopsys/verdi/X-2025.06]

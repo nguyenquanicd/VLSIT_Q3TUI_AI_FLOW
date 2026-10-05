@@ -1,0 +1,10 @@
+.venv/
+__pycache__/
+*.egg-info/
+.pytest_cache/
+q3tui_artifacts/
+*Log/
+*.conf
+*.log
+.q3tui/
+.nfs*

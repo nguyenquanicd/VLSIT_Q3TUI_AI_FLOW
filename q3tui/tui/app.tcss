@@ -1,0 +1,152 @@
+Screen {
+    layout: vertical;
+}
+
+#header {
+    height: 1;
+    padding: 0 1;
+    background: $boost;
+}
+
+#main {
+    height: 1fr;
+}
+
+#left {
+    width: 36;  /* drag the splitter (or ctrl+←/→) to resize */
+}
+
+#right {
+    width: 1fr;
+}
+
+.panel-title {
+    padding: 0 1;
+    color: $text-muted;
+    text-style: bold;
+}
+
+#steps {
+    height: auto;
+    max-height: 12;
+    background: transparent;
+}
+
+#steps > ListItem {
+    padding: 0 1;
+}
+
+#legend {
+    padding: 1 1;
+    color: $text-muted;
+}
+
+#activity {
+    height: 2fr;
+    padding: 0 1;
+}
+
+#views {
+    height: 3fr;  /* drag the splitter (or ctrl+↑/↓) to resize; activity below takes the rest */
+}
+
+#views > * {
+    height: 1fr;
+}
+
+#cmd-hint {
+    display: none;
+    height: auto;
+    max-height: 3;
+    padding: 0 1;
+    color: $text-muted;
+    border-top: solid $panel-lighten-2;
+}
+
+#view-title {
+    color: $accent;
+}
+
+.planned {
+    padding: 1 2;
+    height: auto;
+}
+
+.hint {
+    color: $text-muted;
+    padding: 0 1;
+}
+
+/* a hint whose action (confirm / sign off / …) applies to at least one row right now: not just more grey
+   text to skim past (vlsit_panels.py TabSpec.urgent) */
+.hint.urgent {
+    color: $warning;
+    text-style: bold;
+    background: $warning 15%;
+}
+
+#cmd {
+    dock: bottom;  /* flush above the footer: the row the old margin-bottom wasted goes back to #main above */
+}
+
+.modal-box {
+    width: 90;
+    height: auto;
+    max-height: 80%;
+    padding: 1 2;
+    border: thick $warning;
+    background: $surface;
+}
+
+GateScreen, TextPromptScreen, ModelScreen, ConfirmScreen {
+    align: center middle;
+}
+
+.modal-title {
+    text-style: bold;
+    margin-bottom: 1;
+}
+
+.modal-buttons {
+    height: auto;
+    margin-top: 1;
+}
+
+.modal-buttons Button {
+    margin-right: 1;
+}
+
+.modal-hint, .modal-body {
+    color: $text-muted;
+    margin: 1 0 0 0;
+}
+
+/* step views: fill exactly the space below the banner, never taller (rows at the bottom
+   were clipped behind the chat box) */
+#views TabbedContent {
+    height: 1fr;
+}
+
+#views ContentSwitcher {
+    height: 1fr;
+}
+
+#views TabPane {
+    height: 1fr;
+    padding: 0;
+}
+
+#views DataTable {
+    height: 1fr;
+}
+
+/* the selected row of every table: bold white on a dark blue (the theme's default is light text on a mid blue that some terminals
+   render almost unreadable; the status colours of the cells are replaced on that row anyway) */
+DataTable > .datatable--cursor {
+    background: #1f4e79;
+    color: #ffffff;
+    text-style: bold;
+}
+DataTable > .datatable--hover {
+    background: #2d3740;
+}

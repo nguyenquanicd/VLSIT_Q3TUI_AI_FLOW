@@ -1,0 +1,75 @@
+# Spec layout of the VLSIT flow (spec_writer.md's spec.md): what spec_parser (step `parse`) reads to extract requirements,
+# parameters and the module mapping. Used when a flow gives the spec step `options: {template: vlsit}`;
+# <project>/spec/template.yaml still wins.
+
+allow_extra_sections: true
+
+sections:
+  - id: overview
+    title: Overview
+    required: true
+    guidance: >
+      What the IP is, where it sits in the system, its bus interfaces and use cases. One or two paragraphs.
+
+  - id: features
+    title: Key Features
+    required: true
+    guidance: >
+      Numbered feature list F01, F02, ... one line each, externally observable. Mark each feature
+      mandatory (built always) or optional (enabled by a parameter, name it). This is the checklist the
+      requirements are extracted from.
+
+  - id: parameters
+    title: Parameters
+    required: true
+    guidance: >
+      Table of top-level parameters named PR_<NAME> (SystemVerilog type, default, legal range, meaning, the
+      features they affect, whether locked), then the elaboration constraints as numbered rules C1, C2, ...
+      each written as a checkable expression (e.g. "PR_BOOT_ADDR[1:0] == 2'b00", "PR_IRQ_EN == 1 -> PR_CSR_EN == 1").
+
+  - id: interface
+    title: Interface
+    required: true
+    guidance: >
+      Clock and reset (names, edge / polarity, synchronous or asynchronous), then every input and output port:
+      name, direction, width, clock domain, reset value, meaning; bus protocol rules numbered B1, B2, ...
+    fields:
+      - {name: Top module, guidance: "snake_case module name"}
+      - {name: Clock, guidance: "name, frequency if known"}
+      - {name: Reset, guidance: "name, polarity, sync / async"}
+
+  - id: functional
+    title: Functional Description
+    required: true
+    guidance: >
+      Behaviour per subsystem (one subsection each): normal operation, corner cases, error handling.
+      Use "shall"; state every reset value and every cycle-exact behaviour.
+
+  - id: microarchitecture
+    title: Microarchitecture
+    required: true
+    guidance: >
+      Module list with one line per module (name, function) and the hierarchy as a tree of module names,
+      top first. The user's structure is a decision: copy it exactly.
+
+  - id: timing
+    title: Timing and Constraints
+    required: false
+    guidance: >
+      Latencies, penalties, throughput, clock-domain and synthesis constraints (cycles, not nanoseconds,
+      unless the intent gives them).
+
+  - id: registers
+    title: Register Map
+    required: false
+    guidance: Address, name, access, reset value and meaning of every register. Omit if there are none.
+
+  - id: errors
+    title: Error Handling
+    required: false
+    guidance: Illegal inputs, error responses and what state the block is left in.
+
+  - id: notes
+    title: Notes and Open Items
+    required: false
+    guidance: Out-of-scope items (they get no requirement), rationale, TBDs.

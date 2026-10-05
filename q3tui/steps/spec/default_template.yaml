@@ -1,0 +1,138 @@
+# Q3TUI specification template.
+#
+# The spec writer produces exactly these sections, in this order. Edit freely:
+#   - remove a section you never want, or set `required: false` so it is only
+#     written when it applies to the design;
+#   - add sections (any id/title/guidance);
+#   - add `fields` for key facts that must be stated explicitly (they are rendered
+#     as a table at the top of the section; unknown values become TBD + a question).
+#
+# Lookup order: <project>/spec/template.yaml, then $Q3TUI_HOME/spec_template.yaml,
+# then this built-in default. `q3tui init --template` copies it into a project.
+
+allow_extra_sections: true   # the writer may append sections the design needs that are not listed
+
+sections:
+  - id: overview
+    title: Overview
+    required: true
+    guidance: >
+      Purpose of the block, where it sits in the system, and a short summary of what
+      it does. One or two paragraphs.
+
+  - id: features
+    title: Features
+    required: true
+    guidance: >
+      Numbered list of features (F1, F2, ...), one line each, externally observable.
+      This is the checklist the rest of the spec elaborates.
+
+  - id: parameters
+    title: Parameters
+    required: false
+    guidance: >
+      Table of design-time parameters: name, legal range, default, meaning.
+      Omit if the block has none.
+
+  - id: clocks_resets
+    title: Clocks and Resets
+    required: true
+    guidance: >
+      Every clock domain and every reset: polarity, synchronous/asynchronous,
+      which domain it belongs to, and the state of every output during and after reset.
+    fields:
+      - name: Clock frequency
+        guidance: 'Target frequency per clock, e.g. "clk: 500 MHz"'
+      - name: Clock domains
+        guidance: Number of domains and their relationship (synchronous / asynchronous)
+      - name: Reset
+        guidance: 'Name, polarity and type, e.g. "rst_n: active-low, asynchronous assert, synchronous deassert"'
+
+  - id: interfaces
+    title: Interfaces
+    required: true
+    guidance: >
+      Every port: name, direction, width, clock domain, reset value, meaning. Group
+      ports into interfaces and state each protocol's rules exactly (when a transfer
+      happens, what must stay stable while stalled, ordering).
+
+  - id: functional
+    title: Functional Behaviour
+    required: true
+    guidance: >
+      Numbered subsections, one per feature. Use "shall". Give cycle-level timing
+      (latency, throughput, ordering) wherever it is observable at the ports.
+
+  - id: registers
+    title: Registers and Configuration
+    required: false
+    guidance: >
+      Register map (address, fields, access, reset value) or configuration inputs.
+      Omit if the block has no software-visible state.
+
+  - id: corner_cases
+    title: Corner Cases and Error Handling
+    required: true
+    guidance: >
+      Full/empty, overflow/underflow, simultaneous events, illegal inputs, reset during
+      activity, and what the block does in each case (wrap or saturate, drop or stall, flag).
+
+  - id: performance
+    title: Performance
+    required: true
+    guidance: Throughput and latency targets and how they are measured at the ports.
+    fields:
+      - name: Throughput
+        guidance: 'e.g. "1 transfer per cycle sustained"'
+      - name: Latency
+        guidance: 'e.g. "2 cycles from in_valid&&in_ready to out_valid"'
+
+  - id: numerical_accuracy
+    title: Numerical Accuracy
+    required: false
+    guidance: >
+      Only for algorithmic/datapath designs (filters, codecs, ML, math units): the float
+      reference the fixed-point implementation is measured against and the accuracy it
+      must reach. Omit for control designs (FIFOs, arbiters, CPUs).
+    fields:
+      - name: Reference
+        guidance: 'e.g. "float64 model of the algorithm in §5" or a provided model path'
+      - name: Metric
+        guidance: e.g. SQNR, max absolute error, bit error rate
+      - name: Threshold
+        guidance: 'e.g. "SQNR >= 70 dB over the test vectors"'
+
+  - id: constraints
+    title: Implementation Constraints
+    required: true
+    guidance: >
+      Constraints on the implementation that are not functional: technology, area,
+      power, timing margin, memories and IP that may or may not be used, coding rules.
+    fields:
+      - name: Target technology
+        guidance: Process / library or FPGA family, or "technology independent"
+      - name: Area budget
+        guidance: 'e.g. gate count or "no constraint"'
+      - name: Power
+        guidance: 'e.g. clock gating requirements or "no constraint"'
+      - name: Memories
+        guidance: Flops only, or which SRAM macros may be used
+      - name: Coding standard
+        guidance: 'e.g. "synthesizable SystemVerilog-2012, one module per file"'
+
+  - id: structure
+    title: Design Structure
+    required: false
+    guidance: >
+      Only when the intent prescribes it: the module hierarchy (as a tree of module names
+      in a ```text block, top first, children indented with ├── / └──), the module names,
+      the pipeline stages and which module does what. Copy it exactly as the intent gives
+      it — it is the user's decision and binds the architecture. Omit the section when the
+      intent leaves the structure open.
+
+  - id: verification
+    title: Verification Notes
+    required: false
+    guidance: >
+      Anything the verification engineer must know that is not implied above:
+      key scenarios, known-hard cases, observability requirements.
