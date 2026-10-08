@@ -15,6 +15,7 @@ from textual.css.query import NoMatches
 from textual.widgets import DataTable, Select, Static, TabbedContent, TabPane, TextArea
 
 from q3tui.core.icons import icon as I
+from q3tui.tui import mermaid
 from q3tui.tui.i18n import t
 from q3tui.tui.splitter import Splitter
 
@@ -154,6 +155,11 @@ class MdCode(ScrollableContainer):
 
     @staticmethod
     def renderable(code: str, lang: str):
+        if lang.lower() in mermaid.LANGS:  # a diagram: drawn as terminal art (its source when it cannot be drawn)
+            art = mermaid.render(code)
+            if art is not None:
+                return Text(art, no_wrap=True, overflow="ignore")
+            return Text(code, no_wrap=True, overflow="ignore")
         if lang in ("", "text", "txt", "plain"):
             return Text(code, no_wrap=True, overflow="ignore")
         from rich.syntax import Syntax
@@ -527,21 +533,46 @@ class SectionsPanel(Horizontal):
         Binding("left_square_bracket", "move(-1)", "Move up"),
         Binding("right_square_bracket", "move(1)", "Move down"),
         Binding("v", "review", "Mark reviewed"),
+        Binding("w", "feedback", "Write feedback"),
+        Binding("ctrl+s", "send_feedback", "Send feedback"),
+        Binding("escape", "leave_feedback", "Back to sections", show=False),
         Binding("E", "edit_template", "Edit template"),
     ]
     DEFAULT_CSS = """
-    SectionsPanel > Vertical { width: 72; }
+    SectionsPanel > Vertical#spec-sections-left { width: 72; }
     SectionsPanel DataTable { height: 1fr; }
-    SectionsPanel > VerticalScroll { width: 1fr; padding: 0 1; }
+    SectionsPanel > #spec-section-right { width: 1fr; }
+    SectionsPanel #spec-section-right > VerticalScroll { height: 1fr; padding: 0 1; }
+    SectionsPanel #spec-feedback { height: auto; max-height: 16; border-top: solid $primary; padding: 0 1; }
+    SectionsPanel #spec-feedback-title { text-style: bold; }
+    SectionsPanel #spec-feedback-pending { color: $warning; }
+    SectionsPanel #spec-feedback-text { height: 5; }
+    SectionsPanel #spec-feedback Horizontal { height: auto; }
+    SectionsPanel #spec-feedback Button { margin-right: 1; }
     """
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._fb_sid: str | None = None  # the section the feedback box is about
+        self._drafts: dict[str, str] = {}  # unsent feedback per section: it survives moving to another row
+
     def compose(self) -> ComposeResult:
-        with Vertical():
+        from textual.widgets import Button
+
+        with Vertical(id="spec-sections-left"):
             yield IdTable(cursor_type="row", zebra_stripes=True, id="spec-sections-table")
-            yield Static("Enter edit · v reviewed · C comment · n add · d delete · t required · [ ] move · E template", classes="hint")
+            yield Static("Enter edit · v reviewed · w feedback · C comment · n add · d delete · t required · [ ] move · E template", classes="hint")
         yield Splitter(vertical=True, id="split-sections")
-        with VerticalScroll():
-            yield Markdown(id="spec-section-md")
+        with Vertical(id="spec-section-right"):
+            with VerticalScroll():
+                yield Markdown(id="spec-section-md")
+            with Vertical(id="spec-feedback"):  # feedback for the highlighted section: queued as a change request scoped to it
+                yield Static("", id="spec-feedback-title")
+                yield Static("", id="spec-feedback-pending")
+                yield TextArea("", id="spec-feedback-text", soft_wrap=True, show_line_numbers=False)
+                with Horizontal():
+                    yield Button("Send feedback (ctrl+s)", id="spec-feedback-send", variant="primary")
+                    yield Button("Clear", id="spec-feedback-clear")
 
     def on_mount(self) -> None:
         self.query_one(DataTable).add_columns("#", "Section", "", "Status")
@@ -623,6 +654,60 @@ class SectionsPanel(Horizontal):
         if written:
             parts += [f"## {written[0]}", written[1] or "_(empty)_"]
         set_markdown(self.query_one(Markdown), "\n\n".join(parts))
+        self._show_feedback(sid, written[0] if written else (ts.title if ts else sid))
+
+    # -- feedback per section --
+
+    def _pending_feedback(self, title: str) -> list[str]:
+        """Change requests already queued for this section (ops.request_change prefixes them `In section '<title>':`)."""
+        prefix = f"in section '{title.lower()}':"
+        return [f for f in self.capp.engine.state.feedback.get("spec", []) if f.lower().startswith(prefix)]
+
+    def _show_feedback(self, sid: str, title: str) -> None:
+        box = self.query_one("#spec-feedback-text", TextArea)
+        if self._fb_sid is not None and self._fb_sid != sid:
+            self._drafts[self._fb_sid] = box.text
+        if self._fb_sid != sid:
+            box.load_text(self._drafts.get(sid, ""))
+        self._fb_sid = sid
+        self.query_one("#spec-feedback-title", Static).update(f"Feedback for “{title}”")
+        pending = self._pending_feedback(title)
+        self.query_one("#spec-feedback-pending", Static).update(
+            "\n".join([f"↻ queued ({len(pending)}), applied on the next spec run (r):", *(f"  · {f.split(':', 1)[1].strip()}" for f in pending)])
+            if pending else "")
+
+    def action_feedback(self) -> None:
+        if self._selected():
+            self.query_one("#spec-feedback-text", TextArea).focus()
+
+    def action_leave_feedback(self) -> None:
+        if self.query_one("#spec-feedback-text", TextArea).has_focus:
+            self.query_one(DataTable).focus()
+
+    def action_send_feedback(self) -> None:
+        sid = self._fb_sid
+        box = self.query_one("#spec-feedback-text", TextArea)
+        text = box.text.strip()
+        if not sid or not text:
+            self.capp.notify("write what should change in this section first (w), then ctrl+s", severity="warning")
+            return
+        title, _ = self._spec_sections().get(sid, (None, ""))
+        if title is None:
+            title = next((s.title for s in self.capp.ops.template().sections if s.id == sid), sid)
+        box.load_text("")
+        self._drafts.pop(sid, None)
+        self._do(self.capp.ops.request_change, "spec", text, title)
+        self.query_one(DataTable).focus()
+
+    def on_button_pressed(self, event) -> None:
+        if event.button.id == "spec-feedback-send":
+            event.stop()
+            self.action_send_feedback()
+        elif event.button.id == "spec-feedback-clear":
+            event.stop()
+            self.query_one("#spec-feedback-text", TextArea).load_text("")
+            if self._fb_sid:
+                self._drafts.pop(self._fb_sid, None)
 
     def on_data_table_row_highlighted(self, event: DataTable.RowHighlighted) -> None:
         event.stop()

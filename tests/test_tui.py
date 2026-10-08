@@ -769,3 +769,64 @@ def test_a_tree_without_a_code_fence_keeps_its_lines():
     fenced = "```text\n" + tree + "\n```"
     assert fence_diagrams(fenced) == fenced  # already fenced: untouched
     assert fence_diagrams("one line ├── x") == "one line ├── x"  # a single line is just text
+
+
+async def test_spec_section_feedback_box(app, llm):
+    from textual.widgets import DataTable, Static, TextArea
+
+    async with app.run_test(size=(150, 45)) as pilot:
+        await pilot.press("r")
+        await settle(app, pilot)
+        await pilot.press("l")
+        await pilot.pause()
+        await pilot.press("1")
+        await pilot.pause()
+        table = app.query_one("#spec-sections-table", DataTable)
+        box = app.query_one("#spec-feedback-text", TextArea)
+        ids = [table.coordinate_to_cell_key((i, 0)).row_key.value for i in range(table.row_count)]
+        table.focus()
+        table.move_cursor(row=ids.index("features"))
+        await pilot.pause()
+        assert "Features" in str(app.query_one("#spec-feedback-title", Static).render())
+
+        await pilot.press("w")                       # focus the box; letters are typed, not bound keys
+        await pilot.pause()
+        assert box.has_focus
+        await pilot.press(*"add F3 drain")
+        assert box.text == "add F3 drain"
+        table.move_cursor(row=ids.index("overview"))  # an unsent draft stays with its section
+        await pilot.pause()
+        assert box.text == ""
+        table.move_cursor(row=ids.index("features"))
+        await pilot.pause()
+        assert box.text == "add F3 drain"
+
+        box.focus()
+        await pilot.press("ctrl+s")
+        await pilot.pause()
+        queued = app.engine.state.feedback["spec"]
+        assert queued[-1].startswith("In section 'Features':") and "add F3 drain" in queued[-1]
+        assert box.text == "" and table.has_focus
+        assert "queued (1)" in str(app.query_one("#spec-feedback-pending", Static).render())
+        assert {v.name: v.status for v in app.engine.status()}["spec"] == "stale"
+
+        await pilot.press("ctrl+s")                  # nothing written: nothing queued
+        await pilot.pause()
+        assert len(app.engine.state.feedback["spec"]) == 1
+
+
+def test_mermaid_blocks_are_drawn_as_terminal_art():
+    from q3tui.tui import mermaid
+    from q3tui.tui.views import MdCode, split_fences
+
+    src = "flowchart LR\n  IN[Input interface] --> CORE[Control and datapath]\n  CORE --> OUT[Output interface]"
+    art = mermaid.render(src)
+    assert art and "Input interface" in art and "─" in art and "-->" not in art
+    assert mermaid.render("sequenceDiagram\n  A->>B: hello") and "hello" in mermaid.render("sequenceDiagram\n  A->>B: hello")
+    assert mermaid.render("this is not a diagram at all (((") is None
+    # both fence styles of the spec template reach MdCode with their language; unusable source is shown as written
+    for fence in ("~~~", "```"):
+        parts = split_fences(f"text\n\n{fence}mermaid\n{src}\n{fence}\n\nmore")
+        assert [p[0] for p in parts] == ["md", "code", "md"] and parts[1][2] == "mermaid"
+        assert "Input interface" in MdCode.renderable(parts[1][1], "mermaid").plain and "-->" not in MdCode.renderable(parts[1][1], "mermaid").plain
+    assert MdCode.renderable("graph (((", "mermaid").plain == "graph ((("
