@@ -199,7 +199,7 @@ CLI, the assistant can do by prompting.** Both go through the same operations la
 | Gates and asking | `gates`, `set_gate_mode`, `ask_user` (the picker: up to 4 questions with options, answers come back as text) |
 | Flow | `set_step_setting` (view / pass / notes), `get_skill`, `set_skill`, `get_prompt`, `set_prompt` |
 | VLSIT flow | `review_parse_requirement`, `confirm_all_requirements`, `review_config_parameter`, `confirm_all_parameters`, `list_properties`, `review_property`, `confirm_all_properties`, `rtm_status`, `sign_requirement`, `sign_all_ready_requirements` |
-| Pipeline | `run_steps` (start/stop/only/regenerate), `stop_run`, `approve`, `answer_question`, `request_change` (optionally for one section), `reset_step`, `import_file` (a spec) |
+| Pipeline | `run_steps` (start/stop/only/regenerate), `stop_run`, `approve`, `answer_question`, `request_change` (optionally for one section), `reset_step`, `import_file` (a file or a whole folder: spec documents, RTL, testbench / tests, SVA) |
 | Settings | `set_model`, `set_spec_review`, `set_auto_approve`, `set_auto_answer`, `set_auto_confirm_reviews`, `get_settings`, `set_settings`, `show_stats`, `reset_stats`, `reset_cost` |
 | Files | `Read`/`Grep`/`Glob` over the project; `Edit`/`Write` only in `spec/`, `schemas/` and `src/` (like a user in an editor); never `.q3tui/` |
 

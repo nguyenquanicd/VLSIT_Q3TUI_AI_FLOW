@@ -76,10 +76,22 @@ def update_prompt(*, module: str, path: str, changes: list[str], answers: dict[s
     return "\n".join(parts)
 
 
-def fix_prompt(*, module: str, path: str, problems: str, code: str, reqs: list[str]) -> str:
-    """A fresh small session: the problems and the current content — never the old session."""
+def fix_prompt(*, module: str, path: str, problems: str, code: str, reqs: list[str], req_text: dict[str, str] | None = None,
+               keep_ports: list[str] | None = None) -> str:
+    """A fresh small session: the problems and the current content — never the old session. `req_text`: the module is
+    the user's imported RTL (conform it to the rules, keep what it does; tag the REQs where they are implemented)."""
+    imported = ""
+    if req_text is not None:
+        imported = ("\nFile này là RTL của người dùng (import): GIỮ NGUYÊN chức năng, kiến trúc, timing (số chu kỳ) và tên module; "
+                    "chỉ sửa để theo đúng quy tắc RTL (đổi tên tín hiệu/label/instance, khai báo, cấu trúc block…) và thêm tag REQ. "
+                    "Đổi tên port của module con thì sửa luôn chỗ nối ở module cha khi được báo lỗi.\n"
+                    "Requirement của module (tag `// REQ-xxx` ngay tại chỗ logic implement nó):\n"
+                    + ("\n".join(f"- {r}: {t}" for r, t in req_text.items()) or "- (không có)") + "\n")
+        if keep_ports:
+            imported += ("Module TOP: KHÔNG đổi tên port (" + ", ".join(keep_ports[:60]) + ") — đó là giao diện trong spec và trong "
+                         "test của người dùng.\n")
     return (f"# Task: sửa `{module}` → `{path}`\nQ3TUI kiểm tra file và còn thấy các vấn đề sau (kết quả công cụ là sự thật, "
-            f"không tranh luận — sửa nguyên nhân, không che):\n{problems}\n\nREQ-ID phải còn được tag: {', '.join(reqs) or '(không có)'}\n\n"
+            f"không tranh luận — sửa nguyên nhân, không che):\n{problems}\n{imported}\nREQ-ID phải còn được tag: {', '.join(reqs) or '(không có)'}\n\n"
             f"Nội dung hiện tại của file:\n```systemverilog\n{code}\n```\nSửa file bằng Edit/Write, chạy `check` tới khi `clean`, "
             "rồi trả về tóm tắt.")
 

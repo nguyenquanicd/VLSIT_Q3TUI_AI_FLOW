@@ -102,3 +102,18 @@ def test_vcs_error_whose_long_path_wraps_still_names_its_file():
            '  "/a/very/long/path/to/the/project/src/tb/tb_top.sv", \n  407: token is \'$finish\'\n      $finish;\n             ^\n\n')
     (d,) = parse_vcs_log(log)
     assert (d.severity, d.code, d.file, d.line) == ("error", "SE", "/a/very/long/path/to/the/project/src/tb/tb_top.sv", 407)
+
+
+def test_run_command_streams_a_flood_and_kills_the_tree(tmp_path, monkeypatch):
+    import q3tui.eda.base as base
+
+    monkeypatch.setattr(base, "LOG_HEAD_BYTES", 2000)
+    monkeypatch.setattr(base, "LOG_TAIL_BYTES", 500)
+    # a hung "simulation" (a grandchild under bash) printing the same line forever, plus distinct lines
+    script = "for i in $(seq 1 300); do echo line_$i; done; (while true; do echo COVER_HIT c_x; done)"
+    rc, out, secs, timed_out = run_command(["bash", "-c", script], tmp_path, tmp_path / "f.log", 2)
+    assert timed_out and rc is None and secs < 10
+    log = (tmp_path / "f.log").read_text()
+    assert len(log) < 10_000 and log.count("COVER_HIT c_x\n") <= base.LOG_REPEAT_KEEP
+    assert "bytes of output left out" in log and "repeated line(s) left out" in log and "line_300" in log
+    assert "killed after 2 s" in out

@@ -45,7 +45,7 @@ Review: mark_reviewed (spec sections), approve, and the per-item reviews of the 
 (review_parse_requirement, review_config_parameter, review_property, sign_requirement). \
 Pipeline: run_steps, stop_run, reset_step. Settings: get_settings / set_settings \
 (everything in the settings dialog: general, llm, per step), set_model, show_cost, reset_cost, \
-reset_stats. Bring-your-own spec: import_file.
+reset_stats. Bring your own spec / RTL / tests / whole project folder: import_file (kind all for a folder).
 - You can also Edit/Write files under spec/, schemas/ and src/ directly (as the user could \
 in an editor); prefer the dedicated tools when one fits. You cannot modify Q3TUI's internal state.
 - Changes to a step's result: request_change(step=..., ...) then run_steps.
@@ -279,8 +279,12 @@ def assistant_tools(host: AssistantHost) -> list[SdkMcpTool]:
             return "the user declined"
         return ops.reset(a["step"], bool(a.get("only")))
 
-    @add("import_file", "Use a user-provided spec document (kind spec).",
-         _schema({"kind": ("string", ""), "path": ("string", "")}, ["kind", "path"]), scope=lambda a: (a["kind"], "replace the files of"))
+    @add("import_file", "Import the user's own files: a file or a whole folder (a reference project). kind all (default for a "
+         "folder): code sorts it into spec documents (→ spec/), RTL (→ the rtl step, which checks it against the flow's RTL "
+         "rules and updates what does not follow them), testbench / tests and SVA (→ references the tb / sva steps port "
+         "into the flow's format); scripts and filelists are left out. kind spec|rtl|tb|sva imports only that kind.",
+         _schema({"kind": ("string", "all | spec | rtl | tb | sva"), "path": ("string", "a file or a folder")}, ["kind", "path"]),
+         scope=lambda a: (a["kind"], "replace the files of"))
     async def _import(a):
         return ops.import_files(a["kind"], a["path"])
 

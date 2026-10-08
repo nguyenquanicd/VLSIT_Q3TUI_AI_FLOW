@@ -21,6 +21,26 @@ from q3tui.steps.spec.template import (
 )
 
 
+def import_summary(report: dict) -> str:
+    """What `Engine.import_path` did, as text: per kind the files taken, what no step takes, what was left out."""
+    lines = [f"imported from {report['source']}:"]
+    where = {"spec": "spec documents (references: the spec step ports them into spec/spec.md with the template's sections)", "rtl": "RTL (the rtl step checks it against the RTL rules and updates what does "
+             "not follow them)", "tb": "testbench / tests (references: the tb step ports them into its test cases)",
+             "sva": "SVA (references: the sva step ports them)"}
+    for kind, label in where.items():
+        if report.get(kind):
+            files = report[kind]
+            lines.append(f"- {len(files)} {label}: " + ", ".join(files[:8]) + (f" (+{len(files) - 8} more)" if len(files) > 8 else ""))
+    for kind, files in report.get("not_taken", {}).items():
+        lines.append(f"- {len(files)} {kind} file(s) not imported: no step of this flow takes {kind}")
+    if report.get("skipped"):
+        sk = report["skipped"]
+        lines.append(f"- left out ({len(sk)}: scripts, filelists, other files): " + ", ".join(sk[:8]) + (" …" if len(sk) > 8 else ""))
+    if len(lines) == 1:
+        lines.append("- nothing to import")
+    return "\n".join(lines)
+
+
 class Ops:
     def __init__(self, engine: Engine):
         self.engine = engine
@@ -204,15 +224,20 @@ class Ops:
         return f"reset {step}{' only' if only else ' and downstream'}: removed {len(files)} file(s) (backed up)"
 
     def import_files(self, kind: str, path: str) -> str:
+        """Import a file or a whole folder. kind `all`: sorted by code into spec documents, RTL, testbench / tests and
+        SVA (core/importer.py); spec | rtl | tb | sva: only that kind."""
+        from q3tui.core.importer import KINDS
+
         p = Path(path).expanduser()
         if not p.is_absolute():
             p = self.project.root / p
-        if not p.is_file():
-            raise EngineError(f"no such file: {path}")
-        if kind != "spec":
-            raise EngineError("kind must be spec")
-        self.engine.import_spec([p])
-        return self._log("spec", f"imported spec: {self.project.rel(p)}")
+        if not p.exists():
+            raise EngineError(f"no such file or folder: {path}")
+        if kind not in ("all", *KINDS):
+            raise EngineError(f"kind must be all, {', '.join(KINDS)}")
+        self._not_running("import")
+        report = self.engine.import_path(p, None if kind == "all" else {kind})
+        return self._log(None, import_summary(report))
 
     # -- settings -------------------------------------------------------------------------------
 

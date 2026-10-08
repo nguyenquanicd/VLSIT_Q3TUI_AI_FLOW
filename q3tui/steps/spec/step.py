@@ -1,4 +1,5 @@
-"""Step 1 — spec: write (or revise) spec/spec.md from spec/intent.md."""
+"""Step 1 — spec: write (or revise) spec/spec.md from spec/intent.md, and/or port the user's own (imported) documents
+in spec/ref/ into the template's sections."""
 
 from __future__ import annotations
 
@@ -29,7 +30,40 @@ class SpecStep(StepDef):
 
     def inputs(self, engine) -> list[Path]:
         intent, _, _, _, answers = self._paths(engine)
-        return [intent, answers, find_template(engine.project.spec_dir, self.options.get("template"))]
+        imported = engine.import_record_path("spec")  # (your imported documents, once there are some)
+        return [intent, answers, find_template(engine.project.spec_dir, self.options.get("template")),
+                *([imported] if imported.is_file() else [])]
+
+    # -- imports: your documents are ported into the template's sections --------------------------------
+
+    def import_dir(self, engine, kind: str) -> Path | None:
+        """Imported documents are references in spec/ref/ (not spec documents themselves): this step ports them into
+        spec/spec.md with the template's sections. (`--spec FILE` still takes a document as the spec, as it is.)"""
+        return engine.project.spec_dir / "ref" if kind == "spec" else None
+
+    def on_import(self, engine, kind: str, files: list[Path]) -> None:
+        from q3tui.core.project import sha256_file as sha
+
+        # the same documents taken as the spec before (copied into spec/ as they were): references now
+        imported = {sha(f) for f in files}
+        same = [d for d in self._user_documents(engine) if sha(d) in imported]
+        engine.project.backup(same)
+        for d in same:
+            d.unlink()
+        rec = engine.state.steps.get(self.name)
+        if rec is not None and rec.origin == "user" and not self._user_documents(engine):
+            engine.state.steps.pop(self.name)  # it was "your spec": now it is written from your documents
+
+    def references(self, engine) -> list[Path]:
+        rec = engine.import_record("spec") or {}
+        return [engine.project.root / r for r in rec.get("files", {}) if (engine.project.root / r).is_file()]
+
+    def _references_block(self, engine) -> tuple[str, bool]:
+        """The imported documents for the LLM, unconverted: text files verbatim, the others (HTML, PDF, …) listed for it
+        to read itself. Returns (block, whether the stage needs file tools)."""
+        from q3tui.steps.common import spec_block
+
+        return spec_block(engine.project, self.references(engine))
 
     @staticmethod
     def _generated_by_q3tui(path: Path) -> bool:
@@ -54,7 +88,7 @@ class SpecStep(StepDef):
 
     def missing_input(self, engine) -> str | None:
         intent = self._paths(engine)[0]
-        if not intent.is_file():
+        if not intent.is_file() and not self.references(engine):
             return f"no spec and no intent: write {engine.project.rel(intent)}, pass --intent \"...\", or provide --spec FILE"
         return None
 
@@ -105,6 +139,8 @@ class SpecStep(StepDef):
         meta["applied_answers"] = sorted(set(meta.get("applied_answers", [])) | set(applied))
         if template is not None:  # snapshot, so the next run knows exactly which sections changed
             meta["template_sections"] = [s.model_dump() for s in template.sections]
+        refs = engine.import_record("spec") or {}
+        meta["refs"] = refs.get("files") if self.references(engine) else None  # the documents it was ported from
 
     def _template_changes(self, engine, template, spec_text: str) -> dict:
         """What changed in the template since the spec was last written.
@@ -153,16 +189,28 @@ class SpecStep(StepDef):
         new_answers = {k: v for k, v in answers.items() if k not in set(meta.get("applied_answers", []))}
         intent_same = meta.get("intent") is not None and meta.get("intent") == (sha256_file(intent_path) if intent_path.is_file() else None)
         old_intent = meta.get("intent_text")
+        refs = self.references(engine)
+        ported = meta.get("refs") is not None  # the spec was ported from your documents
+        if not intent_path.is_file() and ported:
+            intent_same = True  # (no intent: the documents are what it was written from)
         if spec_path.is_file() and not ctx.regenerate and (intent_same or (old_intent is not None and intent_path.is_file())):
             # the spec exists: update only what changed (an intent change revises the sections it affects)
             changes = self._template_changes(engine, template, spec_path.read_text())
             intent_change = None if intent_same else (old_intent, intent_path.read_text())
-            await self._apply_updates(ctx, template, template_path, new_answers, changes, intent_change)
+            extra = []
+            now = (engine.import_record("spec") or {}).get("files") if refs else None
+            if now != meta.get("refs") and refs:  # re-imported documents: the sections they affect follow them
+                block, _ = self._references_block(engine)
+                changed = sorted(k for k in set(now or {}) | set(meta.get("refs") or {}) if (now or {}).get(k) != (meta.get("refs") or {}).get(k))
+                extra.append("The user's own specification documents changed (" + ", ".join(changed) + "): update the sections "
+                             "they affect so the spec states what they state (they are the source of truth); keep module and "
+                             "port names as they give them.\n<user_documents>\n" + block + "\n</user_documents>")
+            await self._apply_updates(ctx, template, template_path, new_answers, changes, intent_change, extra)
         else:
             await self._write_full(ctx, template, template_path, answers)
 
     async def _apply_updates(self, ctx: StepContext, template, template_path: Path, new_answers: dict[str, str], changes: dict,
-                             intent_change: tuple[str, str] | None = None) -> None:
+                             intent_change: tuple[str, str] | None = None, extra: list[str] | None = None) -> None:
         """Answers, change requests and template edits: patch only what they affect (no full rewrite/review).
 
         Removed / reordered / renamed sections are applied by code (no LLM). New sections, sections
@@ -194,12 +242,14 @@ class SpecStep(StepDef):
                   + (f" Fields: {', '.join(f.name for f in tmpl[sid].fields)}." if tmpl[sid].fields else "")
                   for sid in changes["revised"]]
         patch: SpecPatch | None = None
-        if items or ctx.feedback or add or revise or intent_change:
-            ctx.emit("log", message=f"updating the affected sections: {len(items)} answer(s), {len(ctx.feedback)} change request(s), "
+        feedback = [*ctx.feedback, *(extra or [])]
+        if items or feedback or add or revise or intent_change:
+            ctx.emit("log", message=f"updating the affected sections: {len(items)} answer(s), {len(feedback)} change request(s), "
                                     f"{len(add)} new section(s), {len(revise)} revised section(s)"
                                     + (", intent changed" if intent_change else ""))
-            stage = Stage(name="spec_update", system_prompt=prompts.UPDATER, cwd=engine.project.root, builtin_tools=[],
-                          prompt=prompts.apply_prompt(template=describe(template), spec=text, answers=items, feedback=ctx.feedback,
+            stage = Stage(name="spec_update", system_prompt=prompts.UPDATER, cwd=engine.project.root,
+                          builtin_tools=["Read", "Grep", "Glob"] if extra else [],  # (re-imported documents to read)
+                          prompt=prompts.apply_prompt(template=describe(template), spec=text, answers=items, feedback=feedback,
                                                       add=add, revise=revise, intent_change=intent_change),
                           output_model=SpecPatch)
             patch = (await ctx.llm(stage)).output
@@ -233,7 +283,12 @@ class SpecStep(StepDef):
         """First draft, intent change, or --regenerate: write (and review) the whole spec."""
         engine = ctx.engine
         intent_path, spec_path, qjson, qmd, answers_path = self._paths(engine)
-        intent = intent_path.read_text()
+        intent = intent_path.read_text() if intent_path.is_file() else ""
+        refs = self.references(engine)
+        refs_tools = False
+        if refs:  # your own documents: ported into the template (they are the source of truth)
+            block, refs_tools = self._references_block(engine)
+            intent = prompts.port_intent(intent, block)
         previous = self._questions(engine)
         existing = spec_path.read_text() if spec_path.is_file() and not ctx.regenerate else None
         tdesc = describe(template)
@@ -241,22 +296,23 @@ class SpecStep(StepDef):
 
         # the intent (and the current spec) are in the prompt; file tools only when there are
         # reference documents to read — otherwise the model spends turns re-reading its prompt
-        refs = [p for p in engine.project.spec_documents() if p != spec_path]
-        tools = ["Read", "Grep", "Glob"] if refs else []
+        others = [p for p in engine.project.spec_documents() if p != spec_path]
+        tools = ["Read", "Grep", "Glob"] if others or refs_tools else []
 
         def stage(name: str, prompt: str, system: str, output=SpecDraft, resume: str | None = None) -> Stage:
             return Stage(name=name, system_prompt=system, prompt=prompt, cwd=engine.project.root, builtin_tools=tools,
                          output_model=output, resume=resume)
 
         if existing is None:
-            ctx.emit("log", message="drafting specification from intent")
+            ctx.emit("log", message=f"porting {', '.join(engine.project.rel(p) for p in refs)} into the template's sections"
+                                    if refs else "drafting specification from intent")
             prompt = prompts.draft_prompt(intent=intent, template=tdesc, feedback=ctx.feedback)
         else:
             ctx.emit("log", message="revising the specification (the intent changed)")
             prompt = prompts.revise_prompt(intent=intent, template=tdesc, spec=existing, questions=previous, answers=answers, feedback=ctx.feedback)
-        if refs:
+        if others:
             prompt += ("\n\nReference documents in the project (read the relevant parts): "
-                       + ", ".join(engine.project.rel(p) for p in refs))
+                       + ", ".join(engine.project.rel(p) for p in others))
         # the document comes back as plain Markdown: a 250-line spec inside a JSON string breaks
         # easily (one bad escape = the whole spec written again)
         res = await ctx.llm(stage("spec_write", prompt, prompts.WRITER, output=None))
@@ -272,7 +328,7 @@ class SpecStep(StepDef):
             ctx.emit("log", message="reviewing specification (returns only the sections it changes)")
             review_prompt = prompts.review_prompt(intent=intent, template=tdesc, draft=draft, rendered=document.render(draft), answers=answers)
             review_stage = Stage(name="spec_review", system_prompt=prompts.REVIEWER, prompt=review_prompt, cwd=engine.project.root,
-                                 builtin_tools=[], output_model=ReviewPatch)
+                                 builtin_tools=["Read", "Grep", "Glob"] if refs_tools else [], output_model=ReviewPatch)
             review: ReviewPatch = (await ctx.llm(review_stage)).output
             draft = document.apply_review(draft, review)
             changed = ", ".join(sec.title for sec in review.sections) or "no sections"

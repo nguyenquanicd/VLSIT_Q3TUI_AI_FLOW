@@ -64,8 +64,11 @@ A file you provide counts as the output of its step. That step is marked
 |---|---|---|
 | an idea | `--intent "..."`, `--intent-file F` or `spec/intent.md` | spec |
 | a spec | `--spec my_spec.pdf` (copied into `spec/`) | parse |
+| a project (spec documents, RTL, testbench / tests, SVA) | `q3tui import DIR` / `run --import DIR` | spec: the documents (in `spec/ref/`) are ported into the template's sections; RTL is checked and conformed, tests and SVA are ported ([vlsit-flow.md](vlsit-flow.md) "Importing") |
 
-The assistant's `import_file` does the same for a spec.
+The assistant's `import_file` does the same (a file or a folder; kind `all | spec | rtl | tb | sva`). What each import
+brought in is recorded in `.q3tui/imports/<kind>.json` (source, files and hashes; for RTL the module hierarchy): steps
+list it as an input, so a re-import makes them stale.
 
 ## Protecting user edits
 

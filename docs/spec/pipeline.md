@@ -235,9 +235,10 @@ The answer becomes a `[decision]` change request on the owner step, which update
 ## Pipeline controls
 
 ```bash
-q3tui run [--intent TEXT | --intent-file F] [--spec F ...]
+q3tui run [--intent TEXT | --intent-file F] [--spec F ...] [--import DIR ...]
               [--from STEP] [--to STEP] [--only STEP] [--regenerate STEP] [--yes]   # --yes: approve all gates
               [--auto-approve] [--auto-answer] [--spec-review/--no-spec-review]
+q3tui import PATH [--kind all|spec|rtl|tb|sva]   # your own project folder / files (vlsit-flow.md "Importing")
 q3tui status                     # step states, staleness, open gates
 q3tui approve STEP|all [--force] # open questions → default accepted; blocking ones must be answered
 q3tui change STEP -m "..."       # request a change; the step re-runs with it

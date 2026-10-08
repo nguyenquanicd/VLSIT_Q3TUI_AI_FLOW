@@ -203,6 +203,8 @@ def _answer_interactive(engine: Engine, step: str | None = None) -> None:
 @click.option("--intent", help="Describe the block to build (starts at spec).")
 @click.option("--intent-file", type=ExistingFile, help="File with the intent.")
 @click.option("--spec", "specs", multiple=True, type=ExistingFile, help="Your spec document(s) (starts at parse).")
+@click.option("--import", "imports", multiple=True, type=click.Path(exists=True, path_type=Path),
+              help="Your own project folder (or file): spec documents, RTL, testbench / tests, SVA (see `q3tui import`).")
 @click.option("--from", "start", type=STEP, help="First step to run.")
 @click.option("--to", "stop", type=STEP, help="Last step to run.")
 @click.option("--only", type=STEP, help="Run just this step.")
@@ -213,7 +215,7 @@ def _answer_interactive(engine: Engine, step: str | None = None) -> None:
 @click.option("--auto-answer", is_flag=True, help="Unattended: approve every gate, answer every question with its default and "
                                                     "accept proposals (runs start to finish).")
 @pass_ctx
-def run(c: Ctx, intent, intent_file, specs, start, stop, only, regenerate, yes, spec_review, auto_approve,
+def run(c: Ctx, intent, intent_file, specs, imports, start, stop, only, regenerate, yes, spec_review, auto_approve,
         auto_answer) -> None:
     """Run every pending or stale step, stopping at review gates."""
     if spec_review is not None:
@@ -229,6 +231,11 @@ def run(c: Ctx, intent, intent_file, specs, start, stop, only, regenerate, yes, 
         engine.import_intent(intent or intent_file.read_text())
     if specs:
         engine.import_spec(list(specs))
+    if imports:
+        from q3tui.core.ops import import_summary
+
+        for path in imports:
+            click.echo(import_summary(engine.import_path(path)))
 
     interactive = sys.stdin.isatty() and not yes
     while True:
@@ -357,6 +364,20 @@ def approve(c: Ctx, step: str, force: bool) -> None:
             console.print(line)
         return
     console.print(c.engine().approve(step, force=force))
+
+
+@main.command("import")
+@click.argument("path", type=click.Path(exists=True, path_type=Path))
+@click.option("--kind", type=click.Choice(["all", "spec", "rtl", "tb", "sva"]), default="all", show_default=True,
+              help="Import only this kind.")
+@pass_ctx
+def import_cmd(c: Ctx, path: Path, kind: str) -> None:
+    """Import your own files: a folder (a whole reference project) or a file. Code sorts them into spec documents,
+    RTL (checked against the flow's RTL rules and updated where it does not follow them), testbench / tests and SVA
+    (ported by the tb / sva steps into the flow's format). Nothing runs: `q3tui run` next."""
+    from q3tui.core.ops import Ops
+
+    console.print(escape(Ops(c.engine()).import_files(kind, str(path.resolve()))))
 
 
 @main.command()

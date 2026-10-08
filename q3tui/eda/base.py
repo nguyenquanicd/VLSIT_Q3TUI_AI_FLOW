@@ -111,6 +111,14 @@ class ToolEnv:
         return proc.stdout.strip().splitlines()[-1] if proc.stdout.strip() else None
 
 
+# A tool's output goes to its log as it comes, never whole into memory: a simulation that hangs and prints every cycle
+# (a mutant that starves a channel: >2 GB in a minute) killed Q3TUI itself when it was buffered until the timeout.
+LOG_REPEAT_KEEP = 20  # an identical line is logged this many times; the rest are counted (cover hits, a looping message)
+LOG_HEAD_BYTES = 32 << 20  # then only the last LOG_TAIL_BYTES are kept
+LOG_TAIL_BYTES = 4 << 20
+_LOG_DISTINCT = 200_000  # distinct lines whose repeats are tracked
+
+
 def run_command(
     cmd: list[str],
     workdir: Path,
@@ -119,31 +127,71 @@ def run_command(
     tool_env: ToolEnv | None = None,
     env: dict[str, str] | None = None,
 ) -> tuple[int | None, str, float, bool]:
-    """Run a tool, tee combined output to log_path. Returns (rc, output, seconds, timed_out)."""
+    """Run a tool, combined output streamed to log_path (repeated lines and the middle of a huge output left out,
+    with a note saying so). Returns (rc, output = the log, seconds, timed_out); a timeout kills the whole process tree."""
+    import collections
+    import signal
+    import threading
+
     workdir.mkdir(parents=True, exist_ok=True)
     log_path.parent.mkdir(parents=True, exist_ok=True)
     argv = tool_env.wrap(cmd) if tool_env else cmd
     start = time.monotonic()
-    try:
-        proc = subprocess.run(
-            argv,
-            cwd=workdir,
-            env={**os.environ, **(env or {})},
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            text=True,
-            errors="replace",
-            timeout=timeout_s,
-        )
-        rc, out, timed_out = proc.returncode, proc.stdout, False
-    except subprocess.TimeoutExpired as exc:
-        out = exc.stdout if isinstance(exc.stdout, str) else (exc.stdout or b"").decode(errors="replace")
-        rc, timed_out = None, True
-    except FileNotFoundError as exc:
-        rc, out, timed_out = 127, f"command not found: {exc.filename}\n", False
+    with open(log_path, "wb") as log:
+        log.write(f"$ {shlex.join(cmd)}\n".encode())
+        try:
+            proc = subprocess.Popen(argv, cwd=workdir, env={**os.environ, **(env or {})}, stdout=subprocess.PIPE,
+                                    stderr=subprocess.STDOUT, start_new_session=True)
+        except FileNotFoundError as exc:
+            log.write(f"command not found: {exc.filename}\n".encode())
+            rc, timed_out = 127, False
+        else:
+            seen: dict[bytes, int] = {}
+            tail: collections.deque[bytes] = collections.deque()
+            st = {"written": 0, "tail": 0, "omitted": 0, "repeats": 0}
+
+            def pump() -> None:
+                for line in iter(proc.stdout.readline, b""):
+                    key = line[:512]
+                    n = seen.get(key, 0)
+                    if n or len(seen) < _LOG_DISTINCT:
+                        seen[key] = n + 1
+                    if n >= LOG_REPEAT_KEEP:
+                        st["repeats"] += 1
+                    elif st["written"] < LOG_HEAD_BYTES:
+                        log.write(line)
+                        st["written"] += len(line)
+                    else:
+                        tail.append(line)
+                        st["tail"] += len(line)
+                        while st["tail"] > LOG_TAIL_BYTES:
+                            st["tail"] -= len(dropped := tail.popleft())
+                            st["omitted"] += len(dropped)
+
+            reader = threading.Thread(target=pump, daemon=True)
+            reader.start()
+            try:
+                rc, timed_out = proc.wait(timeout=timeout_s), False
+            except subprocess.TimeoutExpired:
+                rc, timed_out = None, True
+                try:
+                    os.killpg(proc.pid, signal.SIGKILL)
+                except ProcessLookupError:
+                    pass
+                proc.wait()
+            reader.join(timeout=30)
+            if st["omitted"]:
+                log.write(f"\n[q3tui: {st['omitted']} bytes of output left out here]\n".encode())
+            log.writelines(tail)
+            if st["repeats"]:
+                top = sorted(((k, v) for k, v in seen.items() if v > LOG_REPEAT_KEEP), key=lambda kv: -kv[1])[:5]
+                log.write(f"\n[q3tui: {st['repeats']} repeated line(s) left out after {LOG_REPEAT_KEEP} copies each: ".encode()
+                          + b"; ".join(k.rstrip(b"\n")[:120] + f" x{v}".encode() for k, v in top) + b"]\n")
+            if timed_out:
+                log.write(f"\n[q3tui: killed after {timeout_s} s (timeout)]\n".encode())
     elapsed = time.monotonic() - start
-    log_path.write_text(f"$ {shlex.join(cmd)}\n{out}")
-    return rc, out, elapsed, timed_out
+    text = log_path.read_text(errors="replace")
+    return rc, text.split("\n", 1)[1] if "\n" in text else "", elapsed, timed_out
 
 
 def compile_settled(tool, request, workdir: Path):

@@ -79,19 +79,42 @@ def _reqs_at(tags: dict[int, list[str]], line: int) -> list[str]:
     return []
 
 
+_ELAB_TASK = re.compile(r"\$(?:error|fatal|warning|info)\b")
+
+
+def _elab_checks(lines: list[str]) -> set[int]:
+    """Lines of the condition of an elaboration check (`if (PARA_… < 1) begin : gen_chk … $error(…)`): mutating it
+    only makes elaboration fail (a compile error, no test run), so it is never a candidate."""
+    out: set[int] = set()
+    for n, raw in enumerate(lines, 1):
+        if not _ELAB_TASK.search(_code_part(raw)):
+            continue
+        for k in range(n - 1, max(0, n - 7), -1):  # back to the `if` that opens its block (a statement in between: none)
+            code = _code_part(lines[k - 1]).strip()
+            if re.match(r"(?:end\s+)?(?:else\s+)?if\b", code):
+                out.update(range(k, n))
+                break
+            if code.endswith(";"):
+                break
+    return out
+
+
 def candidates(text: str) -> list[tuple[int, int, str, str]]:
-    """(line, column, old, new) of every possible mutation, outside comments and `ifndef SYNTHESIS` regions."""
+    """(line, column, old, new) of every possible mutation, outside comments, string literals, elaboration checks and
+    `ifndef SYNTHESIS` regions."""
     out = []
     skip = 0
-    for n, raw in enumerate(text.splitlines(), 1):
+    lines = text.splitlines()
+    checks = _elab_checks(lines)
+    for n, raw in enumerate(lines, 1):
         s = raw.strip()
         if s.startswith("`ifndef SYNTHESIS"):
             skip += 1
         elif skip and s.startswith("`endif"):
             skip -= 1
-        if skip or s.startswith(("//", "`")) or re.match(r"(?:input|output|inout|parameter|localparam|import|module)\b", s):
+        if skip or n in checks or s.startswith(("//", "`")) or re.match(r"(?:input|output|inout|parameter|localparam|import|module)\b", s):
             continue
-        code = _code_part(raw)
+        code = re.sub(r'"(?:[^"\\]|\\.)*"', lambda m: " " * len(m.group(0)), _code_part(raw))  # (columns kept)
         for pat, new in OPERATORS:
             for m in re.finditer(pat, code):
                 out.append((n, m.start(), m.group(0), new))

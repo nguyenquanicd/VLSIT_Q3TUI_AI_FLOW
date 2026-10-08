@@ -47,7 +47,9 @@ Implemented in `q3tui.llm.runtime`.
 Steps call a **role** (`q3tui.eda.tools.run_role(tools, "lint", …)`), never a binary. The
 tools file maps each role to a command template and a log parser; diagnostics are
 normalised to `{severity, code, file, line, message}` and raw logs are kept in the step's
-work dir. A capability a role lacks (`supports: [sva]`) makes the check **N/A**, never
+work dir. Output is streamed to the log, never held whole in memory: an identical line is kept 20 times and then
+only counted, and past 32 MB only the last 4 MB are kept. The log notes each omission. A timeout (`tools.timeout_s`)
+kills the tool's whole process tree. A capability a role lacks (`supports: [sva]`) makes the check **N/A**, never
 passed. Details: [flows.md](flows.md) "Tools by role".
 
 The older vendor adapters (`q3tui.eda`: `slang`, VCS) remain underneath: `q3tui design

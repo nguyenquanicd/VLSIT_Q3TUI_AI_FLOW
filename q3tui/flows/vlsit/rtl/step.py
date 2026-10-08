@@ -81,6 +81,8 @@ class _Run:
     feedback_general: list[str]
     feedback_unit: dict[str, list[str]]
     meta: dict
+    imported: set[str] = field(default_factory=set)  # modules whose file came from an import (core/importer.py)
+    keep_ports: set[str] = field(default_factory=set)  # an imported top's ports: the interface the spec and your tests use
     results: dict[str, VModuleResult] = field(default_factory=dict)
     lint_state: dict[str, dict] = field(default_factory=dict)  # module -> {status, warnings}
     wrote: set[str] = field(default_factory=set)
@@ -121,6 +123,27 @@ class RtlGenStep(VlsitStep):
 
     def reset_files(self, engine) -> list[Path]:
         return [*self.outputs(engine), *super().reset_files(engine)]
+
+    # -- imports: your RTL is the starting point --------------------------------------------------
+
+    def import_dir(self, engine, kind: str) -> Path | None:
+        return self.lay(engine).rtl if kind == "rtl" else None
+
+    def on_import(self, engine, kind: str, files: list[Path]) -> None:
+        """Imported modules are checked against the rules and updated where they do not follow them on the next run
+        (not rewritten): their build records go, and the step runs again."""
+        meta = engine.state.step_meta.setdefault(self.name, {})
+        for f in files:
+            (meta.get("modules") or {}).pop(f.stem, None)
+        engine.state.steps.pop(self.name, None)
+
+    def _imported(self, engine) -> tuple[set[str], set[str]]:
+        """(imported module names, the imported top's port names)"""
+        rec = engine.import_record("rtl") or {}
+        names = {Path(r).stem for r in rec.get("files", {})}
+        design = rec.get("design") or {}
+        top = (design.get("modules") or {}).get(design.get("top") or "", {})
+        return names, {n for _, n in top.get("ports", [])}
 
     def missing_input(self, engine) -> str | None:
         p = engine.project
@@ -211,7 +234,7 @@ class RtlGenStep(VlsitStep):
         if not path.is_file() or not path.read_text().strip():
             return [f"{path.name} was not written"]
         text = path.read_text()
-        problems = [f"rule {v}" for v in rules_check.check_source(text, pm.name, run.prof, pm.is_package)]
+        problems = [f"rule {v}" for v in self._violations(run, pm, text)]
         missing = sorted(set(pm.req_ids) - rules_check.req_tags(text))
         if missing:
             problems.append(f"REQ trace tags missing: {', '.join(missing)} (tag each with a `// REQ-xxx` comment where it is implemented)")
@@ -219,6 +242,22 @@ class RtlGenStep(VlsitStep):
         problems += lint_problems
         run.lint_state[pm.name] = {"status": "not run" if not ran else ("fail" if lint_problems else "pass"), "warnings": warnings}
         return problems
+
+    def _violations(self, run: _Run, pm: PlanModule, text: str) -> list:
+        found = rules_check.check_source(text, pm.name, run.prof, pm.is_package)
+        if pm.name != run.plan.top or not run.keep_ports:
+            return found
+        # an imported top keeps its port names: they are the interface of the spec and of your tests (reported, not fixed)
+        return [v for v in found if not (v.rule in ("N-PORT", "N-CLK", "N-RST", "N-LEN")
+                                         and any(f"`{p}`" in v.message for p in run.keep_ports))]
+
+    def kept_port_violations(self, run: _Run) -> list[str]:
+        f = run.file(run.plan.top)
+        if not run.keep_ports or not f.is_file():
+            return []
+        pm = run.by_name()[run.plan.top]
+        kept = {str(v) for v in self._violations(run, pm, f.read_text())}
+        return [str(v) for v in rules_check.check_source(f.read_text(), pm.name, run.prof, pm.is_package) if str(v) not in kept]
 
     # -- LLM ------------------------------------------------------------------------------------------
 
@@ -261,8 +300,12 @@ class RtlGenStep(VlsitStep):
         feedback = [*run.feedback_general, *run.feedback_unit.get(pm.name, [])]
         settled = run.settled
         if old is not None and path.is_file() and not ctx.regenerate:
-            prompt = rtl_prompts.update_prompt(module=pm.name, path=project.rel(path), changes=describe_changes(old, snap),
+            changes = describe_changes(old, snap)
+            prompt = rtl_prompts.update_prompt(module=pm.name, path=project.rel(path), changes=changes,
                                                answers=snap["answers"], feedback=feedback, settled=settled, problems=problems)
+            # a patch of the existing file, not a rewrite: say so, and why
+            why = "; ".join(c.split(":")[0] for c in changes) or "change requests"
+            ctx.emit("log", message=f"updating {pm.name} ({why}) …")
         else:
             prompt = rtl_prompts.module_prompt(
                 module=pm.name, path=project.rel(path), description=pm.description,
@@ -271,7 +314,7 @@ class RtlGenStep(VlsitStep):
                 packages=[project.rel(run.file(m.name)) for m in run.plan.modules if m.is_package and m.name != pm.name],
                 spec_files=run.spec_files, answers=snap["answers"], settled=settled, feedback=feedback, problems=problems,
                 existing=path.is_file() and bool(path.read_text().strip()), top=pm.name == run.plan.top)
-        ctx.emit("log", message=f"implementing {pm.name} …")
+            ctx.emit("log", message=f"implementing {pm.name} …")
         res = await ctx.llm(self._stage(run, pm, prompt))
         run.results[pm.name] = res.output
         run.wrote.add(pm.name)
@@ -280,9 +323,12 @@ class RtlGenStep(VlsitStep):
         """A fresh small session: the problems and the current file (never the long session of the first write)."""
         ctx, project = run.ctx, run.ctx.project
         path = run.file(pm.name)
+        imported = pm.name in run.imported
         res = await ctx.llm(self._stage(run, pm, rtl_prompts.fix_prompt(
             module=pm.name, path=project.rel(path), problems=rtl_prompts.diagnostics_text(problems),
-            code=path.read_text() if path.is_file() else "", reqs=pm.req_ids)))
+            code=path.read_text() if path.is_file() else "", reqs=pm.req_ids,
+            req_text={r: run.reqs.get(r, "") for r in pm.req_ids} if imported else None,
+            keep_ports=sorted(run.keep_ports) if imported and pm.name == run.plan.top else None)))
         if res.output is not None:
             prev = run.results.get(pm.name)
             run.results[pm.name] = res.output if prev is None else res.output.model_copy(
@@ -297,10 +343,16 @@ class RtlGenStep(VlsitStep):
         ctx = run.ctx
         snap = self._snapshot(run, pm)
         mm = run.meta["modules"].get(pm.name) or {}
-        if not todo and not (mm.get("hash") == sha256_json(snap)):
+        # your file (imported, or there before this step built it): checked first, kept when it follows the rules,
+        # else updated by the fix rounds below — never rewritten from the spec
+        adopt = not mm and not todo and pm.name in run.imported and run.file(pm.name).is_file() and bool(run.file(pm.name).read_text().strip())
+        if not todo and not adopt and not (mm.get("hash") == sha256_json(snap)):
             todo = True
         problems: list[str] = []
-        if not todo:
+        if adopt:
+            ctx.emit("log", message=f"{pm.name}: imported — checking it against the RTL rules …")
+            run.wrote.add(pm.name)  # (its first record: the step's result is new even when no line changes)
+        elif not todo:
             problems = await anyio.to_thread.run_sync(lambda: self._check_module(run, pm))
             if not problems:
                 ctx.emit("log", message=f"{pm.name}: up to date")
@@ -366,6 +418,8 @@ class RtlGenStep(VlsitStep):
         run = _Run(ctx, plan, prof, rules, sha256_json([rules, prof.__dict__]), tools, reqs, params, spec_files, lay,
                    load_answers(answers_path), self._owner(engine), settled_block(engine.settled_questions(self.name)), general,
                    by_unit, meta)
+        run.imported, ports = self._imported(engine)
+        run.keep_ports = ports if plan.top in run.imported else set()
         names = {m.name for m in plan.modules}
         for gone in sorted(set(meta["modules"]) - names):  # modules the plan no longer has: their files go (backed up)
             meta["modules"].pop(gone)
@@ -426,6 +480,10 @@ class RtlGenStep(VlsitStep):
         if bad:
             text = "\n".join(f"- {m}: " + "; ".join(p[:3]) + (f" (+{len(p) - 3} more)" if len(p) > 3 else "") for m, p in bad.items())
             raise StepFailed("RTL checks still fail after the fix rounds:\n" + text)
+        kept = self.kept_port_violations(run)
+        if kept:
+            ctx.emit("warning", message=f"{plan.top}: the imported top keeps its port names (the interface of the spec and your "
+                                        f"tests); against the RTL rules: " + "; ".join(kept[:6]) + (" …" if len(kept) > 6 else ""))
         ctx.unchanged = not run.wrote and report.get("synthesis") != "fail"
         tags = report["req_ids_tagged"]
         ctx.emit("log", message=f"RTL: {len(order)} module(s), lint {report['lint']['status']}, synthesis {report['synthesis']}, "

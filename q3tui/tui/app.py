@@ -59,7 +59,7 @@ HELP = (
     "/model [id] [--save] · /effort <level> [--save] · /specreview on|off · /autoapprove on|off · /autoanswer on|off · "
     "/autoconfirm on|off · "
     "/parallel on|off [--multi-agent|--shared] [--save] · /settings [tab] · /stats [reset] · "
-    "/reset <step> [--only] · /status · /open <file> · /cost [reset] · /newchat · /help · /quit. Anything else goes to the assistant."
+    "/import <path> [kind] · /reset <step> [--only] · /status · /open <file> · /cost [reset] · /newchat · /help · /quit. Anything else goes to the assistant."
 )
 
 
@@ -1261,6 +1261,11 @@ class Q3TUIApp(App):
                     self._render_header()
                 else:
                     self._log_line(f"LLM cost: {self.ops.cost_text()} · /cost reset to clear")
+            elif cmd == "import":
+                if not args:
+                    raise EngineError("usage: /import <path> [all|spec|rtl|tb|sva]  (a folder: everything in it, sorted by code)")
+                self.ops.import_files(args[1] if len(args) > 1 else "all", args[0])  # (the summary goes to the log)
+                self.refresh_all()
             elif cmd == "reset":
                 if not args:
                     raise EngineError("usage: /reset <step>|all [--only]  (R picks interactively; /newchat resets the assistant)")
