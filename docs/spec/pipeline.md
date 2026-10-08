@@ -95,7 +95,7 @@ Runs only when there is no spec document.
 | | |
 |---|---|
 | Input | `spec/intent.md` (free text, or the skeleton from `q3tui init`) or `q3tui run --intent "..."`; the **spec template** |
-| Stages | L draft (sectioned per template; replied as plain Markdown with section markers and a `- Q:` questions block — not JSON, where one bad escape costs a full rewrite; D parses it, one re-ask if the layout is off; file tools only when `spec/` has reference documents) → L self-review (returns only the sections it changes; `spec.self_review`, `--no-spec-review`, `/specreview off`) → D check against the template → L repair (once) → D normalise + render |
+| Stages | L draft (sectioned per template; replied as plain Markdown with section markers and a `- Q:` questions block — not JSON, where one bad escape costs a full rewrite; D parses it, one re-ask if the layout is off; file tools only when `spec/` has reference documents) → L self-review (returns only the sections it changes; `spec.self_review`, `--no-spec-review`, `/specreview off`) → D check against the template → L repair (once) → D normalise + render. A regenerated draft and its review get the user's earlier answers (with their questions) as settled decisions; answered question ids are never reused. `spec_update` patches go through the same normalisation; a required section a patch or hand edit left out is written as a `TBD` placeholder with a warning, and TBD fields become questions |
 | Output | `spec/spec.md` (the specification), `spec/questions.json` / `questions.md` |
 | Gate | **spec review**: the user edits `spec.md` or answers the questions, then approves |
 

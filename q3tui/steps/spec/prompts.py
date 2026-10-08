@@ -48,7 +48,8 @@ Edit, do not rewrite: return ONLY the sections you change (each complete, same i
 not the whole document — unchanged sections are kept as drafted. Also return the full \
 list of open questions (keep the ids of questions that are still open; use "" for new \
 ones). Resolve issues in the text with a conventional choice marked "*Assumption:*" \
-whenever possible. Ask at most 5 questions, only about decisions that change the \
+whenever possible. Ask at most 5 NEW questions (keep the draft's questions that are still open, drop the ones you \
+resolved in the text), only about decisions that change the \
 design's observable behaviour and have no conventional default; never re-ask something \
 the user already answered. Do not write a narrative review: put everything in the \
 structured output (an unchanged spec is `sections: []`). Keep a Design Structure section \
@@ -124,14 +125,16 @@ def _template_block(template: str) -> str:
     return f"\n<spec_template>\n{template}\n</spec_template>\n"
 
 
-def draft_prompt(*, intent: str, template: str, feedback: list[str]) -> str:
+def draft_prompt(*, intent: str, template: str, feedback: list[str], questions: list[Question] | None = None,
+                 answers: dict[str, str] | None = None) -> str:
+    """`answers` (to `questions`): decisions the user already made — a regenerated spec must keep them."""
     return f"""\
 Write the specification for this block.
 
 <intent>
 {intent.strip()}
 </intent>
-{_template_block(template)}{_feedback_block(feedback)}
+{_template_block(template)}{_answers_block(questions or [], answers or {})}{_feedback_block(feedback)}
 {REPLY_FORMAT}"""
 
 
@@ -158,9 +161,11 @@ Currently open questions:
 {REPLY_FORMAT}"""
 
 
-def review_prompt(*, intent: str, template: str, draft, rendered: str, answers: dict[str, str]) -> str:
+def review_prompt(*, intent: str, template: str, draft, rendered: str, answers: dict[str, str],
+                  questions: list[Question] | None = None) -> str:
+    by_id = {q.id: q.question for q in questions or []}
     qs = "\n".join(f"- [{q.id or 'new'}] {q.question} (assumed: {q.default_assumption or '-'})" for q in draft.questions) or "(none)"
-    answered = "\n".join(f"- {k}: {v}" for k, v in answers.items()) or "(none)"
+    answered = "\n".join(f"- {k} ({by_id.get(k, 'earlier question')}): {v}" for k, v in answers.items()) or "(none)"
     return f"""\
 Review and improve this draft specification of `{draft.top_module}`.
 

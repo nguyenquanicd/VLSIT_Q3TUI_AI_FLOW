@@ -248,3 +248,136 @@ def test_everything_that_shows_the_sections_uses_the_flows_template(tmp_path):
     assert [s.id for s in Ops(eng).template().sections][:3] == ["overview", "features", "parameters"]
     use_test_flow(tmp_path)                                          # a spec step without a template option
     assert Engine(Project.open(tmp_path)).spec_template() is None
+
+
+# -- review fixes ---------------------------------------------------------------------------------------------------------
+
+def _draft(questions, **kw):
+    return {"top_module": "fifo_top", "title": "T", "questions": questions, "sections": SPEC.model_dump()["sections"], **kw}
+
+
+def _q(text, **kw):
+    return {"id": "", "question": text, "blocking": False, "default_assumption": "", **kw}
+
+
+def test_regenerate_keeps_the_users_answers(tmp_path, llm):
+    use_test_flow(tmp_path, "spec: {self_review: true}\n")
+    engine = Engine(Project.open(tmp_path))
+    engine.import_intent("fifo")
+    anyio.run(lambda: engine.run(only="spec"))
+    qid = engine.questions()[0]["id"]
+    engine.answer(qid, "wrap on overflow")
+    n = len(llm.calls)
+    anyio.run(lambda: engine.run(only="spec", regenerate={"spec"}))
+    write, review = llm.calls[n], llm.calls[n + 1]
+    assert write.name == "spec_write" and "wrap on overflow" in write.prompt and "Should drop_count saturate?" in write.prompt
+    assert review.name == "spec_review" and "Should drop_count saturate?" in review.prompt  # the answer comes with its question
+
+
+def test_answered_question_ids_are_never_reused(tmp_path, llm):
+    use_test_flow(tmp_path, "spec: {self_review: false}\n")
+    engine = Engine(Project.open(tmp_path))
+    engine.import_intent("fifo")
+    llm.spec_outputs = [_draft([_q("first?"), _q("second?")])]
+    anyio.run(lambda: engine.run(only="spec"))
+    assert [q["id"] for q in engine.questions()] == ["Q-S1", "Q-S2"]
+    engine.answer("Q-S2", "yes")
+    anyio.run(lambda: engine.run(only="spec"))  # the answer is applied; questions.json no longer lists Q-S2
+    llm.spec_outputs = [_draft([_q("first?"), _q("third?")])]
+    anyio.run(lambda: engine.run(only="spec", regenerate={"spec"}))
+    ids = {q["question"]: q["id"] for q in engine.questions()}
+    assert ids["first?"] == "Q-S1" and ids["third?"] == "Q-S3"  # not Q-S2: its answer is on file
+    assert not any(q["question"] == "third?" and q["status"] != "open" for q in engine.questions())
+
+
+def test_update_path_normalizes_patches_and_fills_required_sections(tmp_path, llm, monkeypatch):
+    from q3tui.llm.runtime import StageResult
+    from q3tui.steps.spec.document import SpecPatch
+
+    use_test_flow(tmp_path, "spec: {self_review: false}\n")
+    engine = Engine(Project.open(tmp_path))
+    engine.import_intent("fifo")
+    anyio.run(lambda: engine.run(only="spec"))
+    spec = tmp_path / "spec" / "spec.md"
+    table = "| a | b |\n|---|---|\n| 1 | 2 |"
+    patch = SpecPatch(sections=[{"id": "features", "title": "Features", "content": "## Features\nIntro.",
+                                 "fields": [{"name": "table", "value": table}]}], conflicts=[], summary="x")
+
+    async def fake(stage, cfg, emit):
+        if stage.output_model is SpecPatch:
+            return StageResult("ok", patch, 0.0, 1, "s")
+        return await llm(stage, cfg, emit)
+
+    monkeypatch.setattr(runtime, "run_stage", fake)
+    text = spec.read_text()
+    assert "<!-- section: constraints -->" in text
+    sections = parse_sections(text)
+    cons = next(t for sid, t, _ in sections if sid == "constraints")
+    # a hand edit dropped a required section; the top module was renamed by hand
+    start = text.index("<!-- section: constraints -->")
+    nxt = text.find("<!-- section:", start + 5)
+    text = text[:start] + (text[nxt:] if nxt != -1 else "")
+    spec.write_text(text.replace("Top module: `fifo_top`", "Top module: `new_top`"))
+    engine.request_change("spec", "x")
+    before = len(list((tmp_path / ".q3tui" / "bkp").glob("*")))
+    anyio.run(lambda: engine.run(only="spec"))
+    out = spec.read_text()
+    feat = dict((sid, b) for sid, _, b in parse_sections(out))["features"]
+    assert table in feat and feat.startswith("Intro.") and "## Features" not in feat   # table is body text, heading stripped
+    assert "| **table**" not in out
+    restored = dict((sid, b) for sid, _, b in parse_sections(out))["constraints"]
+    assert "TBD" in restored and cons in out                                          # required section is back, as TBD
+    assert engine.state.top == "new_top"
+    assert len(list((tmp_path / ".q3tui" / "bkp").glob("*"))) == before + 1           # backed up once, because it changed
+
+
+def test_update_without_changes_makes_no_backup(tmp_path, llm):
+    use_test_flow(tmp_path, "spec: {self_review: false}\n")
+    engine = Engine(Project.open(tmp_path))
+    engine.import_intent("fifo")
+    anyio.run(lambda: engine.run(only="spec"))
+    bkp = tmp_path / ".q3tui" / "bkp"
+    before = len(list(bkp.glob("*"))) if bkp.exists() else 0
+    anyio.run(lambda: engine.run(only="spec"))
+    assert (len(list(bkp.glob("*"))) if bkp.exists() else 0) == before
+
+
+def test_noop_review_keeps_the_writers_questions():
+    from q3tui.steps.common import Question
+    from q3tui.steps.spec.document import ReviewPatch, apply_review
+
+    draft = SPEC.model_copy(update={"questions": [Question(id="", question="keep me", blocking=True, default_assumption="")]})
+    assert apply_review(draft, ReviewPatch(sections=[], questions=[], summary="ok")).questions[0].question == "keep me"
+    changed = apply_review(draft, ReviewPatch(sections=[], questions=[_q_model("other")], summary="ok"))
+    assert [q.question for q in changed.questions] == ["other"]
+
+
+def _q_model(text):
+    from q3tui.steps.common import Question
+
+    return Question(id="", question=text, blocking=False, default_assumption="")
+
+
+def test_reply_parsing_edge_cases():
+    draft = SpecDraft.model_validate(_draft([]))
+    body = document.render(draft)
+    # no marker, but the model wrote the heading: it is the questions block, not a section
+    parsed, problems = document.parse_reply(body + "\n## Open questions\n\n- Q: width? | assumed: 8 | blocking: yes | kind: design_choice\n")
+    assert problems == [] and [s.id for s in parsed.sections] == [s.id for s in draft.sections]
+    assert parsed.questions[0].question == "width?" and parsed.questions[0].blocking
+    # " | " inside a question / assumption does not cut it
+    q = document.parse_reply(body + "\n" + document.QUESTIONS_MARK + "\n- Q: a | b mode? | assumed: x | y | blocking: no | kind: spec_gap | id: Q-S4\n")[0].questions[0]
+    assert (q.question, q.default_assumption, q.id) == ("a | b mode?", "x | y", "Q-S4")
+    # a `## ` line at column 0 inside a code fence is not a heading
+    md = "# X\n\n<!-- section: sva -->\n## 1. Assertions\n\n```systemverilog\n## 2 b\n<!-- section: fake -->\n```\n\n<!-- section: b -->\n## 2. B\nx\n"
+    assert [s[0] for s in parse_sections(md)] == ["sva", "b"] and "## 2 b" in parse_sections(md)[0][2]
+
+
+def test_tbd_questions_match_whole_words_only():
+    from q3tui.steps.spec.document import FieldValue, SectionOut, tbd_questions
+
+    secs = [SectionOut(id="s", title="Clocks", fields=[FieldValue(name="reset", value="TBD")], content="")]
+    unrelated = [_q_model("Should the reset be async?")]            # mentions reset, but not the section: still asks
+    assert len(tbd_questions(secs, unrelated)) == 1
+    covered = [_q_model("Clocks: what is the reset style?")]
+    assert tbd_questions(secs, covered) == []

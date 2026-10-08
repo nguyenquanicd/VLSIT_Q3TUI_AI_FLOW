@@ -52,7 +52,9 @@ def apply_review(draft: SpecDraft, patch: ReviewPatch) -> SpecDraft:
     by_id = {s.id: s for s in patch.sections}
     merged = [by_id.pop(s.id, s) for s in draft.sections]
     merged += list(by_id.values())  # sections the reviewer added
-    return draft.model_copy(update={"sections": merged, "questions": list(patch.questions)})
+    # a review that changed nothing and returned no questions simply left the list out: keep the writer's
+    questions = list(patch.questions) if (patch.questions or patch.sections) else list(draft.questions)
+    return draft.model_copy(update={"sections": merged, "questions": questions})
 
 
 def _norm(s: str) -> str:
@@ -89,6 +91,33 @@ def check(draft: SpecDraft, template: SpecTemplate) -> list[str]:
     return errors
 
 
+def normalize_section(s: SectionOut, ts) -> SectionOut | None:
+    """One section in the template's shape: template title / field names and order, no duplicate heading, extra
+    long fields moved into the body. None: an optional section with nothing in it."""
+    if not ts.required and not s.content.strip() and all(f.value.strip() in ("", TBD) for f in s.fields):
+        return None
+    values = {_norm(f.name): f.value.strip() for f in s.fields}
+    fields = [FieldValue(name=f.name, value=values.get(_norm(f.name)) or TBD) for f in ts.fields
+              if f.required or values.get(_norm(f.name))]
+    known = {_norm(f.name) for f in ts.fields}
+    content = _strip_heading(s.content, ts.title)
+    for f in s.fields:
+        if _norm(f.name) in known or not f.value.strip():
+            continue
+        if "\n" in f.value or len(f.value) > 160:
+            # a field the template does not have, holding a table / paragraphs (a model puts "the parameter table" in a field
+            # called `table`): it is body text — a field row (`| **table** | \\| a \\| b \\| |`) breaks the Markdown
+            label = "" if _norm(f.name) in ("table", "tables", "content", "text", "body") else f"**{f.name}**\n\n"
+            content = (content + "\n\n" if content.strip() else "") + label + f.value.strip()
+        else:
+            fields.append(f)
+    return SectionOut(id=ts.id, title=ts.title, fields=fields, content=content)
+
+
+def placeholder_section(ts) -> SectionOut:
+    return SectionOut(id=ts.id, title=ts.title, fields=[], content=f"_{TBD} — not decided yet; see open questions._")
+
+
 def normalize(draft: SpecDraft, template: SpecTemplate) -> SpecDraft:
     """Template order, template titles/field names, drop empty optional sections, strip duplicate headings;
     fill required sections/fields that are still missing with TBD."""
@@ -102,25 +131,10 @@ def normalize(draft: SpecDraft, template: SpecTemplate) -> SpecDraft:
         if s is None:
             if not ts.required:
                 continue
-            s = SectionOut(id=ts.id, title=ts.title, fields=[], content=f"_{TBD} — not decided yet; see open questions._")
-        if not ts.required and not s.content.strip() and all(f.value.strip() in ("", TBD) for f in s.fields):
-            continue
-        values = {_norm(f.name): f.value.strip() for f in s.fields}
-        fields = [FieldValue(name=f.name, value=values.get(_norm(f.name)) or TBD) for f in ts.fields
-                  if f.required or values.get(_norm(f.name))]
-        known = {_norm(f.name) for f in ts.fields}
-        content = _strip_heading(s.content, ts.title)
-        for f in s.fields:
-            if _norm(f.name) in known or not f.value.strip():
-                continue
-            if "\n" in f.value or len(f.value) > 160:
-                # a field the template does not have, holding a table / paragraphs (a model puts "the parameter table" in a field
-                # called `table`): it is body text — a field row (`| **table** | \\| a \\| b \\| |`) breaks the Markdown
-                label = "" if _norm(f.name) in ("table", "tables", "content", "text", "body") else f"**{f.name}**\n\n"
-                content = (content + "\n\n" if content.strip() else "") + label + f.value.strip()
-            else:
-                fields.append(f)
-        ordered.append(SectionOut(id=ts.id, title=ts.title, fields=fields, content=content))
+            s = placeholder_section(ts)
+        out = normalize_section(s, ts)
+        if out is not None:
+            ordered.append(out)
     for s in draft.sections:
         if s.id not in tmpl and template.allow_extra_sections and s.content.strip():
             ordered.append(s.model_copy(update={"content": _strip_heading(s.content, s.title)}))
@@ -155,8 +169,44 @@ def render(draft: SpecDraft) -> str:
     return "\n".join(out).rstrip() + "\n"
 
 
+def tbd_items(sections: list[SectionOut]) -> list[tuple[str, str]]:
+    """(section title, field name) of every field still TBD."""
+    return [(s.title, f.name) for s in sections for f in s.fields if f.value.strip().upper() == TBD]
+
+
 def tbd_fields(draft: SpecDraft) -> list[str]:
-    return [f"{s.title}: {f.name}" for s in draft.sections for f in s.fields if f.value.strip().upper() == TBD]
+    return [f"{t}: {n}" for t, n in tbd_items(draft.sections)]
+
+
+def tbd_questions(sections: list[SectionOut], existing: list[Question]) -> list[Question]:
+    """A non-blocking "what should it be?" question for each TBD field no existing question already covers."""
+    asked = " ".join(q.question.lower() for q in existing)
+    out = []
+    for title, name in tbd_items(sections):
+        if f"{title}: {name}".lower() in asked or (_word(name, asked) and _word(title, asked)):
+            continue
+        out.append(Question(id="", question=f"{title}: {name} is TBD — what should it be?", blocking=False, default_assumption=""))
+        asked += " " + out[-1].question.lower()
+    return out
+
+
+def _word(word: str, text: str) -> bool:
+    return re.search(rf"(?<![a-z0-9_]){re.escape(word.lower())}(?![a-z0-9_])", text) is not None
+
+
+def missing_required(markdown: str, template: SpecTemplate) -> list:
+    """Template sections that are required and absent from a spec.md."""
+    have = {sid for sid, _, _ in parse_sections(markdown)}
+    return [ts for ts in template.sections if ts.required and ts.id not in have]
+
+
+def section_out(sid: str, title: str, body: str) -> SectionOut:
+    fields, content = _fields_and_content(body)
+    return SectionOut(id=sid, title=title, fields=fields, content=content)
+
+
+def spec_top_module(markdown: str) -> str:
+    return next((m.group(1) for ln in markdown.splitlines()[:12] if (m := re.match(r"^Top module:\s*`?([A-Za-z_]\w*)`?", ln.strip()))), "")
 
 
 _MARK = re.compile(r"^<!-- section: ([a-z][a-z0-9_]*) -->\s*$")
@@ -168,23 +218,7 @@ def parse_sections(markdown: str) -> list[tuple[str, str, str]]:
     Uses the `<!-- section: id -->` markers Q3TUI writes; a spec without markers
     (user-written) is split on `## ` headings with ids derived from the titles.
     """
-    lines = markdown.splitlines()
-    marked = any(_MARK.match(l) for l in lines)
-    sections: list[tuple[str, str, list[str]]] = []
-    pending_id: str | None = None
-    for line in lines:
-        m = _MARK.match(line)
-        if m:
-            pending_id = m.group(1)
-            continue
-        if line.startswith("## "):
-            title = re.sub(r"^\d+(\.\d+)*\.?\s+", "", line[3:].strip())
-            sid = pending_id if marked and pending_id else re.sub(r"[^a-z0-9]+", "_", title.lower()).strip("_") or "section"
-            sections.append((sid, title, []))
-            pending_id = None
-            continue
-        if sections:
-            sections[-1][2].append(line)
+    _, sections = _split(markdown)
     return [(sid, title, "\n".join(body).strip()) for sid, title, body in sections]
 
 
@@ -193,19 +227,26 @@ def section_id_for(title: str) -> str:
     return sid if sid[0].isalpha() else f"s_{sid}"
 
 
+_FENCE = re.compile(r"^\s*(```|~~~)")
+
+
 def _split(markdown: str) -> tuple[list[str], list[list]]:
-    """spec.md → (preamble lines, [[id, title, body_lines], ...])."""
+    """spec.md → (preamble lines, [[id, title, body_lines], ...]). Markers and `## ` lines inside a code fence
+    are text (an SVA `## 2` cycle delay at column 0 is not a heading)."""
     lines = markdown.splitlines()
     marked = any(_MARK.match(l) for l in lines)
     preamble: list[str] = []
     sections: list[list] = []
     pending: str | None = None
+    fence = False
     for line in lines:
-        m = _MARK.match(line)
+        if _FENCE.match(line):
+            fence = not fence
+        m = None if fence else _MARK.match(line)
         if m:
             pending = m.group(1)
             continue
-        if line.startswith("## "):
+        if not fence and line.startswith("## "):
             t = re.sub(r"^\d+(\.\d+)*\.?\s+", "", line[3:].strip())
             s_id = pending if marked and pending else re.sub(r"[^a-z0-9]+", "_", t.lower()).strip("_") or "section"
             sections.append([s_id, t, []])
@@ -282,13 +323,16 @@ def format_questions(questions: list[Question]) -> str:
     return "\n".join(lines) + "\n"
 
 
+_Q_ATTR = re.compile(r"\s\|\s(?=(?:assumed|blocking|kind|id)\s*:)", re.I)
+
+
 def _parse_questions(lines: list[str]) -> list[Question]:
     out = []
     for line in lines:
         m = _Q_LINE.match(line)
         if not m:
             continue
-        parts = [p.strip() for p in m.group(1).split(" | ")]
+        parts = [p.strip() for p in _Q_ATTR.split(m.group(1))]  # only ` | assumed:` etc. separate: text may contain " | "
         attrs = {}
         for p in parts[1:]:
             key, _, val = p.partition(":")
@@ -322,10 +366,13 @@ def parse_reply(text: str) -> tuple[SpecDraft | None, list[str]]:
     if start is None:
         return None, ["no document title line ('# <title>')"]
     lines = [ln for ln in lines[start:] if not re.match(r"^\s*```+\s*(markdown|md)?\s*$", ln)]
+    # the questions block starts at the marker; a model that forgot it still writes the `## Open questions` heading
     q_at = next((i for i, ln in enumerate(lines) if ln.strip() == QUESTIONS_MARK), None)
+    if q_at is None:
+        q_at = next((i for i, ln in enumerate(lines) if re.match(r"^##\s+open questions\s*$", ln.strip(), re.I)), None)
     doc, q_lines = (lines[:q_at], lines[q_at + 1:]) if q_at is not None else (lines, [])
     title = doc[0][2:].strip()
-    top = next((m.group(1) for ln in doc[:8] if (m := re.match(r"^Top module:\s*`?([A-Za-z_]\w*)`?", ln.strip()))), "")
+    top = spec_top_module("\n".join(doc[:8]))
     sections = parse_sections("\n".join(doc))
     problems = []
     if not top:
