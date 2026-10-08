@@ -218,6 +218,7 @@ class SpecStep(StepDef):
             text = document.upsert_section(text, ts.id, ts.title, document.section_body([], document.placeholder_section(ts).content), order)
             touched.append(ts.id)
             ctx.emit("warning", message=f"required section '{ts.id}' ({ts.title}) was not written; marked TBD")
+        self._warn_uncaptioned(ctx, [(t, b) for sid, t, b in document.parse_sections(text) if sid in set(touched)])
         if text != original:
             engine.project.backup([spec_path])
             spec_path.write_text(text)
@@ -247,6 +248,15 @@ class SpecStep(StepDef):
             changed = ", ".join(s.title for s in patch.sections) or "no sections"
             conflict = f"; {len(conflicts)} conflict(s) raised" if conflicts else ""
             ctx.emit("log", message=f"updated {changed}{conflict}. {patch.summary}")
+
+    @staticmethod
+    def _warn_uncaptioned(ctx: StepContext, sections: list[tuple[str, str]]) -> None:
+        """Every table and diagram has a caption line below it (the writer is told so; a miss is flagged, not repaired)."""
+        for title, content in sections:
+            missing = document.uncaptioned(content)
+            if missing:
+                ctx.emit("warning", message=f"section '{title}': {len(missing)} table/diagram without a caption line "
+                                            f"(*Table …* / *Figure …*) — e.g. {missing[0]}")
 
     async def _write_full(self, ctx: StepContext, template, template_path: Path, answers: dict[str, str]) -> None:
         """First draft, --regenerate, or a spec that is gone / predates the update bookkeeping: write (and review) the whole spec."""
@@ -308,6 +318,7 @@ class SpecStep(StepDef):
             if errors:
                 ctx.emit("warning", message=f"still {len(errors)} template problem(s); missing parts are marked TBD")
         draft = document.normalize(draft, template)
+        self._warn_uncaptioned(ctx, [(sec.title, sec.content) for sec in draft.sections])
 
         draft.questions += document.tbd_questions(draft.sections, draft.questions)
         taken = set(answers) | set(engine.state.closed_questions.get(self.name, {}))  # answered ids are never given again

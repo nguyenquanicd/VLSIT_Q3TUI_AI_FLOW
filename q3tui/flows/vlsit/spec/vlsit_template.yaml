@@ -23,7 +23,9 @@ instructions: >
   (VLSIT_CSR_Specification_Template.xlsx); section 11 points to it. (6) Select one static protocol revision/profile per
   top-level wrapper and list only the signals that revision (plus the selected optional signals) defines. (7) Do not
   claim timing closure from RTL synthesis alone. (8) Use ### for subsections (numbered like 5.1, 5.2) and Markdown
-  tables for tabular content; diagrams are Mermaid code blocks.
+  tables for tabular content; diagrams are Mermaid code blocks. (9) Caption every table and every diagram with an italic
+  line directly below it: *Table <section>-<n>: what it shows and how to read it* / *Figure <section>-<n>: what it
+  shows*; the section's text refers to it by that label.
 
 sections:
   - id: purpose_scope

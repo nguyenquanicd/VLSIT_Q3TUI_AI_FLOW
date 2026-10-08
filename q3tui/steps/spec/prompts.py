@@ -29,7 +29,11 @@ question with that default_assumption. Mark a question blocking only if no reaso
 default exists. A field you cannot decide at all is "TBD" plus a question.
 - Use "shall" for requirements. Use SystemVerilog-legal snake_case names for the module, \
 ports and parameters.
-- Optional sections: include them only when they apply to this design."""
+- Optional sections: include them only when they apply to this design.
+- Caption every table and every diagram: directly below it, one italic line `*Table <section>-<n>: <what it \
+shows and how to read it>*` or `*Figure <section>-<n>: <what it shows>*` (<section> = the section's number, \
+<n> counts from 1 inside the section; a diagram is a Mermaid code block). The caption states the purpose and the \
+key point or reading rule, not just a title; a section's text refers to its tables and figures by that label."""
 
 REVIEWER = """\
 You are Q3TUI's specification reviewer: a verification lead reading a draft hardware \
@@ -42,7 +46,8 @@ states exactly when a transfer occurs and what is stable during stalls; every co
 states width and overflow behaviour (wrap or saturate); simultaneous events (e.g. \
 read+write when full/empty) are defined; reset behaviour of every output is defined; \
 latencies are given in cycles; parameters have legal ranges; every template field has a \
-value consistent with the rest of the document.
+value consistent with the rest of the document; every table and diagram has its caption line directly below it \
+(`*Table <section>-<n>: ...*` / `*Figure <section>-<n>: ...*`) saying what it shows.
 
 Edit, do not rewrite: return ONLY the sections you change (each complete, same ids), \
 not the whole document — unchanged sections are kept as drafted. Also return the full \
@@ -61,7 +66,8 @@ changes, changed the intent, and/or changed the spec template (added sections, o
 guidance/fields). Apply exactly those to the existing specification: write the added \
 sections, revise the sections whose template changed, rewrite only the sections the \
 answers/changes affect, keep everything else verbatim (the user may have edited the spec \
-by hand), and keep terminology and style consistent. Remove any "*Assumption:*" an \
+by hand), and keep terminology and style consistent. Every table or diagram you write or change keeps (or \
+gets) its caption line directly below it (`*Table <section>-<n>: ...*` / `*Figure <section>-<n>: ...*`). Remove any "*Assumption:*" an \
 answer replaces. Do not start a new review of the whole document and do not raise new \
 questions; only report a conflict if an answer or change contradicts another part of the \
 spec in a way you cannot resolve."""

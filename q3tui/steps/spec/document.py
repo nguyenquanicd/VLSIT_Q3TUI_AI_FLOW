@@ -141,6 +141,43 @@ def normalize(draft: SpecDraft, template: SpecTemplate) -> SpecDraft:
     return draft.model_copy(update={"sections": ordered})
 
 
+_CODE_FENCE = re.compile(r"^\s*(?:`{3,}|~{3,})\s*([\w+-]*)")
+_CAPTION = re.compile(r"^\*?\s*(Table|Figure)\b", re.I)
+
+
+def uncaptioned(content: str) -> list[str]:
+    """Tables and Mermaid diagrams of a section body with no `Table …` / `Figure …` line directly below them
+    (blank lines in between are fine): ["table: | a | b |", "diagram: flowchart LR", ...]."""
+    lines = content.splitlines()
+    found: list[str] = []
+    i = 0
+    while i < len(lines):
+        line = lines[i]
+        kind = None
+        if _CODE_FENCE.match(line):
+            lang = _CODE_FENCE.match(line).group(1).lower()
+            j = i + 1
+            while j < len(lines) and not (_CODE_FENCE.match(lines[j]) and not _CODE_FENCE.match(lines[j]).group(1)):
+                j += 1
+            if lang in ("mermaid", "mmd"):
+                kind, label = "diagram", (lines[i + 1].strip() if i + 1 < len(lines) else "")
+            i = j  # at the closing fence
+        elif line.lstrip().startswith("|"):
+            j = i
+            while j + 1 < len(lines) and lines[j + 1].lstrip().startswith("|"):
+                j += 1
+            kind, label = "table", line.strip()
+            i = j
+        if kind:
+            k = i + 1
+            while k < len(lines) and not lines[k].strip():
+                k += 1
+            if k >= len(lines) or not _CAPTION.match(lines[k].strip()):
+                found.append(f"{kind}: {label[:50]}")
+        i += 1
+    return found
+
+
 def _strip_heading(content: str, title: str) -> str:
     lines = content.strip().splitlines()
     if lines and re.match(r"^#{1,3}\s", lines[0]) and _norm(lines[0].lstrip("#")) .endswith(_norm(title)):

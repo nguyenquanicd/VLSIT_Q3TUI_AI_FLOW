@@ -409,3 +409,31 @@ def test_template_instructions_are_kept_only_when_set(tmp_path):
     d.instructions = "Be terse."
     assert "instructions: Be terse." in save_project_template(tmp_path, d).read_text()
     assert describe(d).startswith("Document rules: Be terse.")
+
+
+def test_captions_for_tables_and_diagrams():
+    from q3tui.steps.spec.document import uncaptioned
+    from q3tui.steps.spec.prompts import REVIEWER, UPDATER, WRITER
+
+    ok = ("Text.\n\n| a | b |\n|---|---|\n| 1 | 2 |\n\n*Table 6-1: what a and b mean.*\n\n"
+          "~~~mermaid\nflowchart LR\n  A --> B\n~~~\n*Figure 5-1: the datapath.*\n")
+    assert uncaptioned(ok) == []
+    bad = "| a |\n|---|\n| 1 |\n\nNext paragraph.\n\n```mermaid\nflowchart LR\n  A --> B\n```\n\n| x |\n|---|\n| 2 |\n"
+    assert [m.split(":")[0] for m in uncaptioned(bad)] == ["table", "diagram", "table"]
+    assert uncaptioned("```sv\n| not a table |\n```\n") == []  # inside a code block
+    for prompt in (WRITER, REVIEWER, UPDATER):
+        assert "caption" in prompt.lower() and "*Table <section>-<n>" in prompt
+
+
+def test_missing_captions_are_flagged_after_a_write(tmp_path, llm):
+    use_test_flow(tmp_path, "spec: {self_review: false}\n")
+    engine = Engine(Project.open(tmp_path))
+    engine.import_intent("fifo")
+    secs = SPEC.model_dump()["sections"]
+    secs[0]["content"] = "Intro.\n\n| a | b |\n|---|---|\n| 1 | 2 |\n"
+    llm.spec_outputs = [_draft([], sections=secs)]
+    seen = []
+    engine.bus.subscribe(lambda e: seen.append(e))
+    anyio.run(lambda: engine.run(only="spec"))
+    warnings = [getattr(e, "data", {}).get("message", "") if hasattr(e, "data") else str(e) for e in seen]
+    assert any("without a caption" in w for w in warnings), warnings[:5]
