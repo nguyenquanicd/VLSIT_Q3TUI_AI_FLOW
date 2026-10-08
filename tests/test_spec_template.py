@@ -1,3 +1,5 @@
+from pathlib import Path
+
 import anyio
 import pytest
 import yaml
@@ -238,14 +240,14 @@ def test_everything_that_shows_the_sections_uses_the_flows_template(tmp_path):
 
     (tmp_path / "q3tui.yaml").write_text("pipeline:\n  flow: vlsit\n")
     (tmp_path / "spec").mkdir()
-    (tmp_path / "spec" / "spec.md").write_text("# T\n\n<!-- section: overview -->\n## 1. Overview\ntext\n\n<!-- section: interface -->\n## 2. Interface\ni_clk\n")
+    (tmp_path / "spec" / "spec.md").write_text("# T\n\n<!-- section: purpose_scope -->\n## 1. Purpose, Scope, and Product Context\ntext\n\n<!-- section: interfaces -->\n## 2. External Interfaces and Ports\ni_clk\n")
     eng = Engine(Project.open(tmp_path))
     assert eng.spec_template() == "vlsit"
     ids = {s.id: s for s in section_states(eng)}
-    assert ids["overview"].in_spec and ids["interface"].in_spec and ids["overview"].required is True  # (the template's own)
-    assert ids["features"].in_spec is False and ids["features"].required is True  # a real gap, not an "extra"
-    assert "features" in ids and "clocks_and_resets" not in ids  # the VLSIT sections, not the default ones
-    assert [s.id for s in Ops(eng).template().sections][:3] == ["overview", "features", "parameters"]
+    assert ids["purpose_scope"].in_spec and ids["interfaces"].in_spec and ids["purpose_scope"].required is True  # (the template's own)
+    assert ids["references"].in_spec is False and ids["references"].required is True  # a real gap, not an "extra"
+    assert "references" in ids and "clocks_resets" not in ids  # the VLSIT sections, not the default ones
+    assert [s.id for s in Ops(eng).template().sections][:3] == ["purpose_scope", "references", "requirements"]
     use_test_flow(tmp_path)                                          # a spec step without a template option
     assert Engine(Project.open(tmp_path)).spec_template() is None
 
@@ -381,3 +383,29 @@ def test_tbd_questions_match_whole_words_only():
     assert len(tbd_questions(secs, unrelated)) == 1
     covered = [_q_model("Clocks: what is the reset style?")]
     assert tbd_questions(secs, covered) == []
+
+
+def test_vlsit_template_follows_the_asic_ip_design_specification():
+    t, path = load_template(Path("/nonexistent"), "vlsit")
+    ids = [s.id for s in t.sections]
+    assert path.name == "vlsit_template.yaml" and len(ids) == 21 and len(set(ids)) == 21   # sections 1-21; 22 (sources) is not part of the spec
+    assert ids[:3] == ["purpose_scope", "references", "requirements"] and ids[-2:] == ["assumptions", "glossary"]
+    assert [s.id for s in t.sections if not s.required] == ["glossary"]
+    by = t.by_id()
+    assert "PARA_" in by["parameters"].guidance and "C1" in by["parameters"].guidance   # constraints stay checkable rules for `parse`
+    assert "Do NOT declare" in by["csr"].guidance                                      # registers live in the CSR workbook only
+    text = describe(t)
+    assert text.startswith("Document rules:") and "REQ-<AREA>-<NNN>" in text and "N/A" in text
+    # the long guidance does not flood the intent skeleton
+    assert max(len(line) for line in intent_skeleton(t).splitlines()) < 260
+
+
+def test_template_instructions_are_kept_only_when_set(tmp_path):
+    from q3tui.steps.spec.template import save_project_template
+
+    d = default()
+    assert d.instructions == "" and "Document rules" not in describe(d)
+    assert "instructions" not in save_project_template(tmp_path, d).read_text()
+    d.instructions = "Be terse."
+    assert "instructions: Be terse." in save_project_template(tmp_path, d).read_text()
+    assert describe(d).startswith("Document rules: Be terse.")

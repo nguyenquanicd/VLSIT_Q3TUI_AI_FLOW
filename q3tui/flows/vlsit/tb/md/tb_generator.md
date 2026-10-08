@@ -13,14 +13,14 @@ và xuất `schemas/selected_testplan.json` sau khi người dùng ký Gate 4.
 1. Mọi test block phải tag `// TC-ID | REQ-ID` ở dòng đầu.
 2. REQ-ID không có TC nào cover → cảnh báo rõ trước Gate 4, không được im lặng.
 3. Gate 4 chỉ mở sau khi: (a) người dùng xác nhận Test Plan, (b) VCS compile check pass.
-4. TC conditional theo parameter (TC-014/015 cần `PR_M_EXT_EN=1`, v.v.) phải đọc từ `schemas/final_config.json`.
+4. TC conditional theo parameter (TC-014/015 cần `PARA_M_EXT_EN=1`, v.v.) phải đọc từ `schemas/final_config.json`.
 
 ---
 
 ## Bước 1 — Pre-flight
 
 Đọc theo thứ tự:
-1. `schemas/final_config.json` → lấy parameter values (PR_M_EXT_EN, PR_CSR_EN, PR_IRQ_EN, v.v.)
+1. `schemas/final_config.json` → lấy parameter values (PARA_M_EXT_EN, PARA_CSR_EN, PARA_IRQ_EN, v.v.)
 2. `schemas/structured_spec.json` → lấy danh sách REQ-IDs
 3. `src/rtl/filelist.f` → kiểm tra RTL đã sinh chưa (nếu thiếu → **cảnh báo** nhưng không dừng; TB vẫn generate được, compile check sẽ fail sau)
 4. `schemas/rtm.json` → lấy danh sách SVA đã confirmed (nếu thiếu → bỏ qua, dùng REQ-IDs từ structured_spec.json thay thế)
@@ -65,11 +65,11 @@ Hiển thị bảng 25 TC đề xuất. TC có dấu `[COND]` chỉ generate khi
 ║ TC-024 ║ precise_exception_commit      ║ REQ-012 (F12)    ║           ║
 ║ TC-025 ║ mtvec_vectored_mode           ║ REQ-019 (F19)    ║ [COND:VEC]║
 ╚══════╩══════════════════════════════════╩══════════════════╩════════════╝
-  [COND:M]   = chỉ sinh khi PR_M_EXT_EN=1
-  [COND:CSR] = chỉ sinh khi PR_CSR_EN=1
-  [COND:IRQ] = chỉ sinh khi PR_IRQ_EN=1
-  [COND:CTR] = chỉ sinh khi PR_COUNTER_EN=1
-  [COND:VEC] = chỉ sinh khi PR_MTVEC_VEC_EN=1
+  [COND:M]   = chỉ sinh khi PARA_M_EXT_EN=1
+  [COND:CSR] = chỉ sinh khi PARA_CSR_EN=1
+  [COND:IRQ] = chỉ sinh khi PARA_IRQ_EN=1
+  [COND:CTR] = chỉ sinh khi PARA_COUNTER_EN=1
+  [COND:VEC] = chỉ sinh khi PARA_MTVEC_VEC_EN=1
 ```
 
 Sau khi hiển thị, hỏi:
@@ -110,7 +110,7 @@ Sinh theo thứ tự sau. Sau mỗi file: chạy VCS compile check ngay.
 - `$readmemh(HEX_FILE, mem_array)` để nạp test program
 - Tag: `// TC-ALL | REQ-010`
 
-**4.2 CLINT model** `src/tb/rv32im_clint_model.sv` — chỉ sinh khi `PR_IRQ_EN=1`
+**4.2 CLINT model** `src/tb/rv32im_clint_model.sv` — chỉ sinh khi `PARA_IRQ_EN=1`
 - Sinh `i_irq_timer` và `i_irq_sw` theo schedule đơn giản
 - Configurable bằng task: `set_timer_irq(delay_cycles)`, `set_sw_irq(delay_cycles)`
 - Tag: `// TC-020 | REQ-014`
@@ -118,7 +118,7 @@ Sinh theo thứ tự sau. Sau mỗi file: chạy VCS compile check ngay.
 **4.3 Testbench top** `src/tb/rv32im_tb_top.sv`
 - Instantiate `rv32im_core` với tất cả parameter từ `schemas/final_config.json`
 - Instantiate `rv32im_mem_model` (connect I-bus + D-bus)
-- Instantiate `rv32im_clint_model` (nếu `PR_IRQ_EN=1`)
+- Instantiate `rv32im_clint_model` (nếu `PARA_IRQ_EN=1`)
 - Clock: `localparam LP_CLK_PERIOD = 10; always #(LP_CLK_PERIOD/2) i_clk_core = ~i_clk_core;`
 - Reset: assert `i_resetn_core=0` trong 10 cycle đầu
 - Timeout: `$fatal` sau 100_000 cycle nếu test chưa xong
@@ -157,7 +157,7 @@ Chi tiết stimulus cho từng TC quan trọng:
 
 | TC | Stimulus chính | Check |
 |---|---|---|
-| TC-001 | Release reset, đọc PC | `o_imem_req_addr == PR_BOOT_ADDR` |
+| TC-001 | Release reset, đọc PC | `o_imem_req_addr == PARA_BOOT_ADDR` |
 | TC-002 | Nạp hex chứa ADDI/ADD/SUB/AND/OR... | Kiểm tra kết quả qua STORE + load lại |
 | TC-006 | BEQ với rs1==rs2 (not-taken), rồi rs1≠rs2 (not-taken cũng predict) | PC tiếp theo = PC+4 |
 | TC-007 | BEQ với rs1==rs2, đo PC sau 3 cycle | PC = branch_target, 2 bubble |
@@ -178,7 +178,7 @@ Sinh `src/tb/filelist_tb.f`:
 -f src/rtl/filelist.f
 // TB
 src/tb/rv32im_mem_model.sv
-src/tb/rv32im_clint_model.sv   // nếu PR_IRQ_EN=1
+src/tb/rv32im_clint_model.sv   // nếu PARA_IRQ_EN=1
 src/tb/rv32im_tb_top.sv
 // TCs
 src/tb/tests/tc_001_reset_boot_addr.sv

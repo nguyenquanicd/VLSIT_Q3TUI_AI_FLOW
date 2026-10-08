@@ -23,8 +23,9 @@ not configured makes its steps wait (`missing_input`) with a message naming the 
 The flow starts at `spec`, which is Q3TUI's spec step with the VLSIT layout (`options: {template: vlsit}`; the original
 `/spec_writer` / `/autoflow --describe`):
 - **an intent** (`spec/intent.md`, `q3tui run --intent "…"` / `--intent-file FILE`): `spec` writes `spec/spec.md` section by
-  section (Overview, Key Features F01…, Parameters PR_*, Interface, Functional Description, Microarchitecture, Timing and Constraints,
-  Registers, Error Handling, Notes), reviews it, and asks what the intent leaves open (questions; the spec gate is human by default).
+  section (the 21 sections of the VLSIT ASIC IP Design Specification template: Purpose and Scope … Requirements REQ-<AREA>-<NNN>,
+  Features FEAT-NNN, Parameters PARA_* / LPARA_* with constraints C1…, Interfaces, Architecture, Functional Behavior, Register pointer to
+  the CSR workbook, RTL contract, Verification, Traceability, Assumptions …), reviews it, and asks what the intent leaves open (questions; the spec gate is human by default).
   What you answer is written into the spec, and `parse` follows the changed sections only.
 - **a spec** (`--spec FILE`, or a file in `spec/`): `spec` counts as done (user-provided, never rewritten) and the flow starts at `parse`.
 A model that puts a table into an invented field of the template gets it moved into the section body (the Parameters table).

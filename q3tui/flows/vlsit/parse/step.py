@@ -59,7 +59,7 @@ class ParsedParam(BaseModel):
 
 class ParsedConstraint(BaseModel):
     id: str = Field(description="C1, C2, …")
-    rule: str = Field(description="Checkable expression, e.g. \"PR_IRQ_EN == 1 -> PR_CSR_EN == 1\"")
+    rule: str = Field(description="Checkable expression, e.g. \"PARA_IRQ_EN == 1 -> PARA_CSR_EN == 1\"")
     description: str = ""
 
 

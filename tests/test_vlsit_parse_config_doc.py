@@ -465,7 +465,7 @@ def test_spec_template_option(engine):
     from q3tui.steps.spec.template import load_template
 
     t, path = load_template(engine.project.spec_dir, "vlsit")
-    assert path.name == "vlsit_template.yaml" and [s.id for s in t.sections][:3] == ["overview", "features", "parameters"]
+    assert path.name == "vlsit_template.yaml" and [s.id for s in t.sections][:3] == ["purpose_scope", "references", "requirements"]
     spec_step = engine.step("spec")
     assert spec_step.options == {"template": "vlsit"}
     assert spec_step.inputs(engine)[-1].name == "vlsit_template.yaml"

@@ -1,75 +1,283 @@
-# Spec layout of the VLSIT flow (spec_writer.md's spec.md): what spec_parser (step `parse`) reads to extract requirements,
-# parameters and the module mapping. Used when a flow gives the spec step `options: {template: vlsit}`;
-# <project>/spec/template.yaml still wins.
+# Spec layout of the VLSIT flow: the "VLSIT ASIC IP Design Specification Template" (the normative design contract
+# for architecture, RTL, verification, DFT and physical integration). What the parser (step `parse`) reads to extract
+# requirements, parameters, constraints and the module mapping. Used when a flow gives the spec step
+# `options: {template: vlsit}`; <project>/spec/template.yaml still wins.
+#
+# Sections 1-21 of that template, in order. Every section is required except the glossary: a section that does not apply
+# is written "N/A — <reason>".
 
 allow_extra_sections: true
 
-sections:
-  - id: overview
-    title: Overview
-    required: true
-    guidance: >
-      What the IP is, where it sits in the system, its bus interfaces and use cases. One or two paragraphs.
+instructions: >
+  This is a normative design contract for architecture, RTL, verification, DFT and physical integration of one IP.
+  Document-wide rules: (1) Requirement terms: "shall" = mandatory and testable, "should" = recommended, "may" =
+  optional. Give every mandatory requirement a stable id REQ-<AREA>-<NNN> (areas: FUNC, IF, CLK, RESET, REG, PARAM,
+  ERR, PERF, PPA, RTL, VER, DFT, PD, SEC, SAFE, INT) and a verification method; one normative behavior per
+  requirement, with trigger, observable result, clock/timing, configuration and source; quantify every adjective.
+  (2) Replace every placeholder. A section or table row that does not apply is written "N/A — <reason>"; never omit a
+  required decision silently. (3) Use TBD only together with its technical impact and the decision needed, recorded in
+  section 20 (Assumptions, dependencies and decisions) and as an open question. (4) Name things the VLSIT way: top-level
+  parameters PARA_<NAME>, derived local parameters LPARA_<NAME>, one module per file named m_<function>, active-low
+  non-reset signals end in _n, clocks i_clk_<domain>, resets i_rst_n_<domain>. (5) The register interface, register map,
+  fields, offsets, access types and reset values are NOT declared in this document: they live only in the CSR workbook
+  (VLSIT_CSR_Specification_Template.xlsx); section 11 points to it. (6) Select one static protocol revision/profile per
+  top-level wrapper and list only the signals that revision (plus the selected optional signals) defines. (7) Do not
+  claim timing closure from RTL synthesis alone. (8) Use ### for subsections (numbered like 5.1, 5.2) and Markdown
+  tables for tabular content; diagrams are Mermaid code blocks.
 
-  - id: features
-    title: Key Features
+sections:
+  - id: purpose_scope
+    title: Purpose, Scope, and Product Context
     required: true
     guidance: >
-      Numbered feature list F01, F02, ... one line each, externally observable. Mark each feature
-      mandatory (built always) or optional (enabled by a parameter, name it). This is the checklist the
-      requirements are extracted from.
+      1.1 Purpose and scope: the problem this IP solves, intended users/system context, observable behavior and
+      architectural boundary; "Included:" (functions, interfaces, configurations, deliverables) and "Excluded:"
+      (unsupported functions, responsibilities owned by other blocks). 1.2 Deployment assumptions, a table: target
+      SoC / product class, technology / library assumptions, operating modes and workload, security / privilege context,
+      external dependencies (memory, endpoint, firmware, clock/reset controller). 1.3 Feature summary, a table:
+      Feature ID (FEAT-001, ...), feature, required / optional, configuration condition, requirement ids. Features are
+      externally observable; this is the checklist the rest of the spec elaborates.
+    fields:
+      - {name: IP name, guidance: "the IP's name"}
+      - {name: Version, guidance: 'document version, e.g. "0.1"'}
+      - {name: Status, guidance: 'e.g. "Draft"'}
+
+  - id: references
+    title: Normative References and Precedence
+    required: true
+    guidance: >
+      2.1 Normative references, a table (Ref ID, document and exact revision, applicable clauses, authority/notes): protocol
+      specifications, product requirements, the VLSIT RTL Design Rules v2 (REF-003, the mandatory RTL coding, hierarchy,
+      reset, CDC and naming baseline), IEEE 1800-2017 (synthesizable subset, subject to REF-003) and the VLSIT CSR
+      Specification workbook (REF-005, the sole authority for the register interface). Never cite an unspecified "latest"
+      revision. 2.2 Source-of-truth and conflict handling as numbered rules: the protocol revision defines protocol
+      behavior; approved product requirements define product behavior; this spec stays consistent with the protocol and
+      REF-003 (a requirement that conflicts with REF-003 is revised, never an RTL exception); registers are specified only
+      in REF-005; record the exact protocol revision, role and optional signals; conflicts are resolved by an explicit
+      product decision, never guessed. 2.3 Compliance declaration, a table: standard, revision/profile, role implemented,
+      options, deviations.
+
+  - id: requirements
+    title: Requirements and Traceability
+    required: true
+    guidance: >
+      The requirement table: ID (REQ-<AREA>-<NNN>, unique and permanent), requirement using shall/should/may, source,
+      applies to (configurations), verification method (simulation / formal / inspection / protocol checker / reset
+      test / assertion). State one normative behavior per requirement where practical, including trigger, observable
+      result, clock/timing, configuration and source. Avoid vague adjectives unless quantified. Every behavior stated
+      elsewhere in this spec that is mandatory has a row here.
+
+  - id: features_configs
+    title: Features and Configurations
+    required: true
+    guidance: >
+      A table of configurations: Configuration ID (CFG-BASE, ...), enabled features, disabled features, interfaces /
+      widths, intended use, verification target. For each optional feature state whether it is absent, tied off, or present
+      but runtime-disabled. Define illegal combinations and the required elaboration/integration response.
+
+  - id: architecture
+    title: Architecture
+    required: true
+    guidance: >
+      5.1 Overview and block responsibilities: the main blocks, data/control path, fixed architectural trade-offs and
+      invariants, with a table (block, responsibility, inputs/outputs, clock/reset domain, state or storage). 5.2 Block
+      diagram: a Mermaid flowchart with blocks, interfaces, memories/macros, clock/reset domains and CDC paths. 5.3
+      Transaction and dataflow: request acceptance, processing, response/completion, resource release (sequence diagrams
+      for multi-step operations). 5.4 Invariants: ordering, ownership, mutual exclusion, outstanding limits, one-hot
+      encodings, data/valid coupling. If the intent prescribes a module hierarchy, module names or what each module does,
+      copy it exactly (the hierarchy as a tree of module names): it is the user's decision.
+
+  - id: interfaces
+    title: External Interfaces and Ports
+    required: true
+    guidance: >
+      6.1 Interface inventory, a table (Interface ID, type and revision, role, direction at the IP boundary, clock
+      domain, required/optional, configurations). 6.2 Complete port list, a table with every clock, reset, test signal,
+      interrupt and sideband: port, direction, width, meaning, clock domain, reset/idle value, timing/sampling,
+      configurations; a fixed port list per wrapper, never a superset. 6.3 Protocol behavior per interface: exact standard
+      revision, role, profile and optional features; per channel/transaction type the acceptance condition and sampling
+      edge, valid/ready or request/ack stability under backpressure, outstanding capacity, IDs, ordering, address alignment,
+      legal burst types/lengths/sizes, byte enables, protection/QoS/user/parity sidebands, error mapping, timeout,
+      unsupported transactions, reset of in-flight work; a table of cases (legal behavior, illegal/unsupported case, IP
+      response, requirement ids); number the protocol rules B1, B2, ... 6.4 Interrupts and events, a table (signal,
+      polarity, assert condition, clear condition, mask/priority, crossing, reset state).
+
+  - id: clock_reset_power
+    title: Clock, Reset, and Power
+    required: true
+    guidance: >
+      7.1 Clock domains, a table (domain, clock port, edge, frequency range, source, relationship to other clocks, gating
+      policy). 7.2 CDC and RDC: for each crossing the source/destination domains, signal type, approved structure, latency,
+      reset relationship, constraints, verification method, synchronizer/FIFO ownership; a table with Crossing IDs
+      (CDC-001, ...); no crossing is implicit. 7.3 Reset domains and sequencing: a table (reset id, port, polarity,
+      sync/async, scope, deassertion, reset value) and the reset sources, global/local/software resets, assertion/release
+      timing, stopped-clock behavior, cross-domain sequencing, interface behavior during release, reset value of every
+      state element and output, validity guards for resetless payload, effects on transactions/interrupts/status,
+      warm/partial/retention reset. 7.4 Power intent: power domains, isolation, retention, power-good sequencing, low-power
+      entry/exit, clock stop/restart, UPF/CPF ownership; N/A with a reason when absent.
+    fields:
+      - {name: Clock domains, required: false, guidance: "number of domains and their relationship (synchronous / asynchronous)"}
 
   - id: parameters
-    title: Parameters
+    title: Parameters and Elaboration Configurations
     required: true
     guidance: >
-      Table of top-level parameters named PR_<NAME> (SystemVerilog type, default, legal range, meaning, the
-      features they affect, whether locked), then the elaboration constraints as numbered rules C1, C2, ...
-      each written as a checkable expression (e.g. "PR_BOOT_ADDR[1:0] == 2'b00", "PR_IRQ_EN == 1 -> PR_CSR_EN == 1").
+      A table of every overridable top-level parameter: name PARA_<NAME>, purpose, default, legal values/range,
+      dependencies/invalid combinations, effect on ports, behavior, hierarchy, timing and verification coverage. Derived
+      constants are LPARA_<NAME>. Parameters are declared `parameter logic [31:0] PARA_<NAME>`, each with the three comments
+      Parameter Description / Parameter values (legal range and default) / Parameter unit (bit, byte, us, count, none).
+      A wrapper's port list is static: parameter values never create or remove ports. Then the elaboration constraints as
+      numbered rules C1, C2, ..., each a checkable expression (e.g. "PARA_BOOT_ADDR[1:0] == 2'b00",
+      "PARA_IRQ_EN == 1 -> PARA_CSR_EN == 1") that rejects illegal values/combinations at elaboration; never leave an
+      invalid width, range or feature combination unspecified. Then a table of elaboration configurations (CFG id, parameter
+      overrides, features/interfaces, expected hierarchy, elaboration/lint/synthesis target) and which one is the delivered
+      default.
 
-  - id: interface
-    title: Interface
+  - id: data_arithmetic
+    title: Data Representation and Arithmetic
     required: true
     guidance: >
-      Clock and reset (names, edge / polarity, synchronous or asynchronous), then every input and output port:
-      name, direction, width, clock domain, reset value, meaning; bus protocol rules numbered B1, B2, ...
-    fields:
-      - {name: Top module, guidance: "snake_case module name"}
-      - {name: Clock, guidance: "name, frequency if known"}
-      - {name: Reset, guidance: "name, polarity, sync / async"}
+      Bit numbering, packing, byte lanes, endianness, extension, truncation, alignment, numeric ranges, overflow/carry,
+      saturation, rounding, divide-by-zero, command/status/error encodings, invalid/reserved/don't-care behavior (don't-cares
+      only where arbitrary behavior is permitted by the external contract). Packed hardware data is unsigned 4-state logic;
+      a bit pattern with signed two's-complement meaning is defined mathematically here, with explicit bit-level extension
+      and comparison in RTL. A table: quantity, width, encoding/range, extension/truncation, overflow/invalid behavior.
 
   - id: functional
-    title: Functional Description
+    title: Detailed Functional Behavior
     required: true
     guidance: >
-      Behaviour per subsystem (one subsection each): normal operation, corner cases, error handling.
-      Use "shall"; state every reset value and every cycle-exact behaviour.
+      10.1 Modes and state transitions, a table (mode/state, entry condition, behavior, exit condition, outputs/side
+      effects). 10.2 Operations: for each operation (OP-001, ...) the inputs, preconditions, acceptance point, exact
+      function, result, completion, latency, ordering and exceptions. 10.3 Cycle-level behavior: timing diagrams / cycle
+      tables, the active edge and when values are sampled/observed. 10.4 Arbitration, buffering and throughput: tie-breaking,
+      fairness/starvation, FIFO depths, simultaneous enqueue/dequeue, backpressure, outstanding limits, cross-port ordering,
+      acceptance-to-result latency, initiation interval, sustained throughput. 10.5 Memories and storage, a table (storage
+      id MEM-001, kind, depth x width, ports, read latency, write mask, reset/init, ECC/parity, inferred or macro) with
+      collisions, read-during-write, initialization/validity, invalid addresses. Use "shall"; state every reset value and
+      every cycle-exact behavior observable at the ports.
 
-  - id: microarchitecture
-    title: Microarchitecture
+  - id: csr
+    title: Register and Programming Model
     required: true
     guidance: >
-      Module list with one line per module (name, function) and the hierarchy as a tree of module names,
-      top first. The user's structure is a decision: copy it exactly.
-
-  - id: timing
-    title: Timing and Constraints
-    required: false
-    guidance: >
-      Latencies, penalties, throughput, clock-domain and synthesis constraints (cycles, not nanoseconds,
-      unless the intent gives them).
-
-  - id: registers
-    title: Register Map
-    required: false
-    guidance: Address, name, access, reset value and meaning of every register. Omit if there are none.
+      N/A with a reason if there are no software-visible registers. Otherwise 11.1 CSR specification source: the CSR
+      specification of this IP is defined only in the VLSIT CSR Specification workbook (REF-005). Do NOT declare or restate
+      the register interface, register map, register fields, offsets, access types or reset values here, and add no register
+      tables. A register behavior the CSR template cannot express (another bus protocol, other widths, other access types,
+      partial-strobe writes) is recorded as a decision in section 20. 11.2 Software sequences, using register and field
+      names exactly as written in the workbook: initialization, enable/disable, interrupt service, error clearing, safe
+      reconfiguration, ordering, completion polling, updates while active.
+    fields:
+      - {name: CSR workbook file, required: false, guidance: "name and location of the project copy of VLSIT_CSR_Specification_Template.xlsx"}
+      - {name: Sheet used for this IP, required: false, guidance: "sheet name"}
+      - {name: Workbook revision, required: false, guidance: "revision or date"}
 
   - id: errors
-    title: Error Handling
-    required: false
-    guidance: Illegal inputs, error responses and what state the block is left in.
+    title: Error Handling and Recovery
+    required: true
+    guidance: >
+      A table: Error ID (ERR-001, ...), detection condition, observable response/status, interrupt, clear/recovery, reset
+      behavior. Cover malformed requests, illegal register access, protocol errors, timeout, ECC/parity, resource exhaustion
+      and fatal conditions; specify retry/drop/drain/abort/error-completion behavior and the status precedence of
+      simultaneous errors. Include full/empty, overflow/underflow, simultaneous events, illegal inputs and reset during
+      activity, and what the block does in each case.
 
-  - id: notes
-    title: Notes and Open Items
+  - id: ppa
+    title: Performance, Power, and Area
+    required: true
+    guidance: >
+      Separate hard requirements from estimates/goals. A table: Metric ID (PPA-001 frequency, PPA-002 area, PPA-003
+      dynamic/leakage power, PERF-001 latency/throughput, ...), metric, target/limit, conditions (configuration, process/
+      library corner, voltage, temperature, activity), measurement method (STA with named constraints, cell/placed area,
+      simulation/analysis), hard or goal. Latencies are given in cycles unless the intent gives time. Do not claim timing
+      closure from RTL synthesis alone; link the SDC and analysis flow.
+
+  - id: rtl_contract
+    title: RTL Implementation Contract
+    required: true
+    guidance: >
+      14.1 Required coding baseline: the VLSIT RTL Design Rules v2 (REF-003) are the mandatory RTL coding authority; add no
+      project-local RTL exceptions. State the baseline in brief: one synthesizable module per .sv file with matching name,
+      structural top wrappers, ANSI ports with input wire / output logic, _n suffix for active-low non-reset signals, unsigned
+      4-state logic vectors, always_comb / always_ff discipline, PARA_ / LPARA_ parameters with generate-time $error checks,
+      dedicated reset-synchronizer and CDC modules, bounded zero-based generate loops, named port connections, no signed or
+      two-state types, packages, interfaces, macros, initial blocks, delays, casex, latches or multiple drivers, SVA/testbench
+      code outside synthesis RTL. 14.2 RTL hierarchy, a table (module m_<function>, single responsibility, parent/instance,
+      clock/reset domains, interface) identifying the structural top, state owners and where protocol adapters, decode,
+      arithmetic and register logic sit; functional logic lives in child modules. 14.3 Synthesis assumptions, a table: top and
+      source file list, frontend version and options, parameters/configuration, libraries/corners, memory flow, lint rule
+      configuration.
+
+  - id: verification
+    title: Verification Specification
+    required: true
+    guidance: >
+      15.1 Scope and strategy: applicable levels (block simulation, protocol compliance, integration, formal, CDC/RDC, lint,
+      synthesis checks, emulation, post-silicon), environments, reproducibility/seed policy, configurations. 15.2
+      Requirement-based test plan, a table (TEST-001, requirements, scenario/stimulus, expected result, directed / random /
+      formal, configuration), covering reset/release, min/max parameters, backpressure, simultaneous events, ordering, errors,
+      invalid inputs, boundaries and low-power transitions as applicable. 15.3 Assertions and coverage: SVA and verification-
+      only logic stay outside synthesis RTL; per property the invariant, clock/reset disable conditions, linked requirements,
+      acceptance criteria; functional coverage points/crosses, protocol checker, X policy, validity guarding of resetless
+      payload; a table (SVA-001 / COV-001, intent, requirements, checker/source set, acceptance criterion). 15.4 Formal, CDC
+      and RDC: a table (analysis, scope, assumptions/constraints, evaluation method).
+
+  - id: dft
+    title: DFT and Testability
+    required: true
+    guidance: >
+      Coordinate with the SoC DFT methodology; mark unsupported test methods explicitly. A table (topic, requirement/decision):
+      scan architecture and eligibility; scan/test clocks, controls and reset behavior; test-mode entry/exit and safe state;
+      MBIST, memory repair, LBIST; test access, wrappers, test points; clock-gating test enable; ATPG constraints and
+      exclusions; DFT insertion architecture and generated test artifacts. Test ports and tie-offs are listed in section 6;
+      define test-mode priority relative to reset, power-down and functional controls.
+
+  - id: physical
+    title: Physical Design and Timing Integration
+    required: true
+    guidance: >
+      17.1 Timing constraints and budgets: a complete constraint contract for every supported configuration and mode, saying
+      which constraints the IP owns and which the SoC integrator supplies (SDC delivered with the IP). 17.1.1 Clock and
+      analysis scenarios, a table (clock id, port/source object, primary/generated and master, period/waveform/phase or
+      ratio, latency/uncertainty/transition, clock group/mode, constraint source) plus PVT/RC corners, analysis views, modes
+      and case-analysis assumptions. 17.1.2 Interface timing budgets, a table (interface/port group, direction, reference
+      clock, external min/max delay, input transition/output load, IP timing budget, mode, constraint source) plus max
+      transition/capacitance/fanout and driving-cell assumptions. 17.1.3 Timing exception inventory, a table (EXC-001, SDC
+      command, from, through, to, value and setup/hold/min/max meaning, mode, technical rationale) for every false path,
+      multicycle path (with its hold relationship and enabling protocol), set_max_delay/set_min_delay, clock group and case
+      analysis, with exact endpoints and no broad wildcards; an exception is never used to silence a failing synchronous
+      path, and asynchronous crossings are proven by CDC/RDC analysis. 17.2 Physical assumptions, a table (hard/memory macros
+      and views, floorplan/placement/pin placement, utilization/congestion target, power intent and clock/reset trees,
+      high-fanout controls, ECO/spare cells, extraction and analysis corners, delivery form RTL/netlist/hardened layout).
+
+  - id: security_safety
+    title: Security, Safety, and Reliability
+    required: true
+    guidance: >
+      A table (topic, requirement/rationale, verification method/expected behavior); mark each topic Required, N/A with a
+      reason, or TBD: security boundary and threat assumptions, access control/privilege, secure clearing/zeroization,
+      information leakage/side channels, ECC/parity and fault detection, safety goal/integrity level, diagnostics, fail-safe
+      state and recovery.
+
+  - id: traceability
+    title: Requirement-to-Verification Traceability
+    required: true
+    guidance: >
+      A table with one row per requirement of section 3: requirement ID, RTL module/location (module names from the RTL
+      hierarchy), test/property (TEST-/SVA- ids from section 15), verification method/analysis, configuration. Every
+      requirement is traced.
+
+  - id: assumptions
+    title: Assumptions, Dependencies, and Decisions
+    required: true
+    guidance: >
+      Technical assumptions, external dependencies and unresolved decisions, a table: ID (ASM-001, DEP-001, ...), type
+      (assumption / dependency / unresolved decision), the assumption/dependency/decision, technical impact (behavior,
+      interface, timing, verification, integration) with version/configuration, resolution/status. Every TBD of this spec is
+      here with the decision needed.
+
+  - id: glossary
+    title: Glossary
     required: false
-    guidance: Out-of-scope items (they get no requirement), rationale, TBDs.
+    guidance: A table of terms and acronyms with their definitions. Omit if the spec uses no unusual terms.

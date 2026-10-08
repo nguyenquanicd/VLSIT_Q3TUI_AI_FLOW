@@ -74,7 +74,7 @@ Dựa trên thông tin thu thập, sinh file `spec/<ip_name>_spec.md` với cấ
 ## 3. Parameters
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
-| PR_...    | bit  | 1       | ...         |
+| PARA_...    | bit  | 1       | ...         |
 
 ## 4. Interface
 ### 4.1 Clock & Reset

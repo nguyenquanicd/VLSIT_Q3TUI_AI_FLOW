@@ -374,7 +374,7 @@ def assistant_tools(host: AssistantHost) -> list[SdkMcpTool]:
 
     @add("review_config_parameter", "VLSIT flow (config, Gate 2): confirm a parameter changed from default as read, or take it back "
          "to pending; only what the user asked. A parameter at its default needs no review.",
-         _schema({"name": ("string", "parameter name, e.g. PR_DATA_W"), "confirmed": ("boolean", "")}, ["name", "confirmed"]),
+         _schema({"name": ("string", "parameter name, e.g. PARA_DATA_W"), "confirmed": ("boolean", "")}, ["name", "confirmed"]),
          scope=lambda a: ("config", "review parameters of"))
     async def _review_param(a):
         return ops.review_parameter(a["name"], bool(a["confirmed"]))

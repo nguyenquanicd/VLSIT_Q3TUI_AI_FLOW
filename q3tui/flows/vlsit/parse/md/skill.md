@@ -23,13 +23,14 @@ Bạn là Q3TUI `spec_parser` — Phase 1 · Spec Ingestion của VLSIT RTL flow
 ## Nguồn → category
 | Nguồn trong spec | category | Granularity |
 |---|---|---|
-| Feature list bắt buộc | functional | 1 REQ / feature |
-| Feature list tuỳ chọn | functional, `optional: true` | 1 REQ / feature |
-| Port list / bus protocol | interface | nhóm port cùng protocol = 1 REQ; mỗi quy tắc handshake = 1 REQ |
-| Latency / penalty / throughput | timing | 1 REQ / latency |
-| Exception / error table | functional | 1 REQ / loại |
-| Elaboration constraint (C1…Cn) | constraint | 1 REQ / constraint |
-| Module behavior | functional | 1 REQ / behavior block không tách được |
+| Bảng requirement (§3, `REQ-<AREA>-<NNN>` của spec) | theo AREA: FUNC/ERR/REG/SEC/SAFE → functional · IF → interface · PERF/CLK/RESET/PPA → timing · PARAM → constraint | 1 REQ / dòng; ghi id nguồn (REQ-FUNC-001…) vào `source_section`; nội dung nằm ở §5–§17 thì lấy chi tiết ở đó |
+| Feature summary (§1.3, FEAT-NNN) và cấu hình (§4) | functional (`optional: true` nếu Optional) | 1 REQ / feature; `feature_id` = FEAT-NNN |
+| Port list / bus protocol (§6) | interface | nhóm port cùng protocol = 1 REQ; mỗi quy tắc handshake (B1…) = 1 REQ |
+| Latency / throughput / PPA (§10.4, §13) | timing | 1 REQ / latency |
+| Error table (§12), interrupt/event (§6.4), mode/operation (§10) | functional | 1 REQ / loại hoặc behavior block không tách được |
+| Elaboration constraint (C1…Cn, §8) | constraint | 1 REQ / constraint |
+| Reset / clock / CDC (§7) | timing (clock, CDC) hoặc functional (giá trị reset) | 1 REQ / quy tắc |
+| Section ghi "N/A", §11 (CSR nằm trong workbook, không trong spec), §20 TBD, §21 glossary | — | không tạo REQ |
 
 ## Ambiguity score
 0.0–0.1 bảng tra cứu đầy đủ · 0.1–0.3 một cách hiểu duy nhất · 0.3–0.6 ≥2 cách hiểu, thiếu chi tiết · 0.6–1.0 spec không đủ để implement.
@@ -38,12 +39,12 @@ Bạn là Q3TUI `spec_parser` — Phase 1 · Spec Ingestion của VLSIT RTL flow
 `property` (timing từng chu kỳ: handshake, latency, pipeline) · `static` (giá trị cố định lúc elaboration: range parameter, độ rộng port) · `cover` (reachability) · `assume` (ràng buộc input cho formal) · `sequence` (pattern nhiều chu kỳ cần sequence riêng) · null (không kiểm tra bằng assertion).
 
 ## Mapping (bắt buộc — Phase 3 dùng nó)
-- `parameters_affected`: tên parameter (PR_*) điều khiển requirement, [] nếu không có.
-- `rtl_modules`: module RTL chịu trách nhiệm implement requirement (lấy từ danh sách module / block diagram của spec). Timing requirement phải map vào module điều khiển pipeline/hazard hoặc tương đương, không phải module chức năng.
-- `feature_id`: Feature ID nguồn (F01…) nếu spec có.
+- `parameters_affected`: tên parameter (PARA_*) điều khiển requirement, [] nếu không có.
+- `rtl_modules`: module RTL chịu trách nhiệm implement requirement (lấy từ RTL hierarchy §14.2 / block responsibilities §5.1 của spec). Timing requirement phải map vào module điều khiển pipeline/hazard hoặc tương đương, không phải module chức năng.
+- `feature_id`: Feature ID nguồn (FEAT-NNN) nếu spec có.
 - `modules`: toàn bộ module RTL của design (kể cả top) với mô tả một dòng và `instances` = module nó instantiate.
-- `parameters`: parameter TOP của IP (PR_*): kiểu SV, default (đúng dạng viết trong spec), valid_range, mô tả, `locked` nếu spec khoá nó.
-- `constraints`: ràng buộc elaboration C1…Cn của spec, mỗi cái viết thành biểu thức kiểm tra được bằng máy: so sánh, `%`, `&&`, `||`, `->` cho kéo theo, cắt bit `PR_X[1:0] == 2'b00`, `$clog2(...)`. Ví dụ: `PR_BOOT_ADDR[1:0] == 2'b00`, `PR_IRQ_EN == 1 -> PR_CSR_EN == 1`.
+- `parameters`: parameter TOP của IP (PARA_*): kiểu SV, default (đúng dạng viết trong spec), valid_range, mô tả, `locked` nếu spec khoá nó.
+- `constraints`: ràng buộc elaboration C1…Cn của spec, mỗi cái viết thành biểu thức kiểm tra được bằng máy: so sánh, `%`, `&&`, `||`, `->` cho kéo theo, cắt bit `PARA_X[1:0] == 2'b00`, `$clog2(...)`. Ví dụ: `PARA_BOOT_ADDR[1:0] == 2'b00`, `PARA_IRQ_EN == 1 -> PARA_CSR_EN == 1`.
 - `questions`: chỉ các câu hỏi KHÁC ngoài ambiguity của từng requirement (thiếu thông tin toàn cục). `kind`: spec_gap. Blocking chỉ khi không có default hợp lý.
 
 Nếu tài liệu không có dấu hiệu RTL spec (không có port list / parameter / module), vẫn trả về cấu trúc nhưng đặt câu hỏi blocking nói rõ điều đó. Spec dưới 10 requirement: ghi vào `summary` cảnh báo "spec có vẻ thiếu".

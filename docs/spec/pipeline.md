@@ -102,11 +102,15 @@ Runs only when there is no spec document.
 **Spec template** defines the document: an ordered list of sections, each with an `id`,
 `title`, `required` flag, `guidance` for the writer, and optional **fields**. Fields are
 key facts that must be stated explicitly, such as clock frequency, throughput, latency,
-target technology, area and power. Lookup order: `<project>/spec/template.yaml` →
+target technology, area and power. A template may also carry `instructions`: rules for the whole
+document (requirement ids, naming, N/A / TBD policy) that the writer reads first. Lookup order: `<project>/spec/template.yaml` →
 `$Q3TUI_HOME/spec_template.yaml` → the built-in template the flow names
-(`options: {template: vlsit}` in the VLSIT flow: Overview, Key Features, Parameters,
-Interface, Functional Description, Microarchitecture, Timing and Constraints, Registers,
-Error Handling, Notes) or the built-in default (Overview, Features, Parameters, Clocks and
+(`options: {template: vlsit}` in the VLSIT flow: the 21 sections of the VLSIT ASIC IP Design
+Specification — purpose and scope, references, requirements, features and configurations,
+architecture, interfaces and ports, clock/reset/power, parameters, data representation,
+functional behavior, registers (a pointer to the CSR workbook), errors, PPA, RTL contract,
+verification, DFT, physical design, security/safety, traceability, assumptions, glossary;
+a section that does not apply is written "N/A — reason") or the built-in default (Overview, Features, Parameters, Clocks and
 Resets, Interfaces, Functional Behaviour, Registers, Corner Cases, Performance,
 Implementation Constraints, Verification Notes, …). Users add, remove, reorder and toggle
 sections by editing the template, from the TUI's Sections view or with `q3tui init
