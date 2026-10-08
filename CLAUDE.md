@@ -7,7 +7,7 @@ Our own multi-agent chip design/verification platform.
 ## Stack
 
 - Python ≥ 3.11, `uv` (`uv sync`, `uv run pytest`), package `q3tui/` at the repo root.
-- LLM: **Claude Agent SDK** (`claude-agent-sdk`) only — all LLM calls go through `q3tui.llm.runtime.run_stage`. Default model `claude-opus-5-5` (config `llm.model`).
+- LLM: **Claude Agent SDK** (`claude-agent-sdk`) only — all LLM calls go through `q3tui.llm.runtime.run_stage`. Default model `claude-sonnet-5-5` (config `llm.model`).
 - RTL parsing: `pyslang` (`q3tui.hdl.parse`). EDA tools: pluggable, vendor-agnostic role adapters in `q3tui.eda` (lint, synthesis, simulation, formal, debug); agents never call vendor binaries directly.
 
 ## Layout

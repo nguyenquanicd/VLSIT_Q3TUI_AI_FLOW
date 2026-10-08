@@ -48,7 +48,7 @@ Edit, do not rewrite: return ONLY the sections you change (each complete, same i
 not the whole document — unchanged sections are kept as drafted. Also return the full \
 list of open questions (keep the ids of questions that are still open; use "" for new \
 ones). Resolve issues in the text with a conventional choice marked "*Assumption:*" \
-whenever possible. Ask at most 5 NEW questions (keep the draft's questions that are still open, drop the ones you \
+whenever possible. Ask as many questions as the design needs (keep the draft's questions that are still open, drop the ones you \
 resolved in the text), only about decisions that change the \
 design's observable behaviour and have no conventional default; never re-ask something \
 the user already answered. Do not write a narrative review: put everything in the \

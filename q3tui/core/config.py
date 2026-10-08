@@ -47,7 +47,7 @@ def uses_effort(model: str) -> bool:
 
 
 class LLMConfig(_Strict):
-    model: str = "claude-opus-5-5"
+    model: str = "claude-sonnet-5-5"
     fallback_model: str | None = None
     effort: Literal["low", "medium", "high", "xhigh", "max"] | None = "high"  # null for models without effort (Haiku 4.5)
     # models without effort think without limit by default (a 2.5-minute review on Haiku):

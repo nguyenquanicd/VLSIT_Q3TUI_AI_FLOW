@@ -132,7 +132,7 @@ All of the LLM work above happens in one small stage (`spec_update`). It raises 
 questions, only a *conflict* if an answer contradicts the spec. Answers already applied
 are not re-sent. A snapshot of the template is kept at each write so the next run knows
 exactly which sections changed. The full draft + self-review (`spec_write` +
-`spec_review`, capped at 5 questions) runs only for the first draft or with
+`spec_review`, no cap on the number of questions) runs only for the first draft or with
 `--regenerate spec`. An intent change is an update too: the old and new intent go to
 `spec_update`, which revises only the sections the change affects.
 

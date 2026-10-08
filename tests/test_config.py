@@ -7,7 +7,7 @@ from q3tui.core.config import find_config, load_config
 def test_defaults_when_no_file(tmp_path):
     cfg = load_config(cwd=tmp_path)
     assert cfg.source == "<defaults>"
-    assert cfg.llm.model == "claude-opus-5-5"
+    assert cfg.llm.model == "claude-sonnet-5-5"
     assert cfg.tools.simulator.adapter == "vcs"
 
 

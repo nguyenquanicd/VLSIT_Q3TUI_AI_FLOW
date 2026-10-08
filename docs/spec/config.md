@@ -24,7 +24,7 @@ still carry: they are dropped on load (`config._legacy`). Strings expand `~` and
 
 ```yaml
 llm:
-  model: claude-opus-5-5            # any model id accepted by the Claude Agent SDK
+  model: claude-sonnet-5-5          # any model id accepted by the Claude Agent SDK
   fallback_model: null
   effort: high                    # low | medium | high | xhigh | max | null (Haiku 4.5). Like Claude Code: thinking
                                   # is never cut short and the effort never lowered (runaway_thinking_tokens /
