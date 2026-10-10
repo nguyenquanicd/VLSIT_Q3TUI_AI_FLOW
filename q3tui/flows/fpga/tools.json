@@ -1,0 +1,7 @@
+{
+  "_comment": "Default tool role of the FPGA flow (docs/spec/fpga-flow.md): Vivado, out-of-context synthesis. Used by this flow only, when no tools.json / tools.roles of the project defines `fpga_synth`; define your own `fpga_synth` role to change the module or the command.",
+  "roles": {
+    "fpga_synth": {"cmd": "vivado -mode batch -nojournal -log {workdir}/vivado.log -source {script}", "parse": "vivado", "modules": ["xilinx/vivado"], "timeout_s": 3600,
+                   "description": "Vivado batch run of the Tcl script Q3TUI writes (read RTL + SDC, synth_design -mode out_of_context, reports)"}
+  }
+}

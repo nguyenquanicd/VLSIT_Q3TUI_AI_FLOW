@@ -32,6 +32,7 @@ from q3tui.tui.splitter import Splitter
 from q3tui.tui.commands import CommandSuggester, hint as command_hint
 from q3tui.tui.picker import Choice, ChoiceScreen, choices_from
 from q3tui.tui.screens import EFFORTS, MODELS, ConfirmScreen, ResetScreen, SettingsScreen, StatsScreen, GateScreen, HistoryInput, ModelScreen, TextPromptScreen
+from q3tui import addons
 from q3tui.tui.panels import StepLines, make_panel, safe_id
 from q3tui.tui.views import fence_diagrams, SectionsPanel, SpecPanel, StepPanel
 
@@ -88,7 +89,7 @@ class Q3TUIApp(App):
         Binding("f", "show_tab('files')", "Files", show=False),
         Binding("m", "pick_model", "Model"),
         Binding("comma", "settings", "Settings"),
-        Binding("F", "flow_editor", "Flow"),
+        Binding("F", "switch_flow", "Flow"),
         Binding("K", "skill_editor", "Skills"),
         Binding("P", "prompt_editor", "Prompts"),
         Binding("s", "stats", "Stats"),
@@ -151,6 +152,7 @@ class Q3TUIApp(App):
             with Vertical(id="right"):
                 yield Label("", classes="panel-title", id="view-title")
                 with ContentSwitcher(id="views", initial=f"view-{safe_id(self.engine.pipeline_steps[0].name)}"):
+                    addons.load_panels(self.engine.flow)  # the flow's own panels (panels.py of its folder), if it has any
                     for step in self.engine.steps:
                         yield make_panel(step)
                 yield Splitter(vertical=False, id="split-activity", min_size=3)
@@ -613,9 +615,7 @@ class Q3TUIApp(App):
 
     def action_settings(self, tab: str | None = None) -> None:
         """Settings dialog; opens on the selected step's tab when it has one."""
-        from q3tui.core.settings import TABS
-
-        tabs = [t.id for t in TABS] + ["gates"]
+        tabs = [t.id for t in self.ops.settings_tabs()] + ["gates"]
         here = self.selected_step
         tab = tab if tab in tabs else (here if here in tabs else "general")
 
@@ -632,7 +632,39 @@ class Q3TUIApp(App):
             self._render_header()
             self.refresh_all()
 
-        self.push_screen(SettingsScreen(self.ops.settings(), tab, gates=self._gate_rows()), done)
+        self.push_screen(SettingsScreen(self.ops.settings(), tab, gates=self._gate_rows(), tabs=self.ops.settings_tabs()), done)
+
+    def action_switch_flow(self, name: str | None = None) -> None:
+        """F / `/flow [name]`: work on another flow of this project — remembered in q3tui.yaml (pipeline.flow); the TUI restarts on it
+        (each flow keeps its own state in .q3tui/pipeline.json)."""
+        from q3tui import flows
+
+        if self._pipeline_worker and self._pipeline_worker.is_running:
+            self.notify("stop the running step first (x)", severity="warning")
+            return
+        if self.engine.read_only:
+            self.notify("read-only: not switching", severity="warning")
+            return
+        now = self.engine.flow.name
+
+        def switch(target: str) -> None:
+            if target == now:
+                self.notify(f"already on {now}")
+                return
+            try:
+                flows.load_flow(target, self.project.root)
+            except flows.FlowError as exc:
+                self._log_line(Text(str(exc), "red"))
+                return
+            self.project.save_config_values({"pipeline": {"flow": target}})
+            self.exit(result=("flow", target))
+
+        if name:
+            switch(name)
+            return
+        from q3tui.tui.flowmap import FlowMapScreen
+
+        self.push_screen(FlowMapScreen(set(flows.list_flows(self.project.root)), now), lambda r: switch(r) if r else None)
 
     def action_flow_editor(self) -> None:
         """F: the flow editor — add / remove / move steps, edit deps, gate, view, pass conditions and notes."""
@@ -1051,6 +1083,12 @@ class Q3TUIApp(App):
             return [*steps, "all"]
         if kind == "gate":
             return [*self.engine.gate_modes(), "all"]
+        if kind == "action":
+            return list(self.engine.flow.actions)
+        if kind == "flow":
+            from q3tui import flows
+
+            return list(flows.list_flows(self.project.root))
         if kind == "gate_mode":
             return ["human", "auto", "auto_answer", "none"]
         if kind == "question":
@@ -1208,12 +1246,24 @@ class Q3TUIApp(App):
             elif cmd == "prompts":
                 self.action_prompt_editor()
             elif cmd == "flow":
+                self.action_switch_flow(args[0] if args else None)
+            elif cmd == "flowedit":
                 self.action_flow_editor()
             elif cmd == "step":
                 if len(args) < 2:
                     raise EngineError("usage: /step <step> view|pass|notes [text] [--session]  (no text: clear; pass conditions split by ;;)")
                 text = " ".join(a for a in args[2:] if a != "--session")
                 self.log_info(self.ops.set_step_setting(args[0], args[1], text, save="--session" not in args))
+                self.refresh_all()
+            elif cmd == "act":
+                if not args:
+                    for a in self.ops.actions().values():
+                        self._log_line(f"{a.name} {' '.join(a.params)} — {a.help}")
+                    if not self.ops.actions():
+                        raise EngineError("this flow has no actions")
+                    return
+                kv = dict(p.partition("=")[::2] for p in args[1:])
+                self.log_info(self.ops.run_action(args[0], **kv))
                 self.refresh_all()
             elif cmd == "gates":
                 for line in self.ops.gates_text().splitlines():

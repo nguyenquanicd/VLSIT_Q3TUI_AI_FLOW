@@ -10,6 +10,7 @@ configuration, write the RTL and a testbench independently, add assertions, veri
 | [pipeline.md](pipeline.md) | The engine: updates not re-runs, resume, who sees what, the spec step, questions, approval, controls |
 | [vlsit-flow.md](vlsit-flow.md) | The VLSIT RTL flow (the default): steps, artifacts, RTM, review API |
 | [flows.md](flows.md) | Flows as data (YAML / folders / markdown), gate modes, sessions, tools by role (`tools.json`), the TUI picker and panels |
+| [fpga-flow.md](fpga-flow.md) | The FPGA flow: SDC, Vivado out-of-context synthesis, timing / utilization report (PPA estimation) |
 | [project-layout.md](project-layout.md) | Files Q3TUI reads/writes, pipeline state, staleness, entry points |
 | [tui.md](tui.md) | Terminal UI: pipeline dashboard, gates, questions, assistant |
 | [architecture.md](architecture.md) | Runtime layers: LLM stages, tools by role, HDL layer |

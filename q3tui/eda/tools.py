@@ -69,8 +69,10 @@ class ToolSet:
         return self.roles[name]
 
 
-def load_tools(cfg: Config, project_root: Path) -> ToolSet:
-    """The roles of the tools file overlaid by the inline `tools.roles`."""
+def load_tools(cfg: Config, project_root: Path, flow=None) -> ToolSet:
+    """The roles of the tools file overlaid by the inline `tools.roles`. `flow`: a role it needs that nothing configures falls
+    back to the flow's own default (`<flow folder>/tools.json`, `Flow.tool_defaults`); a project's roles are otherwise exactly
+    its own, whatever flows are installed."""
     roles: dict[str, ToolRole] = {}
     source = "q3tui.yaml"
     setup, modules, init, timeout = cfg.tools.setup_script, list(cfg.tools.modules), cfg.tools.modules_init, cfg.tools.timeout_s
@@ -93,6 +95,10 @@ def load_tools(cfg: Config, project_root: Path) -> ToolSet:
         if "timeout_s" in data and cfg.tools.timeout_s == 600:
             timeout = int(data["timeout_s"])
     roles.update(cfg.tools.roles)
+    if flow is not None:
+        for n in roles_needed(flow):
+            if n not in roles and n in flow.tool_defaults:
+                roles[n] = ToolRole.model_validate(flow.tool_defaults[n])
     return ToolSet(roles, ToolEnv(setup, tuple(modules), init), timeout, source)
 
 
@@ -167,7 +173,8 @@ def available(tools: ToolSet, name: str) -> bool:
     binary = binary_of(role)
     if "{" in binary:  # built by an earlier step (e.g. `{workdir}/simv` from the compile): it cannot be looked up now
         return True
-    return tools.env.which(binary) is not None or Path(binary).is_file()
+    env = ToolEnv(tools.env.setup_script, tuple(dict.fromkeys([*tools.env.modules, *role.modules])), tools.env.modules_init)  # as run_role
+    return env.which(binary) is not None or Path(binary).is_file()
 
 
 def run_role(tools: ToolSet, name: str, workdir: Path, variables: dict[str, object], log_name: str | None = None) -> ToolResult:
@@ -284,6 +291,21 @@ def parse_dc(text: str) -> list[ToolDiagnostic]:
     return out
 
 
+_VIVADO = re.compile(r"^(?P<sev>ERROR|CRITICAL WARNING|WARNING):\s*\[(?P<code>[\w -]+)\]\s*(?P<msg>.*)$")
+
+
+def parse_vivado(text: str) -> list[ToolDiagnostic]:
+    """Vivado: `ERROR: [Synth 8-439] …`, `CRITICAL WARNING: [Constraints 18-4427] …`, `WARNING: [Synth 8-3331] …`.
+    The code of a critical warning is "CRITICAL WARNING" (a warning, but one a report can list apart)."""
+    out = []
+    for line in text.splitlines():
+        m = _VIVADO.match(line)
+        if m:
+            out.append(ToolDiagnostic("error" if m["sev"] == "ERROR" else "warning",
+                                      m["sev"] if m["sev"] == "CRITICAL WARNING" else m["code"], m["msg"][:500]))
+    return out
+
+
 def parse_vcs(text: str) -> list[ToolDiagnostic]:
     from q3tui.eda.synopsys import parse_vcs_log
 
@@ -302,7 +324,7 @@ def parse_generic(text: str, patterns: dict | None = None) -> list[ToolDiagnosti
     return out
 
 
-PARSERS = {"vcs": parse_vcs, "dc": parse_dc, "verilator": parse_verilator, "iverilog": parse_iverilog, "yosys": parse_yosys}
+PARSERS = {"vcs": parse_vcs, "dc": parse_dc, "verilator": parse_verilator, "iverilog": parse_iverilog, "yosys": parse_yosys, "vivado": parse_vivado}
 
 
 def parse_log(parse: str | dict, text: str) -> list[ToolDiagnostic]:
@@ -312,4 +334,4 @@ def parse_log(parse: str | dict, text: str) -> list[ToolDiagnostic]:
         return PARSERS[parse](text)
     if parse in ("generic", "", None):
         return parse_generic(text)
-    raise ToolUnavailable(f"unknown log parser '{parse}' (vcs, dc, verilator, yosys, iverilog, generic, or {{error: [...], warning: [...]}})")
+    raise ToolUnavailable(f"unknown log parser '{parse}' (vcs, dc, verilator, yosys, iverilog, vivado, generic, or {{error: [...], warning: [...]}})")

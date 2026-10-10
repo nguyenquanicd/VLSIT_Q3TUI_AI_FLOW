@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Any, Literal
 
 import yaml
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 class _Strict(BaseModel):
@@ -25,8 +25,9 @@ class StepLLM(_Strict):
 
 
 class StepModels(_Strict):
-    """Per-step overrides (llm.steps.<step>)."""
+    """Per-step overrides (llm.steps.<step>); the vlsit steps are listed, any other flow's steps are extra keys."""
 
+    model_config = ConfigDict(extra="allow")
     spec: StepLLM = Field(default_factory=StepLLM)
     parse: StepLLM = Field(default_factory=StepLLM)
     config: StepLLM = Field(default_factory=StepLLM)
@@ -36,6 +37,12 @@ class StepModels(_Strict):
     verify: StepLLM = Field(default_factory=StepLLM)
     doc: StepLLM = Field(default_factory=StepLLM)
     assistant: StepLLM = Field(default_factory=StepLLM)
+
+    @model_validator(mode="after")
+    def _extras(self):
+        for k, v in list((self.__pydantic_extra__ or {}).items()):
+            self.__pydantic_extra__[k] = v if isinstance(v, StepLLM) else StepLLM.model_validate(v)
+        return self
 
 
 STEP_LLM_KEYS = tuple(StepModels.model_fields)
@@ -69,8 +76,8 @@ class LLMConfig(_Strict):
     def for_stage(self, step: str | None, stage: str) -> "LLMConfig":
         """This config with the model / effort of the step that runs `stage`; the step's set value wins over the
         global llm.model / llm.effort."""
-        keys = [step] if step in STEP_LLM_KEYS else []
-        entries = [getattr(self.steps, k) for k in keys]
+        entry = getattr(self.steps, step, None) if step else None
+        entries = [entry] if isinstance(entry, StepLLM) else []
         model = next((e.model for e in entries if e.model), None) or self.model
         effort_set = next((e.effort for e in entries if e.effort != "default"), None)
         if effort_set is not None:

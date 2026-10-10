@@ -1,0 +1,157 @@
+# VLSI AI Agent Flow
+# Machine-readable definition of the flow. Source of truth for the orchestrator.
+#
+# Conventions:
+#   - Every step has a unique `id`.
+#   - `depends_on`: step ids that must PASS before this step starts.
+#     Steps whose dependencies are satisfied run in parallel.
+#   - `loopback`: where a failure is routed. Values: spec | rtl
+#       spec -> update the spec, then regenerate RTL
+#       rtl  -> fix RTL (stage rtl_gen), keeping the spec unchanged
+#   - Stages group steps; `type: parallel_lanes` means the lanes run concurrently.
+
+version: 1
+name: vlsi_ai_agent_flow
+
+spec:
+  id: spec
+  sections_used:
+    - Requirements
+    - Architecture
+    - Interfaces
+    - Clock/reset
+    - Parameters
+    - Function
+    - CSR
+    - Errors
+    - PPA
+    - RTL contract
+    - Verification
+    - Timing
+    - Traceability
+    - Decisions
+
+stages:
+  # ---------------------------------------------------------------
+  - id: rtl_gen
+    depends_on: [spec]
+    steps:
+      - id: rtl
+        depends_on: [spec]
+        loopback: [spec]
+      - id: compile
+        depends_on: [rtl]
+        loopback: [rtl]
+      # SDC, lint and smoke test run in parallel after compile
+      - id: sdc
+        depends_on: [compile]
+        loopback: [spec, rtl]
+      - id: basic_lint
+        depends_on: [compile]
+        loopback: [rtl]
+      - id: smoke_test
+        depends_on: [compile]
+        loopback: [spec, rtl]
+        steps:
+          - id: vtb
+            depends_on: [compile]
+          - id: sva
+            depends_on: [compile]
+          - id: basic_test
+            depends_on: [vtb, sva]
+    exit_when: [sdc, basic_lint, smoke_test]   # all pass -> tag RTL
+
+  # ---------------------------------------------------------------
+  - id: lanes
+    type: parallel_lanes
+    depends_on: [rtl_gen]
+    lanes:
+      - id: dv
+        steps:
+          - id: testplan
+            depends_on: [rtl_gen]
+            loopback: [spec]
+          # UVM env and formal run in parallel
+          - id: uvm_env
+            depends_on: [testplan]
+            loopback: [spec, rtl]
+          - id: formal
+            depends_on: [testplan]
+            loopback: [spec, rtl]
+          - id: sim_tests
+            depends_on: [uvm_env]
+            loopback: [spec, rtl]
+          - id: coverage_closure
+            depends_on: [sim_tests, formal]
+            loopback: [spec, rtl]
+
+      - id: synthesis
+        # FPGA then ASIC, in series within this lane
+        sub_lanes:
+          - id: fpga_synthesis
+            steps:
+              - id: fpga_synth
+                depends_on: [rtl_gen]
+                loopback: [rtl]
+              - id: timing_util_report
+                depends_on: [fpga_synth]
+                loopback: [spec, rtl]
+              - id: ppa_optimize
+                depends_on: [timing_util_report]
+                loopback: [spec, rtl]
+          - id: asic_synthesis
+            steps:
+              - id: asic_port
+                depends_on: [ppa_optimize]
+                loopback: [rtl]
+              - id: asic_synth
+                depends_on: [asic_port]
+                loopback: [spec, rtl]
+              - id: lec
+                depends_on: [asic_synth]
+                loopback: [rtl]
+
+      - id: sanity
+        steps:
+          # CDC and RDC run in parallel, each with its own waiver review
+          - id: cdc
+            depends_on: [rtl_gen]
+            loopback: [spec, rtl]
+          - id: cdc_waivers
+            depends_on: [cdc]
+            loopback: [spec]
+          - id: rdc
+            depends_on: [rtl_gen]
+            loopback: [spec, rtl]
+          - id: rdc_waivers
+            depends_on: [rdc]
+            loopback: [spec]
+          # GCA needs the ASIC netlist
+          - id: gca
+            depends_on: [asic_synth]
+            loopback: [spec, rtl]
+          - id: gca_waivers
+            depends_on: [gca]
+            loopback: [spec]
+
+  # ---------------------------------------------------------------
+  - id: convergence_gate
+    depends_on: [lanes]
+    pass_when:
+      - all_lanes_pass
+      - same_rtl_tag   # every lane validated the same RTL tag
+
+branching:
+  # When a lane fails, it opens its own fix branch so other lanes keep working.
+  on_lane_failure:
+    create_branch: true
+    branch_from: current_rtl_tag
+    steps:
+      - apply_loopback        # update spec and/or RTL per the failing step's `loopback`
+      - rerun: rtl_gen
+      - rerun: own_lane       # only the failing lane (synthesis lane re-runs FPGA + ASIC)
+    other_lanes: continue_on_current_tag
+  merge:
+    when: before_convergence_gate
+    result: new_rtl_tag
+    then: revalidate_all_lanes   # DV, FPGA, ASIC, sanity re-run on the merged tag

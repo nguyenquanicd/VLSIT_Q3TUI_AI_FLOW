@@ -309,6 +309,16 @@ def assistant_tools(host: AssistantHost) -> list[SdkMcpTool]:
     async def _step_setting(a):
         return ops.set_step_setting(a["step"], a["key"], a["value"], a.get("save", True))
 
+    for act in eng.flow.actions.values():  # the flow's own actions (add-ons), each a tool of its own
+
+        def _action_tool(act=act):
+            @add(act.name, act.help, _schema({k: ("string", d) for k, d in act.params.items()},
+                                            [k for k in act.params if k not in act.optional]))
+            async def _run(a):
+                return ops.run_action(act.name, **{k: str(v) for k, v in a.items()})
+
+        _action_tool()
+
     @add("get_skill", "Show a step's skill.md (settings, notes and the stage system prompts as `<!-- NAME -->` sections).",
          _schema({"step": ("string", "a step id")}, ["step"]))
     async def _get_skill(a):
@@ -447,7 +457,7 @@ def assistant_tools(host: AssistantHost) -> list[SdkMcpTool]:
         return "\n".join(f"{t.title}:\n" + "\n".join(
             f"  {s.path} = {json.dumps(vals[s.path])}  ({s.kind}{', or null' if s.nullable else ''}"
             + (f"; one of {[v for v, _ in s.choices]}" if s.choices else "") + f") — {s.help}" for s in t.settings)
-            for t in settings.TABS)
+            for t in ops.settings_tabs())
 
     @add("set_settings", "Change settings by path, e.g. {\"llm.effort\": \"low\", \"spec.self_review\": false}; use "
          "get_settings for paths and allowed values. save=true also writes them to the project's q3tui.yaml. "

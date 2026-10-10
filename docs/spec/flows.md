@@ -2,7 +2,7 @@
 
 Q3TUI's pipeline is a **flow**: a YAML / JSON file listing the steps (by *kind*), their order and dependencies and
 which review gates stop for a human. The built-in flows are the **VLSIT flow** (`vlsit`, the default;
-docs/spec/vlsit-flow.md) and `example` (a minimal folder flow, spec → parse, to copy); users can write their own. The TUI,
+docs/spec/vlsit-flow.md), the **FPGA flow** (`fpga`, docs/spec/fpga-flow.md) and `example` (a minimal folder flow, spec → parse, to copy); users can write their own. The TUI,
 `ops`, the assistant, the event bus, staleness, gates, questions and reset are the same for every flow.
 
 ## Flow files
@@ -76,6 +76,21 @@ Notes and pass conditions are part of the step's staleness. `view` / `pass` / `n
 markdown flows (`<name>.md`: `## <step id>` sections with `- key: value` lines, then the notes). To customise a built-in
 flow, copy its folder to `<project>/flows/` (it wins by name). Overrides without touching the flow: `pipeline.step_flow:
 {rtl: {pass: [...], notes: "..."}}` in `q3tui.yaml` or `/step`, through `Ops.set_step_setting`.
+
+## Add-ons
+
+Core (CLI, TUI, assistant, `Ops`, engine) knows no flow by name. A flow *folder* may bring files next to `FLOW.md`
+(`q3tui/addons.py`):
+
+| File | Brings |
+|---|---|
+| `addon.py` | `register(api)`: **actions** (`@api.action(name, help, {param: description}, optional=(…))` on `fn(ops, **params) -> str`; all params strings; a `ValueError` is a user error) and step kinds (`api.kind`) |
+| `tools.json` | default tool roles (`{"roles": {…}}`) for a role the flow needs and nothing configures — this flow only (`load_tools(cfg, root, flow)`); a project's roles are otherwise exactly its own |
+| `panels.py` | TUI panels of the flow's step kinds (`register_panel`); imported when the TUI opens the flow |
+
+Every action reaches the user three ways, all through `Ops.run_action`: an assistant tool per action, `q3tui act NAME key=value …`
+(no name: list them) and the TUI's `/act NAME key=value …`. A panel calls the same action for its keys. An action of the
+flow must not be needed by core: the FPGA flow's SDC editor (docs/spec/fpga-flow.md) is the example.
 
 ## Skill editor (TUI)
 

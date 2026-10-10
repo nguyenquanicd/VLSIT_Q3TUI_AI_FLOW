@@ -118,9 +118,9 @@ class SettingsScreen(ModalScreen[dict | None]):
     SettingsScreen #settings-error { color: $error; height: auto; }
     """
 
-    def __init__(self, values: dict, initial_tab: str | None = None, gates: list[tuple[str, str, str]] | None = None):
+    def __init__(self, values: dict, initial_tab: str | None = None, gates: list[tuple[str, str, str]] | None = None, tabs=None):
         super().__init__()
-        self.values, self.initial_tab = values, initial_tab
+        self.values, self.initial_tab, self.tabs = values, initial_tab, tabs
         self.gates = gates or []  # (step, title, mode) of the flow's steps: the Gates tab
 
     def compose(self) -> ComposeResult:
@@ -132,7 +132,7 @@ class SettingsScreen(ModalScreen[dict | None]):
         with Vertical(id="settings-box", classes="modal-box"):
             yield Label("Settings", classes="modal-title")
             with TabbedContent(initial=f"set-tab-{self.initial_tab}" if self.initial_tab else ""):
-                for tab in TABS:
+                for tab in self.tabs or TABS:
                     with TabPane(tab.title, id=f"set-tab-{tab.id}"):
                         with VerticalScroll():
                             for st in tab.settings:
@@ -206,10 +206,10 @@ class SettingsScreen(ModalScreen[dict | None]):
     def _read(self) -> dict:
         from textual.widgets import Select, SelectionList, Switch
 
-        from q3tui.core.settings import BY_PATH
+        from q3tui.core.settings import BY_PATH, TABS
 
         out = {}
-        for path, st in BY_PATH.items():
+        for path, st in {s.path: s for t in (self.tabs or TABS) for s in t.settings}.items():
             if st.hidden:
                 out[path] = self.values.get(path)
                 continue
@@ -229,11 +229,11 @@ class SettingsScreen(ModalScreen[dict | None]):
     def action_apply(self) -> None:
         from textual.widgets import Checkbox
 
-        from q3tui.core.settings import BY_PATH, coerce
+        from q3tui.core.settings import coerce, find
 
         raw = self._read()
         try:
-            values = {p: coerce(BY_PATH[p], v) for p, v in raw.items()}
+            values = {p: coerce(find(p), v) for p, v in raw.items()}
         except ValueError as exc:
             self.query_one("#settings-error", Static).update(str(exc))
             return
