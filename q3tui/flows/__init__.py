@@ -56,6 +56,10 @@ class Flow:
     version: int = 1
     path: Path | None = None
     session: str = "fresh"  # "flow": one persistent LLM session for the whole flow; "fresh": a session per stage
+    # what a flow folder's add-on files bring (q3tui/addons.py); empty for every other kind of flow
+    actions: dict = field(default_factory=dict)  # name -> addons.Action (the add-on's user actions)
+    tool_defaults: dict = field(default_factory=dict)  # role -> ToolRole data (<flow folder>/tools.json)
+    panels_file: Path | None = None  # <flow folder>/panels.py: the TUI panels of its step kinds
 
     def spec(self, step_id: str) -> StepSpec | None:
         return next((s for s in self.steps if s.id == step_id), None)
@@ -406,7 +410,13 @@ def list_flows(project_root: Path | None = None) -> dict[str, Path]:
 
 
 def load_flow(ref: str, project_root: Path | None = None) -> Flow:
-    return parse_flow(_read(find_flow(ref, project_root)), find_flow(ref, project_root))
+    path = find_flow(ref, project_root)
+    flow = parse_flow(_read(path), path)
+    if path.name == FOLDER_FILE:  # a flow folder may bring an add-on (addon.py, tools.json, panels.py)
+        from q3tui import addons
+
+        addons.attach(flow)
+    return flow
 
 
 def validate(flow: Flow, known_kinds: set[str] | None = None) -> list[str]:

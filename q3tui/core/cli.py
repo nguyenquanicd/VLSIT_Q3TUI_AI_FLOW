@@ -411,7 +411,13 @@ def tui(c: Ctx, read_only: bool) -> None:
     """Open the terminal UI (it watches, read-only, while another process runs the pipeline)."""
     from q3tui.tui.app import Q3TUIApp
 
-    Q3TUIApp(c.project, read_only=read_only).run()
+    while True:
+        result = Q3TUIApp(c.project, read_only=read_only).run()
+        if not (isinstance(result, tuple) and result[0] == "flow"):
+            return
+        # the TUI's flow switch (saved to q3tui.yaml): open the project again on that flow
+        c.overrides = {**(c.overrides or {}), "pipeline": {**((c.overrides or {}).get("pipeline") or {}), "flow": result[1]}}
+        c._project = None
 
 
 # -- flows -------------------------------------------------------------------------------------
@@ -420,6 +426,30 @@ def tui(c: Ctx, read_only: bool) -> None:
 @main.group("flow")
 def flow_group() -> None:
     """Flows: which steps run, in which order, with which gates (docs/spec/flows.md)."""
+
+
+@main.command("act")
+@click.argument("name", required=False)
+@click.argument("params", nargs=-1)
+@pass_ctx
+def act(c: Ctx, name: str | None, params: tuple[str, ...]) -> None:
+    """Run an action of the flow's add-on (`q3tui act` lists them): `q3tui act NAME key=value …`."""
+    from q3tui.core.ops import Ops
+
+    ops = Ops(c.engine())
+    if name is None:
+        for a in ops.actions().values():
+            console.print(f"[bold]{a.name}[/bold] {' '.join(k + ('=?' if k in a.optional else '=…') for k in a.params)}\n  {a.help}")
+        if not ops.actions():
+            console.print("[dim]this flow has no actions[/dim]")
+        return
+    kv = {}
+    for p in params:
+        k, sep, v = p.partition("=")
+        if not sep:
+            raise click.UsageError(f"'{p}': parameters are key=value")
+        kv[k] = v
+    console.print(ops.run_action(name, **kv))
 
 
 @flow_group.command("list")
@@ -498,7 +528,7 @@ def tools_check(c: Ctx) -> None:
     root = c.project.root
     flow = flows.load_flow(c.project.flow_ref(), root)
     try:
-        ts = T.load_tools(c.project.cfg, root)
+        ts = T.load_tools(c.project.cfg, root, flow)
     except T.ToolUnavailable as exc:
         raise click.ClickException(str(exc))
     bad = 0

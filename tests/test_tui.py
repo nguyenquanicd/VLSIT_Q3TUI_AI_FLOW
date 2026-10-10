@@ -591,7 +591,7 @@ async def test_flow_editor_saves_step_settings(app, tmp_path):
     from q3tui.tui.screens import FlowScreen
 
     async with app.run_test(size=(140, 45)) as pilot:
-        await pilot.press("F")
+        app.action_flow_editor()
         await pilot.pause()
         assert isinstance(app.screen, FlowScreen)
         app.screen.query_one("#flow-pass", TextArea).load_text("exists spec/spec.md")
@@ -609,7 +609,7 @@ async def test_flow_editor_adds_and_moves_steps_and_prompts_editor(app, tmp_path
     from q3tui.tui.screens import FlowScreen, PromptsScreen
 
     async with app.run_test(size=(140, 45)) as pilot:
-        await pilot.press("F")
+        app.action_flow_editor()
         await pilot.pause()
         scr = app.screen
         assert isinstance(scr, FlowScreen)

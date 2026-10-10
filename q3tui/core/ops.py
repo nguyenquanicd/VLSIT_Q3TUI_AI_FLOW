@@ -34,6 +34,29 @@ class Ops:
         if self.engine.running:
             raise EngineError(f"'{self.engine.running}' is running; stop it before you {what}")
 
+    # -- the flow's own actions (add-ons: q3tui/addons.py) ---------------------------------------------------
+
+    def actions(self) -> dict:
+        """name -> addons.Action of the current flow (empty for a flow without an add-on)."""
+        return self.engine.flow.actions
+
+    def run_action(self, name: str, **params: str) -> str:
+        """Run one of the flow's actions; the TUI's `/act`, `q3tui act` and the assistant all come here."""
+        act = self.actions().get(name)
+        if act is None:
+            raise EngineError(f"this flow has no action '{name}' (actions: {', '.join(self.actions()) or 'none'})")
+        missing = [p for p in act.params if p not in params and p not in act.optional]
+        if missing:
+            raise EngineError(f"action '{name}' needs {', '.join(missing)}")
+        unknown = [p for p in params if p not in act.params]
+        if unknown:
+            raise EngineError(f"action '{name}' has no parameter {', '.join(unknown)} (parameters: {', '.join(act.params) or 'none'})")
+        self._not_running(f"run '{name}'")
+        try:
+            return act.fn(self, **params)
+        except (ValueError, KeyError) as exc:
+            raise EngineError(str(exc)) from exc
+
     # -- spec template ---------------------------------------------------------------------
 
     def template(self) -> SpecTemplate:
@@ -226,7 +249,13 @@ class Ops:
         """Current values of every user-facing setting (see q3tui/core/settings.py)."""
         from q3tui.core import settings
 
-        return settings.current(self.project.cfg)
+        return settings.current(self.project.cfg, self.settings_tabs())
+
+    def settings_tabs(self):
+        """The settings tabs of this flow: its steps' model rows and (vlsit) per-step tabs."""
+        from q3tui.core import settings
+
+        return settings.tabs_for([(s.name, s.name) for s in self.engine.pipeline_steps])
 
     def apply_settings(self, changes: dict, save: bool = False) -> str:
         """Validate and apply {"llm.effort": "low", ...}; `save` also writes them to q3tui.yaml."""
@@ -238,7 +267,7 @@ class Ops:
         cfg = self.project.cfg
         values: dict = {}
         for path, raw in changes.items():
-            setting = settings.BY_PATH.get(path)
+            setting = settings.find(path)
             if setting is None:
                 raise EngineError(f"unknown setting '{path}' (known: {', '.join(settings.BY_PATH)})")
             try:
@@ -259,6 +288,9 @@ class Ops:
                 f"{'.'.join(str(x) for x in e['loc'])}: {e['msg']}" for e in exc.errors())) from None
         for path in values:
             section, leaf = path.rsplit(".", 1)
+            if section.startswith("llm.steps.") and not hasattr(cfg.llm.steps, section.rsplit(".", 1)[1]):
+                setattr(cfg.llm.steps, section.rsplit(".", 1)[1], settings.get_value(checked, section))  # another flow's step
+                continue
             setattr(settings.get_value(cfg, section), leaf, settings.get_value(checked, path))
         shown = ", ".join(f"{p} = {'none' if v is None else v}" for p, v in values.items())
         msg = f"settings: {shown}"

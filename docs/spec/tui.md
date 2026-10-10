@@ -224,7 +224,7 @@ approves when asked. Its conversation is resumed across TUI launches (Agent-SDK 
 id in `.q3tui/tui/session.json`; `/newchat` starts over).
 
 Slash commands complete as you type: the rest of the command or argument shows as grey ghost text (Tab or → accepts it) and a hint line above the input shows the usage and the valid values (steps, open question ids, models, efforts, files). Slash commands, which need no LLM: `/run [from] [to]`, `/stop`, `/approve <gate>|all [--force]`,
-`/change <step> <text>`, `/answer <id> <text>|all`, `/gate <step> [mode] [--session]`, `/gates`, `/flow`, `/skill`, `/prompts`,
+`/change <step> <text>`, `/answer <id> <text>|all`, `/gate <step> [mode] [--session]`, `/gates`, `/flow [name]` (switch flow; key `F`), `/flowedit` (the step editor), `/skill`, `/prompts`,
 `/step <step> view|pass|notes [text]`, `/reset <step>|all [--only]`, `/model [id] [--save]` (no id: the settings' LLM tab),
 `/effort <level>`, `/specreview`, `/autoapprove`, `/autoanswer`, `/autoconfirm` (`on|off [--save]`), `/parallel on|off
 [--multi-agent]`, `/settings [tab]`, `/status`, `/open <file>`, `/cost [reset]`, `/stats [reset]`, `/newchat`, `/help`, `/quit`.
