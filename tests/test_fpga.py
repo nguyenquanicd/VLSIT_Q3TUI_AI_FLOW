@@ -637,3 +637,53 @@ async def test_the_flow_map_picks_the_flow_of_a_box(proj):
         app.screen.pick(by_title["Spec"])  # a box of the vlsit flow
         await pilot.pause()
     assert app.return_value == ("flow", "vlsit")
+
+
+def _owner_flow(proj):
+    (proj.root / "flows").mkdir(exist_ok=True)
+    (proj.root / "flows" / "owner.yaml").write_text("name: owner\nsteps:\n  - {id: spec, kind: spec}\n  - {id: rtl, kind: reads, deps: [spec]}\n")
+
+
+async def test_a_human_gate_offers_the_handoff_and_the_switch(proj, monkeypatch):
+    from q3tui.llm import runtime
+    from q3tui.tui.app import Q3TUIApp
+    from q3tui.tui.screens import ConfirmScreen
+
+    _owner_flow(proj)
+    _fork(proj, timing_util_report=("options: {}", "options:\n  targets: {min_slack_ns: 5}"),
+          ppa_optimize=("handoff_flow: vlsit", "handoff_flow: owner"))
+    monkeypatch.setattr(runtime, "run_stage", PlanLLM(_plan()))
+    eng = Engine(proj)
+    await eng.run(yes=True)
+    offer = eng.by_name["ppa_optimize"].follow_up(eng)
+    assert offer["action"] == "ppa_handoff" and offer["switch"] == "owner" and "F1, F3" in offer["detail"]
+    assert eng.by_name["sdc"].follow_up(eng) is None
+    # nothing was handed off on a human gate; the TUI asks
+    assert Engine(proj, flow=flows.load_flow("owner", proj.root)).state.feedback.get("rtl") is None
+    app = Q3TUIApp(proj)
+    async with app.run_test(size=(150, 45)) as pilot:
+        await pilot.pause()
+        app._gate_choice("ppa_optimize", "approve")
+        await pilot.pause()
+        assert isinstance(app.screen, ConfirmScreen)
+        app.screen.dismiss(True)
+        await pilot.pause()
+    assert app.return_value == ("flow", "owner")
+    assert len(Engine(proj, flow=flows.load_flow("owner", proj.root)).state.feedback["rtl"]) == 1
+
+
+async def test_a_gate_that_approves_itself_hands_off_at_once(proj, monkeypatch):
+    from q3tui.llm import runtime
+
+    _owner_flow(proj)
+    _fork(proj, timing_util_report=("options: {}", "options:\n  targets: {min_slack_ns: 5}"),
+          ppa_optimize=("handoff_flow: vlsit", "handoff_flow: owner"))
+    skill = proj.root / "flows" / "fpga" / "ppa_optimize" / "md" / "skill.md"
+    skill.write_text(skill.read_text().replace("gate: human", "gate: auto"))
+    monkeypatch.setattr(runtime, "run_stage", PlanLLM(_plan()))
+    eng = Engine(proj)
+    await eng.run(yes=True)
+    other = Engine(proj, flow=flows.load_flow("owner", proj.root))
+    assert other.state.feedback["rtl"][0].startswith("[rtl:blk]") and "spec" in other.state.feedback
+    assert eng.by_name["ppa_optimize"].follow_up(eng) is None  # nothing left to offer
+    assert {v.name: v.status for v in Engine(proj).status()}["ppa_optimize"] == "done"

@@ -194,6 +194,11 @@ class StepDef:
         """Called when this step's review gate was approved (before downstream steps run): a step whose artifact records
         the gate (VLSIT: `gate_status`, `gate_2_approved`, …) writes it here. Its outputs are re-hashed afterwards."""
 
+    def follow_up(self, engine: "Engine") -> dict | None:
+        """What to offer the user right after they approved this step's gate (the TUI asks before it carries on):
+        `{"title", "detail", "action": a flow action to run on yes, "switch": a flow to move to afterwards (optional)}`; None: nothing."""
+        return None
+
     tool_roles: tuple[str, ...] = ()  # tool roles (tools.json) this kind runs: `q3tui flow check` lists them
 
     def on_rebase(self, engine: "Engine") -> None:

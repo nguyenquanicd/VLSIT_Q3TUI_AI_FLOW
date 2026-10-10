@@ -113,3 +113,32 @@ class Step(FpgaStep):
         ctx.emit("log", message=f"PPA round {base['iteration']}: {len(fixes)} fix(es) proposed"
                                 + (f" ({'; '.join(dropped)} dropped)" if dropped else "")
                                 + ("; review them, then hand them off (ppa_handoff)" if fixes else f" — {out.no_fix_reason or 'nothing helps'}"))
+
+    # -- after the gate ---------------------------------------------------------------------------------------------
+
+    def _pending(self, engine) -> list[dict]:
+        return [f for f in (self.read(engine, PLAN_JSON, {}) or {}).get("fixes", []) if not f.get("handed_off")]
+
+    def follow_up(self, engine):
+        """Human gate, fixes proposed: offer to hand them off and move to the flow that owns the RTL."""
+        pending = self._pending(engine)
+        if not pending:
+            return None
+        owner = str(self.options.get("handoff_flow") or "vlsit")
+        ids = ", ".join(f["id"] for f in pending)
+        return {"title": f"Hand {len(pending)} PPA fix(es) to '{owner}' and switch to it?",
+                "detail": f"{ids}: each becomes a scoped change request of the {owner} step that owns it (rtl / spec); run it there to "
+                          f"apply them, then come back and run {engine.flow.name} again. No keeps them proposed (hand off later with h).",
+                "action": "ppa_handoff", "switch": owner}
+
+    def on_approve(self, engine) -> None:
+        """A gate that approves itself (auto / auto_answer) cannot ask: the fixes go to the owner flow at once."""
+        if engine.gate_mode(self.name) not in ("auto", "auto_answer") or not self._pending(engine):
+            return
+        from q3tui.core.ops import Ops
+        from q3tui.flows.fpga.addon import _handoff
+
+        try:
+            _handoff(Ops(engine), "")
+        except Exception as exc:  # noqa: BLE001 - the approval stands; the fixes stay proposed
+            engine.bus.emit("warning", self.name, message=f"PPA: hand-off failed ({exc}); fixes stay proposed")

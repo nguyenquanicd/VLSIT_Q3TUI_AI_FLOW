@@ -80,6 +80,11 @@ owns the RTL and the spec (`options.handoff_flow`, default `vlsit`) as a change 
 `ppa_optimize` stale; they run again, the plan keeps what was tried, and after `options.max_iterations` (default 3) rounds with the
 target still missed the step fails and says so — raise the limit, or change the clock target / the spec.
 
+**At the gate.** The hand-off is offered where you decide, by the step's `follow_up` (a generic `StepDef` hook: what to offer right after
+a gate was approved). Human gate: approving with fixes pending asks "Hand N PPA fix(es) to 'vlsit' and switch to it?"; yes hands them off
+and moves the TUI to that flow (F does the same later), no keeps them proposed. A gate that approves itself (`auto`, `auto_answer`) cannot
+ask: `on_approve` hands the fixes off at once. Neither runs the other flow: its `rtl` (and the re-synthesis here afterwards) is yours to run.
+
 ## Not built yet
 
 Quartus and Yosys role presets for `fpga_synth`.
