@@ -77,6 +77,21 @@ markdown flows (`<name>.md`: `## <step id>` sections with `- key: value` lines, 
 flow, copy its folder to `<project>/flows/` (it wins by name). Overrides without touching the flow: `pipeline.step_flow:
 {rtl: {pass: [...], notes: "..."}}` in `q3tui.yaml` or `/step`, through `Ops.set_step_setting`.
 
+Prompts: a step's `<!-- NAME -->` sections can be replaced or extended by `<flow folder>/prompts/<step or stage>.md` (see "Flow editor and prompts").
+
+**What a flow can say in markdown, and what needs code.** Markdown (`FLOW.md`, `skill.md`, single-file flows): everything in the tables
+above, the prompts, notes, `view`, `pass`, `options`, `gate`. Code in the flow folder: the step's `StepDef` hooks in `step.py` and the
+add-on files.
+
+| `StepDef` hook (`<step>/step.py`) | When |
+|---|---|
+| `inputs` / `outputs` / `missing_input` / `run` | what it reads, writes, needs, does (staleness is the hash of the inputs) |
+| `on_approve(engine)` | its gate was approved (a gate that approves itself also calls it) |
+| `follow_up(engine)` | right after a human approval: `{title, detail, action, switch}` — the TUI asks, yes runs the flow's action and moves to flow `switch` (fpga: hand the PPA fixes to vlsit) |
+| `unattended(engine)` (async) | an unattended run (`auto_answer`) passed this step's gate: do what a person would do next; True runs the flow again from its start (bounded by the step's own limits) |
+| `on_reset` / `on_rebase` / `reset_files` / `refresh_reports` | after a reset, when the flow's files moved, what a reset deletes, reports re-derived from outputs |
+| `pending_reviews` / `open_questions` / `default_to_apply` | the step's reviewable items and questions |
+
 ## Add-ons
 
 Core (CLI, TUI, assistant, `Ops`, engine) knows no flow by name. A flow *folder* may bring files next to `FLOW.md`

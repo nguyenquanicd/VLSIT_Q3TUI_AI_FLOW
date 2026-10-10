@@ -113,3 +113,80 @@ class Step(FpgaStep):
         ctx.emit("log", message=f"PPA round {base['iteration']}: {len(fixes)} fix(es) proposed"
                                 + (f" ({'; '.join(dropped)} dropped)" if dropped else "")
                                 + ("; review them, then hand them off (ppa_handoff)" if fixes else f" — {out.no_fix_reason or 'nothing helps'}"))
+
+    # -- after the gate ---------------------------------------------------------------------------------------------
+
+    def _pending(self, engine) -> list[dict]:
+        return [f for f in (self.read(engine, PLAN_JSON, {}) or {}).get("fixes", []) if not f.get("handed_off")]
+
+    def follow_up(self, engine):
+        """Human gate, fixes proposed: offer to hand them off and move to the flow that owns the RTL."""
+        pending = self._pending(engine)
+        if not pending:
+            return None
+        owner = str(self.options.get("handoff_flow") or "vlsit")
+        ids = ", ".join(f["id"] for f in pending)
+        return {"title": f"Hand {len(pending)} PPA fix(es) to '{owner}' and switch to it?",
+                "detail": f"{ids}: each becomes a scoped change request of the {owner} step that owns it (rtl / spec); run it there to "
+                          f"apply them, then come back and run {engine.flow.name} again. No keeps them proposed (hand off later with h).",
+                "action": "ppa_handoff", "switch": owner}
+
+    def _self_approving(self, engine) -> str | None:
+        """"auto_answer" (the project's switch or this gate's mode), "auto", or None: a person decides."""
+        mode = engine.gate_mode(self.name)
+        if engine.project.cfg.pipeline.auto_answer or mode == "auto_answer":
+            return "auto_answer"
+        return "auto" if mode == "auto" else None
+
+    def _rtl_fixes(self, engine) -> list[str]:
+        """The ids of the pending RTL fixes: the only ones a self-approving gate hands off (a spec change is yours to accept)."""
+        return [f["id"] for f in self._pending(engine) if f.get("target") == "rtl"]
+
+    def on_approve(self, engine) -> None:
+        """A gate that approves itself in mode `auto` cannot ask: the RTL fixes go to the owner flow at once (`auto_answer` does it in
+        `unattended`, then also runs that flow's rtl step)."""
+        ids = self._rtl_fixes(engine)
+        if self._self_approving(engine) != "auto" or not ids:
+            return
+        from q3tui.core.ops import Ops
+        from q3tui.flows.fpga.addon import _handoff
+
+        try:
+            _handoff(Ops(engine), ",".join(ids))
+        except Exception as exc:  # noqa: BLE001 - the approval stands; the fixes stay proposed
+            engine.bus.emit("warning", self.name, message=f"PPA: hand-off failed ({exc}); fixes stay proposed")
+
+    async def unattended(self, engine) -> bool:
+        """Auto-answer: hand the RTL fixes to the owner flow, run its step (rtl), and run this flow again on the new RTL — the engine
+        loops (sdc, synthesis and the report are stale now) until the targets are met or `max_iterations` rounds are used."""
+        ids = self._rtl_fixes(engine)
+        left = [f["id"] for f in self._pending(engine) if f.get("target") != "rtl"]
+        if left:
+            engine.bus.emit("warning", self.name, message=f"PPA: {', '.join(left)} need a change of the spec: not handed off "
+                                                         "unattended (hand off with ppa_handoff, or accept it in the spec)")
+        if not ids:
+            return False
+        from q3tui import flows
+        from q3tui.core.ops import Ops
+        from q3tui.flows.fpga.addon import _handoff
+        from q3tui.pipeline.engine import Engine
+
+        try:
+            _handoff(Ops(engine), ",".join(ids))
+            plan = self.read(engine, PLAN_JSON, {}) or {}
+            steps = sorted({f["handed_off"]["step"] for f in plan.get("fixes", []) if f["id"] in ids and f.get("handed_off")})
+            owner = flows.load_flow(str(self.options.get("handoff_flow") or "vlsit"), engine.project.root)
+            for name in steps:
+                engine.bus.emit("log", self.name, message=f"PPA: running {owner.name}:{name} for the handed-off fixes…")
+                other = Engine(engine.project, engine.bus, flow=owner)
+                outcome = await other.run(only=name, yes=True)
+                engine.reload()  # (that run wrote the same pipeline.json, and dropped the run lock)
+                engine._take_lock()
+                if outcome != "complete":
+                    engine.bus.emit("warning", self.name, message=f"PPA: {owner.name}:{name} ended '{outcome}': not going on; "
+                                                                  "fix that, then run this flow again")
+                    return False
+        except Exception as exc:  # noqa: BLE001 - reported; the run ends here with the fixes handed off
+            engine.bus.emit("warning", self.name, message=f"PPA: the unattended hand-off stopped ({exc})")
+            return False
+        return True

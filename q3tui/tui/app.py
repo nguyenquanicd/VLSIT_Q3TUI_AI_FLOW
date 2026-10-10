@@ -579,7 +579,11 @@ class Q3TUIApp(App):
                 self._gate_shown = None
                 return
             self.refresh_all()
-            self.start_run()
+            offer = self.engine.by_name[step].follow_up(self.engine)
+            if offer:
+                self._offer_follow_up(offer)
+            else:
+                self.start_run()
         elif choice == "questions":
             self._select_step(step)
             self.action_show_tab("questions")
@@ -840,6 +844,25 @@ class Q3TUIApp(App):
 
         self.push_screen(ConfirmScreen(f"Approve {', '.join(pending)}?",
                                        "Open non-blocking questions take their default answers; steps with blocking questions are skipped."), done)
+
+    def _offer_follow_up(self, offer: dict) -> None:
+        """A step's offer after its approval (StepDef.follow_up): yes runs its action and, when it names a flow, moves there."""
+        def done(ok: bool | None) -> None:
+            if not ok:
+                self.start_run()
+                return
+            try:
+                if offer.get("action"):
+                    self.log_info(self.ops.run_action(offer["action"]))
+            except EngineError as exc:
+                self._log_line(Text(str(exc), "red"))
+                self.refresh_all()
+                return
+            self.refresh_all()
+            if offer.get("switch"):
+                self.action_switch_flow(offer["switch"])
+
+        self.push_screen(ConfirmScreen(offer["title"], offer.get("detail", "")), done)
 
     def _approve_all(self, force: bool = False) -> None:
         lines = self.engine.approve_all(force=force)
