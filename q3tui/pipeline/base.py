@@ -199,6 +199,13 @@ class StepDef:
         `{"title", "detail", "action": a flow action to run on yes, "switch": a flow to move to afterwards (optional)}`; None: nothing."""
         return None
 
+    async def unattended(self, engine: "Engine") -> bool:
+        """An unattended run (`pipeline.auto_answer` or this gate's mode `auto_answer`) finished this step and its gate passed: do the
+        follow-up that a person would do next (fpga: hand the RTL fixes to the owner flow and run its rtl step). True: run the flow
+        again from the start (what changed makes the earlier steps stale); False: carry on. Must be idempotent — it is called on
+        every pass over a finished step."""
+        return False
+
     tool_roles: tuple[str, ...] = ()  # tool roles (tools.json) this kind runs: `q3tui flow check` lists them
 
     def on_rebase(self, engine: "Engine") -> None:

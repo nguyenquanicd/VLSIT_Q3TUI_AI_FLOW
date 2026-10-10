@@ -82,8 +82,12 @@ target still missed the step fails and says so — raise the limit, or change th
 
 **At the gate.** The hand-off is offered where you decide, by the step's `follow_up` (a generic `StepDef` hook: what to offer right after
 a gate was approved). Human gate: approving with fixes pending asks "Hand N PPA fix(es) to 'vlsit' and switch to it?"; yes hands them off
-and moves the TUI to that flow (F does the same later), no keeps them proposed. A gate that approves itself (`auto`, `auto_answer`) cannot
-ask: `on_approve` hands the fixes off at once. Neither runs the other flow: its `rtl` (and the re-synthesis here afterwards) is yours to run.
+and moves the TUI to that flow (F does the same later), no keeps them proposed. A gate that approves itself cannot ask: in mode `auto` `on_approve` hands the *RTL* fixes off at once (the other flow is yours to run).
+In mode `auto_answer` (or `pipeline.auto_answer`) the run goes on by itself, through the generic `StepDef.unattended` hook: hand the RTL
+fixes off, run the owner flow's `rtl` step (`Engine(flow=owner).run(only="rtl", yes=True)`, its gates approved as the unattended run
+says), then run this flow again — the new RTL makes `sdc`, synthesis, the report and `ppa_optimize` stale — until the targets are met or
+`max_iterations` rounds are used (the step then fails and says so). A spec fix is never handed off unattended (it is your document):
+it stays proposed with a warning. The owner flow's later steps (tb, sva, verify, doc) are left stale for you to run.
 
 ## Not built yet
 

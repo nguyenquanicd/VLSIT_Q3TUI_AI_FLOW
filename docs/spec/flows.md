@@ -88,6 +88,7 @@ add-on files.
 | `inputs` / `outputs` / `missing_input` / `run` | what it reads, writes, needs, does (staleness is the hash of the inputs) |
 | `on_approve(engine)` | its gate was approved (a gate that approves itself also calls it) |
 | `follow_up(engine)` | right after a human approval: `{title, detail, action, switch}` — the TUI asks, yes runs the flow's action and moves to flow `switch` (fpga: hand the PPA fixes to vlsit) |
+| `unattended(engine)` (async) | an unattended run (`auto_answer`) passed this step's gate: do what a person would do next; True runs the flow again from its start (bounded by the step's own limits) |
 | `on_reset` / `on_rebase` / `reset_files` / `refresh_reports` | after a reset, when the flow's files moved, what a reset deletes, reports re-derived from outputs |
 | `pending_reviews` / `open_questions` / `default_to_apply` | the step's reviewable items and questions |
 

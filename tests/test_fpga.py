@@ -672,7 +672,7 @@ async def test_a_human_gate_offers_the_handoff_and_the_switch(proj, monkeypatch)
     assert len(Engine(proj, flow=flows.load_flow("owner", proj.root)).state.feedback["rtl"]) == 1
 
 
-async def test_a_gate_that_approves_itself_hands_off_at_once(proj, monkeypatch):
+async def test_a_gate_in_mode_auto_hands_off_the_rtl_fixes_only(proj, monkeypatch):
     from q3tui.llm import runtime
 
     _owner_flow(proj)
@@ -684,6 +684,41 @@ async def test_a_gate_that_approves_itself_hands_off_at_once(proj, monkeypatch):
     eng = Engine(proj)
     await eng.run(yes=True)
     other = Engine(proj, flow=flows.load_flow("owner", proj.root))
-    assert other.state.feedback["rtl"][0].startswith("[rtl:blk]") and "spec" in other.state.feedback
-    assert eng.by_name["ppa_optimize"].follow_up(eng) is None  # nothing left to offer
-    assert {v.name: v.status for v in Engine(proj).status()}["ppa_optimize"] == "done"
+    assert other.state.feedback["rtl"][0].startswith("[rtl:blk]")
+    assert "spec" not in other.state.feedback  # a spec change is not accepted on your behalf
+    assert [f["id"] for f in eng.by_name["ppa_optimize"]._pending(eng)] == ["F3"]
+    assert not (proj.root / "notes" / "rtl.txt").exists()  # (mode auto does not run the other flow)
+
+
+async def test_auto_answer_runs_the_owner_flow_and_goes_round_again(proj, monkeypatch):
+    from q3tui.llm import runtime
+
+    _owner_flow(proj)
+    _fork(proj, timing_util_report=("options: {}", "options:\n  targets: {min_slack_ns: 5}"),
+          ppa_optimize=("handoff_flow: vlsit", "handoff_flow: owner"))
+    skill = proj.root / "flows" / "fpga" / "ppa_optimize" / "md" / "skill.md"
+    skill.write_text(skill.read_text().replace("gate: human", "gate: auto_answer"))
+    fake = PlanLLM(_plan())
+    monkeypatch.setattr(runtime, "run_stage", fake)
+    # the owner's rtl run stands in for the RTL update: it changes the RTL, as the real one does
+    from tests.fakes import ReadsStep
+
+    plain = ReadsStep.run
+
+    async def run(self, ctx):
+        await plain(self, ctx)
+        if self.name == "rtl":
+            f = ctx.project.root / "src" / "rtl" / "blk.sv"
+            f.write_text(f.read_text() + "// pipelined\n")
+
+    monkeypatch.setattr(ReadsStep, "run", run)
+    eng = Engine(proj)
+    events = []
+    eng.bus.subscribe(lambda e: events.append(e))
+    outcome = await eng.run(yes=True)
+    assert (proj.root / "notes" / "rtl.txt").is_file()  # the owner flow's rtl ran
+    assert len(fake.stages) >= 2  # ppa_optimize was asked again after the round
+    assert any("running owner:rtl" in str(e.data.get("message", "")) for e in events)
+    assert any("need a change of the spec" in str(e.data.get("message", "")) for e in events)
+    assert outcome == "failed" and len(fake.stages) == 3  # bounded: three rounds, the targets stay missed with the stand-in
+    assert any("optimization round" in str(e.data.get("message", "")) for e in events if e.kind == "error")
