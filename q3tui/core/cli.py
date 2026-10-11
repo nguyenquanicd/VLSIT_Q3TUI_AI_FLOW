@@ -411,13 +411,18 @@ def tui(c: Ctx, read_only: bool) -> None:
     """Open the terminal UI (it watches, read-only, while another process runs the pipeline)."""
     from q3tui.tui.app import Q3TUIApp
 
-    while True:
-        result = Q3TUIApp(c.project, read_only=read_only).run()
-        if not (isinstance(result, tuple) and result[0] == "flow"):
-            return
-        # the TUI's flow switch (saved to q3tui.yaml): open the project again on that flow
-        c.overrides = {**(c.overrides or {}), "pipeline": {**((c.overrides or {}).get("pipeline") or {}), "flow": result[1]}}
-        c._project = None
+    from q3tui.tui import runner
+
+    try:
+        while True:
+            result = Q3TUIApp(c.project, read_only=read_only, background=True).run()
+            if not (isinstance(result, tuple) and result[0] == "flow"):
+                return
+            # the TUI's flow switch (saved to q3tui.yaml): open the project again on that flow; its background run goes on
+            c.overrides = {**(c.overrides or {}), "pipeline": {**((c.overrides or {}).get("pipeline") or {}), "flow": result[1]}}
+            c._project = None
+    finally:
+        runner.get().shutdown()  # the TUI is over: so is the run it started
 
 
 # -- flows -------------------------------------------------------------------------------------

@@ -367,11 +367,16 @@ class FixTab(DataTab):
     BINDINGS = [Binding("h", "handoff", "Hand off all"), Binding("H", "handoff_one", "Hand off this")]
 
     def _hand(self, ids: str) -> None:
+        app = self.capp
         try:
-            self.capp.log_info(self.capp.ops.run_action("ppa_handoff", ids=ids))
+            app.log_info(app.ops.run_action("ppa_handoff", ids=ids))
         except Exception as exc:  # noqa: BLE001
             self.notify_error(exc)
-        self.capp.refresh_all()
+            app.refresh_all()
+            return
+        app.refresh_all()
+        step = next((s for s in app.engine.steps if s.kind == "fpga.ppa_optimize"), None)  # on to the flow that got the change requests
+        app.action_switch_flow(str((step.options if step else {}).get("handoff_flow") or "vlsit"))
 
     def action_handoff(self) -> None:
         self._hand("")

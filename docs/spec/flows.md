@@ -99,7 +99,7 @@ Core (CLI, TUI, assistant, `Ops`, engine) knows no flow by name. A flow *folder*
 
 | File | Brings |
 |---|---|
-| `addon.py` | `register(api)`: **actions** (`@api.action(name, help, {param: description}, optional=(…))` on `fn(ops, **params) -> str`; all params strings; a `ValueError` is a user error) and step kinds (`api.kind`) |
+| `addon.py` | `register(api)`: **actions** (`@api.action(name, help, {param: description}, optional=(…))` on `fn(ops, **params) -> str`; all params strings; a `ValueError` is a user error) step kinds (`api.kind`) and step options for the Settings dialog (`api.setting(step, key, label, kind, help, choices, nullable)`: the step's own tab, the assistant's get/set_settings; applied to the live step, saved to `pipeline.step_options.<step>.<key>` in q3tui.yaml) |
 | `tools.json` | default tool roles (`{"roles": {…}}`) for a role the flow needs and nothing configures — this flow only (`load_tools(cfg, root, flow)`); a project's roles are otherwise exactly its own |
 | `panels.py` | TUI panels of the flow's step kinds (`register_panel`); imported when the TUI opens the flow |
 

@@ -122,6 +122,17 @@ updates, and the run stops again at the next review or blocking question. With
 auto-approve on, it runs through reviews too. (`q3tui approve` on the CLI only
 approves; run `q3tui run` to continue.)
 
+## Background runs and switching flows
+
+`q3tui tui` starts every run (`r`, the gate's approve-and-continue, the assistant's run tool) as a `q3tui run` process of its own
+(`tui/runner.py`; its output in `.q3tui/tui/run.log`), with the live model / effort and the auto-approve / auto-answer switches on its
+command line. The TUI follows it the way it follows any run of another process: `run.lock`, the latest `runs/*/events.jsonl` replayed
+into the activity log, the state re-read every 2 s, a badge `RUNNING in the background (pid N)`. So **a run goes on while you switch
+flows** (`F`, `/flow`: the TUI restarts on the other flow; the run is not cancelled), `x` stops it (Ctrl-C to the process: the step cancels
+and kills its tools), quitting the TUI asks first and then ends it (gently, then its whole process group). One run at a time per project.
+What a background run does not see: settings changed for this session only other than model / effort / the auto switches, and gate modes
+set for this session only. A TUI that is not started by `q3tui tui` (tests, embedding) runs in-process as before.
+
 ## Reset
 
 `R` asks what to reset: **(s)** the selected step and the steps after it, or **(a)** all
@@ -224,7 +235,7 @@ approves when asked. Its conversation is resumed across TUI launches (Agent-SDK 
 id in `.q3tui/tui/session.json`; `/newchat` starts over).
 
 Slash commands complete as you type: the rest of the command or argument shows as grey ghost text (Tab or → accepts it) and a hint line above the input shows the usage and the valid values (steps, open question ids, models, efforts, files). Slash commands, which need no LLM: `/run [from] [to]`, `/stop`, `/approve <gate>|all [--force]`,
-`/change <step> <text>`, `/answer <id> <text>|all`, `/gate <step> [mode] [--session]`, `/gates`, `/flow [name]` (switch flow; key `F`), `/flowedit` (the step editor), `/skill`, `/prompts`,
+`/change <step> <text>`, `/answer <id> <text>|all`, `/gate <step> [mode] [--session]`, `/gates`, `/flow [name]` (switch flow; key `F`; a running step is cancelled after you confirm), `/flowedit` (the step editor), `/skill`, `/prompts`,
 `/step <step> view|pass|notes [text]`, `/reset <step>|all [--only]`, `/model [id] [--save]` (no id: the settings' LLM tab),
 `/effort <level>`, `/specreview`, `/autoapprove`, `/autoanswer`, `/autoconfirm` (`on|off [--save]`), `/parallel on|off
 [--multi-agent]`, `/settings [tab]`, `/status`, `/open <file>`, `/cost [reset]`, `/stats [reset]`, `/newchat`, `/help`, `/quit`.

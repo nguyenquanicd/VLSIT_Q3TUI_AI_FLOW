@@ -565,6 +565,14 @@ async def test_the_rounds_are_bounded_and_remembered(proj, monkeypatch):
     assert plan["status"] == "limit" and len(plan["history"]) == 1 and plan["history"][0]["fixes"][0]["module"] == "blk"
     assert len(fake.stages) == 1  # the limit stopped a second LLM call
     assert {v.name: v.status for v in eng.status()}["ppa_optimize"] == "failed"
+    # a new clock is a new problem: its rounds are counted afresh (the earlier ones stay as context, with their clock)
+    Ops(eng).run_action("sdc_set", key="clock.i_clk.freq_mhz", value="300")
+    eng = Engine(proj)
+    await eng.run(yes=True)
+    assert len(fake.stages) == 2 and "round 1 at i_clk 200 MHz" in fake.stages[1].prompt
+    plan = json.loads((proj.schemas_dir / "ppa_plan.json").read_text())
+    assert plan["status"] == "proposed" and plan["clocks"] == "i_clk 300 MHz" and len(plan["history"]) == 1
+    assert {v.name: v.status for v in eng.status()}["ppa_optimize"] == "done"
 
 
 def test_settings_follow_the_flows_steps(proj):
@@ -722,3 +730,221 @@ async def test_auto_answer_runs_the_owner_flow_and_goes_round_again(proj, monkey
     assert any("need a change of the spec" in str(e.data.get("message", "")) for e in events)
     assert outcome == "failed" and len(fake.stages) == 3  # bounded: three rounds, the targets stay missed with the stand-in
     assert any("optimization round" in str(e.data.get("message", "")) for e in events if e.kind == "error")
+
+
+async def test_h_in_the_fixes_tab_moves_to_the_owner_flow(proj, monkeypatch):
+    from q3tui.llm import runtime
+    from q3tui.tui.app import Q3TUIApp
+
+    _owner_flow(proj)
+    _fork(proj, timing_util_report=("options: {}", "options:\n  targets: {min_slack_ns: 5}"),
+          ppa_optimize=("handoff_flow: vlsit", "handoff_flow: owner"))
+    monkeypatch.setattr(runtime, "run_stage", PlanLLM(_plan()))
+    await Engine(proj).run(yes=True)
+    app = Q3TUIApp(proj)
+    async with app.run_test(size=(150, 50)) as pilot:
+        await pilot.pause()
+        app._select_step("ppa_optimize")
+        await pilot.pause()
+        (tab,) = [w for w in app.query("FixTab")]
+        tab.action_handoff()
+        await pilot.pause()
+    assert app.return_value == ("flow", "owner")
+    assert len(Engine(proj, flow=flows.load_flow("owner", proj.root)).state.feedback["rtl"]) == 1
+
+
+async def test_switching_while_a_step_runs_asks_instead_of_refusing(proj):
+    from q3tui.tui.app import Q3TUIApp
+    from q3tui.tui.screens import ConfirmScreen
+
+    app = Q3TUIApp(proj)
+    async with app.run_test(size=(150, 45)) as pilot:
+        await pilot.pause()
+
+        class Busy:
+            is_running = True
+
+        app._pipeline_worker = Busy()
+        app.engine.running = "fpga_synth"
+        app.action_switch_flow("vlsit")
+        await pilot.pause()
+        assert isinstance(app.screen, ConfirmScreen) and app.return_value is None
+        app.screen.dismiss(False)  # no: stays
+        await pilot.pause()
+        assert app.return_value is None
+        app.action_switch_flow("vlsit")
+        await pilot.pause()
+        app.screen.dismiss(True)
+        await pilot.pause()
+        app.engine.running = None
+    assert app.return_value == ("flow", "vlsit")
+
+
+async def test_targets_met_on_changed_rtl_run_the_owners_functional_check(proj, monkeypatch):
+    from q3tui.llm import runtime
+
+    (proj.root / "flows").mkdir(exist_ok=True)
+    (proj.root / "flows" / "owner.yaml").write_text(
+        "name: owner\nsteps:\n  - {id: spec, kind: spec}\n  - {id: rtl, kind: reads, deps: [spec]}\n"
+        "  - {id: tb, kind: reads, deps: [rtl]}\n  - {id: verify, kind: reads, deps: [tb]}\n")
+    _fork(proj, timing_util_report=("options: {}", "options:\n  targets: {min_slack_ns: 5}"),
+          ppa_optimize=("handoff_flow: vlsit", "handoff_flow: owner"))
+    fake = PlanLLM(_plan())
+    monkeypatch.setattr(runtime, "run_stage", fake)
+    eng = Engine(proj)
+    await eng.run(yes=True)  # round 1: proposals
+    Ops(eng).run_action("ppa_handoff", ids="F1")
+    await Engine(proj, flow=flows.load_flow("owner", proj.root)).run(only="rtl", yes=True)  # (the owner's rtl, as its user ran it)
+    (proj.root / "src" / "rtl" / "blk.sv").write_text(RTL.replace("o_r = 1'b1", "o_r = 1'b0"))  # ... and it changed the RTL
+    flow_dir = proj.root / "flows" / "fpga"
+    t = flow_dir / "timing_util_report" / "md" / "skill.md"
+    t.write_text(t.read_text().replace("targets: {min_slack_ns: 5}", "targets: {}"))  # now the targets are met
+    skill = flow_dir / "ppa_optimize" / "md" / "skill.md"
+    # human gate: offers the switch to the owner flow, nothing runs
+    eng = Engine(proj)
+    await eng.run(yes=True)
+    assert json.loads((proj.schemas_dir / "ppa_plan.json").read_text())["status"] == "met"
+    offer = eng.by_name["ppa_optimize"].follow_up(eng)
+    assert offer and offer["switch"] == "owner" and "action" not in offer and "tb → verify" in offer["detail"]
+    assert not (proj.root / "notes" / "verify.txt").exists()
+    # auto_answer: it runs the owner's tb → verify itself, once for this RTL, and never goes back into the PPA loop
+    skill.write_text(skill.read_text().replace("gate: human", "gate: auto_answer"))
+    eng = Engine(proj)
+    events = []
+    eng.bus.subscribe(lambda e: events.append(str(e.data.get("message", ""))))
+    await eng.run(yes=True)
+    assert (proj.root / "notes" / "tb.txt").is_file() and (proj.root / "notes" / "verify.txt").is_file()
+    assert any("running owner:tb → verify" in m for m in events) and any("owner tb → verify ended 'complete'" in m for m in events)
+    assert len(fake.stages) == 1  # (no further PPA round)
+    assert eng.by_name["ppa_optimize"].follow_up(eng) is None  # this RTL is verified: nothing left to offer
+    n = len(events)
+    await Engine(proj).run(yes=True)  # again: not run twice for the same RTL
+    assert (proj.root / "notes" / "verify.txt").read_text() == "verify: 1 input(s)\n" and len(events) == n
+
+
+class StubRunner:
+    """A background run that is a process which holds run.lock and sleeps (stands in for `q3tui run`)."""
+
+    def __new__(cls):
+        from q3tui.tui.runner import Runner
+
+        class Stub(Runner):
+            def command(self, project, flow, **kw):
+                code = ("import json, os, time, pathlib\n"
+                        f"p = pathlib.Path({str(project.state_dir)!r}); p.mkdir(exist_ok=True)\n"
+                        "(p / 'run.lock').write_text(json.dumps({'pid': os.getpid(), 'started': '2026-01-01T00:00:00'}))\n"
+                        "time.sleep(60)\n")
+                return [sys.executable, "-c", code]
+
+        return Stub()
+
+
+async def test_a_background_run_survives_a_flow_switch_and_stops_with_x(proj):
+    import asyncio
+
+    from q3tui.tui.app import Q3TUIApp
+    from q3tui.tui.screens import ConfirmScreen
+
+    runner = StubRunner()
+    try:
+        app = Q3TUIApp(proj, background=True, runner=runner)
+        async with app.run_test(size=(150, 45)) as pilot:
+            await pilot.pause()
+            msg = app.start_run()
+            assert msg.startswith("run started in the background") and runner.alive()
+            assert "already going on in the background" in app.start_run()  # one run at a time
+            for _ in range(50):  # the process takes the lock; the TUI notices and follows it
+                await asyncio.sleep(0.2)
+                if app.engine.other_run():
+                    break
+            assert app.engine.other_run()["pid"] == runner.pid
+            app.action_switch_flow("vlsit")  # no confirmation, no cancel: the run is not this TUI's
+            await pilot.pause()
+        assert app.return_value == ("flow", "vlsit") and runner.alive()
+        # the next TUI (the other flow) sees it, `x` stops it, quitting asks first
+        app2 = Q3TUIApp(proj, background=True, runner=runner)
+        async with app2.run_test(size=(150, 45)) as pilot:
+            await pilot.pause()
+            assert "stopping the background run" in app2.stop_any()
+            for _ in range(50):
+                await asyncio.sleep(0.2)
+                if not runner.alive():
+                    break
+            assert not runner.alive()
+        runner.child = None
+        runner.start(proj, "fpga")
+        app3 = Q3TUIApp(proj, background=True, runner=runner)
+        async with app3.run_test(size=(150, 45)) as pilot:
+            await pilot.pause()
+            await app3.action_quit()
+            await pilot.pause()
+            assert isinstance(app3.screen, ConfirmScreen)
+            app3.screen.dismiss(False)
+            await pilot.pause()
+            assert runner.alive()
+    finally:
+        runner.shutdown(wait=5)
+    assert not runner.alive()
+
+
+def test_the_background_command_carries_the_live_settings(proj):
+    from q3tui.tui.runner import Runner
+
+    proj.cfg.llm.model, proj.cfg.llm.effort = "claude-sonnet-5-5", "low"
+    proj.cfg.pipeline.auto_answer = True
+    cmd = Runner().command(proj, "fpga", start="sdc", stop="fpga_synth", regenerate={"sdc"})
+    assert cmd[3:7] == ["-C", str(proj.root), "--flow", "fpga"] and cmd[cmd.index("--model") + 1] == "claude-sonnet-5-5"
+    assert cmd[cmd.index("--effort") + 1] == "low" and cmd[cmd.index("run"):][:7] == ["run", "--from", "sdc", "--to", "fpga_synth", "--regenerate", "sdc"]
+    assert "--auto-answer" in cmd
+
+
+async def test_the_real_background_run_is_a_q3tui_run(proj):
+    import asyncio
+
+    from q3tui.tui.app import Q3TUIApp
+    from q3tui.tui.runner import Runner
+
+    runner = Runner()
+    app = Q3TUIApp(proj, background=True, runner=runner)
+    try:
+        async with app.run_test(size=(150, 45)) as pilot:
+            await pilot.pause()
+            assert app.start_run().startswith("run started in the background")
+            for _ in range(150):  # (fake Vivado: a few seconds)
+                await asyncio.sleep(0.2)
+                if not runner.alive():
+                    break
+            assert not runner.alive() and runner.child.returncode == 0
+            await asyncio.sleep(2.5)  # the TUI sees the end: it re-reads the state the run wrote
+            views = {v.name: v for v in app.engine.status()}  # (it stopped at the report's review gate, as `q3tui run` does)
+            assert [views[n].status for n in ("sdc", "fpga_synth", "timing_util_report")] == ["done"] * 3
+            assert views["timing_util_report"].gate == "open"
+    finally:
+        runner.shutdown(wait=5)
+
+
+async def test_the_ppa_options_are_in_the_settings_dialog(proj):
+    from textual.widgets import Input, TabPane
+
+    from q3tui.core import settings as settings_mod
+    from q3tui.tui.app import Q3TUIApp
+
+    ops = Ops(Engine(proj))
+    path = "pipeline.step_options.ppa_optimize.max_iterations"
+    assert ops.settings()[path] == 3  # (the flow file's value)
+    msg = ops.apply_settings({path: "6", "pipeline.step_options.ppa_optimize.verify_after": "off",
+                              "pipeline.step_options.ppa_optimize.goal": ""}, save=True)
+    assert path in msg and ops.engine.by_name["ppa_optimize"].options["max_iterations"] == 6  # the live step
+    assert (proj.root / "q3tui.yaml").read_text().count("max_iterations: 6") == 1  # saved
+    assert Ops(Engine(Project.open(proj.root))).settings()[path] == 6  # the next start
+    with pytest.raises(EngineError, match="whole number"):
+        ops.apply_settings({path: "many"})
+    assert any(s.path == path for t in ops.settings_tabs() for s in t.settings) and settings_mod.is_step_option(path)
+    app = Q3TUIApp(proj)
+    async with app.run_test(size=(150, 45)) as pilot:
+        await pilot.pause()
+        app._select_step("ppa_optimize")
+        app.action_settings()
+        await pilot.pause()
+        assert "set-tab-ppa_optimize" in {p.id for p in app.screen.query(TabPane)}  # the selected step's tab opens
+        assert app.screen.query_one("#set-pipeline-step_options-ppa_optimize-max_iterations", Input).value == "6"
