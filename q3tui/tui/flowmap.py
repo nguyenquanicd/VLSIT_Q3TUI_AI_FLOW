@@ -113,6 +113,9 @@ class FlowMapScreen(ModalScreen[str | None]):
                 yield Static("▼", classes="arrow")
                 with self._g("Convergence gate", None):
                     yield Box("same RTL tag, all lanes pass")
+                yield Static("", classes="arrow")
+                with self._g("Project settings", "project"):  # (not a stage of the design flow: the project's own settings, tools and libraries)
+                    yield Box("project · tools · libraries")
             yield Static("Click a box (or Tab, Enter) to work on its flow · bright = developed, faded = not yet · "
                          "double border = current · [#e0795a]↩[/] loops back to that stage · Esc", id="map-hint")
 

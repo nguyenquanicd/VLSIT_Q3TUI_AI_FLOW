@@ -35,11 +35,19 @@ class Pdk:
 
 
 def _corners(files: list[str]) -> tuple[tuple[str, str], ...]:
-    """(label, path): the label is the file name without what all the files share in front (gf180mcu_fd_sc_mcu7t5v0__tt_025C_5v00 → tt_025C_5v00)."""
+    """(label, path): the label is the file name without what the files share in front (gf180mcu_fd_sc_mcu7t5v0__tt_025C_5v00 → tt_025C_5v00). The
+    shared part is taken from the biggest family of names (those that start alike): a stray file in the folder (a tech.db) keeps its own name."""
     stems = [Path(f).stem for f in files]
-    prefix = os.path.commonprefix(stems) if len(stems) > 1 else ""
-    prefix = prefix[: max(prefix.rfind("_") + 1, 0)] if prefix else ""
-    return tuple(sorted(((s[len(prefix):] or s, f) for s, f in zip(stems, files)), key=lambda x: x[0]))
+    prefix = ""
+    if len(stems) > 1:
+        fams: dict[str, list[str]] = {}
+        for st in stems:
+            fams.setdefault(st.split("_")[0], []).append(st)
+        fam = max(fams.values(), key=len)
+        if len(fam) > 1:
+            common = os.path.commonprefix(fam)
+            prefix = common[: max(common.rfind("_") + 1, 0)]
+    return tuple(sorted(((st[len(prefix):] if prefix and st.startswith(prefix) and st != prefix else st, f) for st, f in zip(stems, files)), key=lambda x: x[0]))
 
 
 def _read(path: Path) -> dict:
@@ -49,20 +57,31 @@ def _read(path: Path) -> dict:
         return {}
 
 
-def catalog(project=None) -> list[Pdk]:
-    """The technologies with files on this machine: the flow's `pdks.json`, then `<project>/pdks.json` (same id replaces; `"only": true` hides
-    the built-in ones)."""
+def files_of(entry: dict) -> list[str]:
+    """The `.db` files an entry's globs (and `include`) match on this machine."""
+    files = sorted({f for g in entry.get("globs", []) for f in glob.glob(os.path.expandvars(os.path.expanduser(g)))})
+    if entry.get("include"):
+        rx = re.compile(entry["include"])
+        files = [f for f in files if rx.search(Path(f).name)]
+    return files
+
+
+def entries(project=None) -> list[dict]:
+    """Every entry of the catalog as written — the flow's `pdks.json`, then `<project>/pdks.json` (same id replaces; `"only": true` hides the
+    built-in ones) — with `source` ("built-in" | "project") and the files it matches here, also when there are none (a view shows those)."""
     mine = _read(project.root / "pdks.json") if project is not None else {}
-    entries: dict[str, dict] = {}
+    merged: dict[str, dict] = {}
     if not mine.get("only"):
-        entries.update({e["id"]: e for e in _read(BUILTIN).get("pdks", []) if e.get("id")})
-    entries.update({e["id"]: e for e in mine.get("pdks", []) if e.get("id")})
+        merged.update({e["id"]: {**e, "source": "built-in"} for e in _read(BUILTIN).get("pdks", []) if e.get("id")})
+    merged.update({e["id"]: {**e, "source": "project"} for e in mine.get("pdks", []) if e.get("id")})
+    return [{**e, "files": files_of(e)} for e in merged.values()]
+
+
+def catalog(project=None) -> list[Pdk]:
+    """The technologies with files on this machine (`entries` that match something)."""
     out = []
-    for e in entries.values():
-        files = sorted({f for g in e.get("globs", []) for f in glob.glob(os.path.expandvars(os.path.expanduser(g)))})
-        if e.get("include"):
-            rx = re.compile(e["include"])
-            files = [f for f in files if rx.search(Path(f).name)]
+    for e in entries(project):
+        files = e["files"]
         if files:
             out.append(Pdk(e["id"], str(e.get("title") or e["id"]), int(e.get("node_nm") or 0), str(e.get("foundry") or ""), _corners(files), str(e.get("default") or ""), float(e.get("probe_ns") or 0)))
     return sorted(out, key=lambda p: (-p.node_nm, p.id))

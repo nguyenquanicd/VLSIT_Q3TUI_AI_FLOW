@@ -412,6 +412,16 @@ class EditScreen(ModalScreen[dict | None]):
             out[key] = w.text if isinstance(w, TextArea) else (w.value if isinstance(w, (Input, Select)) else None)
         return out
 
+    def set_value(self, key: str, value: str) -> None:
+        """Put a text into an Input / TextArea field (a helper button fills the form: a scan names the technology)."""
+        from textual.widgets import TextArea
+
+        w = self.query_one(f"#f-{key}")
+        if isinstance(w, TextArea):
+            w.text = value
+        elif isinstance(w, Input):
+            w.value = value
+
     def set_choices(self, key: str, options: list[str], value: str | None = None) -> None:
         """Replace the options of a choice field (and pick `value`, else the first)."""
         from textual.widgets import Select

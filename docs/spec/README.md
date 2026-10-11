@@ -11,6 +11,7 @@ configuration, write the RTL and a testbench independently, add assertions, veri
 | [vlsit-flow.md](vlsit-flow.md) | The VLSIT RTL flow (the default): steps, artifacts, RTM, review API |
 | [flows.md](flows.md) | Flows as data (YAML / folders / markdown), gate modes, sessions, tools by role (`tools.json`), the TUI picker and panels |
 | [fpga-flow.md](fpga-flow.md) | The FPGA flow: SDC, Vivado out-of-context synthesis, timing / utilization report (PPA estimation) |
+| [project-flow.md](project-flow.md) | The project settings flow: the project's settings, the tools (found or not, modules), the ASIC libraries (add one by scanning a folder) |
 | [asic-flow.md](asic-flow.md) | The ASIC flow: port check, SDC, Design Compiler synthesis (netlist, area / timing / power), Formality equivalence check |
 | [project-layout.md](project-layout.md) | Files Q3TUI reads/writes, pipeline state, staleness, entry points |
 | [tui.md](tui.md) | Terminal UI: pipeline dashboard, gates, questions, assistant |
