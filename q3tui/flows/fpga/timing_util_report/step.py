@@ -23,7 +23,9 @@ class Step(FpgaStep):
 
     def inputs(self, engine) -> list[Path]:
         rep = self.reports_dir(engine)
-        return [self.artifact(engine, SYNTH_JSON), *(rep / n for n in ("utilization.rpt", "timing.rpt", "check_timing.rpt", "paths.rpt"))]
+        # (the report states the clocks of sdc.json: a changed clock is a new report, even when the tool printed the same text)
+        return [self.artifact(engine, SYNTH_JSON), sdcmod.config_path(engine.project),
+                *(rep / n for n in ("utilization.rpt", "timing.rpt", "check_timing.rpt", "paths.rpt"))]
 
     def outputs(self, engine) -> list[Path]:
         p = self.artifact(engine, PPA_JSON)

@@ -6,4 +6,5 @@ gate: none
 options:
   fpga:
     part: xc7k325tffg900-2
+view: [fpga/reports/*.rpt]
 ---

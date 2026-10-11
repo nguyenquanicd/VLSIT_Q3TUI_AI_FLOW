@@ -73,12 +73,32 @@ module list, and what earlier rounds tried, and returns a `PpaPlan`: an analysis
 module, `spec`: the target cannot be met by RTL changes), the change, its evidence in the report, the expected effect and the risk.
 Fixes naming an unknown module are dropped. It writes no RTL.
 
-**Hand-off** (`ppa_handoff`, the Fixes tab's `h` / `H`, `q3tui act ppa_handoff [ids=F1,F2]`, the assistant): each fix goes to the flow that
+**Hand-off** (`ppa_handoff`, the Fixes tab's `h` / `H` (they also move the TUI to that flow), `q3tui act ppa_handoff [ids=F1,F2]`, the assistant): each fix goes to the flow that
 owns the RTL and the spec (`options.handoff_flow`, default `vlsit`) as a change request of its step: `[rtl:<module>] PPA (<part>): …` for
 `rtl` (the scoped syntax: only that module is regenerated), a plain request for `spec`. That flow's own rules apply when you run it
 (`q3tui --flow vlsit run`: the RTL update, then the checks of its later steps). The new RTL makes this flow's synthesis, report and
 `ppa_optimize` stale; they run again, the plan keeps what was tried, and after `options.max_iterations` (default 3) rounds with the
-target still missed the step fails and says so — raise the limit, or change the clock target / the spec.
+target still missed the step fails and says so — raise the limit, or change the clock target / the spec. The count is per SDC: change
+the clock (or any constraint) and the rounds start afresh; the earlier ones stay in the plan and in the prompt as "already tried (at 250 MHz)".
+
+**At the gate.** The hand-off is offered where you decide, by the step's `follow_up` (a generic `StepDef` hook: what to offer right after
+a gate was approved). Human gate: approving with fixes pending asks "Hand N PPA fix(es) to 'vlsit' and switch to it?"; yes hands them off
+and moves the TUI to that flow (F does the same later), no keeps them proposed. A gate that approves itself cannot ask: in mode `auto` `on_approve` hands the *RTL* fixes off at once (the other flow is yours to run).
+In mode `auto_answer` (or `pipeline.auto_answer`) the run goes on by itself, through the generic `StepDef.unattended` hook: hand the RTL
+fixes off, run the owner flow's `rtl` step (`Engine(flow=owner).run(only="rtl", yes=True)`, its gates approved as the unattended run
+says), then run this flow again — the new RTL makes `sdc`, synthesis, the report and `ppa_optimize` stale — until the targets are met or
+`max_iterations` rounds are used (the step then fails and says so). A spec fix is never handed off unattended (it is your document):
+it stays proposed with a warning. The owner flow's later steps (tb, sva, verify, doc) are left stale for you to run.
+
+**Function after PPA.** The fixes change the RTL, and nothing in this flow checks that it still works. When the targets are met on RTL that
+handed-off fixes changed (`options.verify_after`, default true; once per RTL), the owner flow's functional check runs on it: unattended
+(`auto_answer`) the step runs `options.verify_from` → `verify_to` (default `tb` → `verify`) there itself; at a human gate it offers to
+switch to that flow (run it there with `r`). If function broke, that flow's own fix loop repairs the RTL — the PPA flow is not told and does
+not run again on the repaired RTL (the two are unrelated); the next run of this flow re-synthesizes it. A run that ends anything but complete
+(for example the owner's upstream steps are not done) leaves a warning that says so.
+
+**Settings.** The `ppa_optimize` options are in Settings (`,`, opens on the step's tab): Max PPA rounds, Optimize when, Goal, Hand fixes to flow,
+Verify after PPA — also `q3tui` assistant `set_settings`, or `pipeline.step_options.ppa_optimize` in q3tui.yaml.
 
 ## Not built yet
 

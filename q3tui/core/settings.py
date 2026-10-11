@@ -119,22 +119,34 @@ TABS: tuple[Tab, ...] = (
 _STEP_TABS = ("spec", "rtl", "tb")  # per-step settings tabs (vlsit config sections), shown when the flow has that step
 
 
-def tabs_for(steps: list[tuple[str, str]] | None = None) -> tuple[Tab, ...]:
-    """The dialog's tabs for a flow whose steps are `(id, label)`; None = the vlsit steps."""
+STEP_OPTIONS = "pipeline.step_options."  # + <step>.<key>: a step's option, shown by a flow's add-on (addons.AddonAPI.setting)
+
+
+def is_step_option(path: str) -> bool:
+    return path.startswith(STEP_OPTIONS) and path.count(".") == 3
+
+
+def tabs_for(steps: list[tuple[str, str]] | None = None, extra=()) -> tuple[Tab, ...]:
+    """The dialog's tabs for a flow whose steps are `(id, label)`; None = the vlsit steps. `extra`: the flow's step options."""
     rows = list(steps) if steps is not None else [(k, l) for k, l in STEP_LABELS if k != "assistant"]
     have = {k for k, _ in rows}
     keep = [t for t in TABS if t.id != "models" and (t.id not in _STEP_TABS or t.id in have)]
     if steps is not None:  # vlsit-only general settings (rtl ‖ tb) only where the flow has those steps
         keep = [Tab(t.id, t.title, tuple(x for x in t.settings if not x.path.startswith("pipeline.parallel") or {"rtl", "tb"} <= have))
                 if t.id == "general" else t for t in keep]
+    for step in dict.fromkeys(x.path.split(".")[2] for x in extra):  # a flow's step options: the step's own tab
+        keep.append(Tab(step, step, tuple(x for x in extra if x.path.split(".")[2] == step)))
     models = Tab("models", "Models per step", tuple(x for k, l in [*rows, ("assistant", "Assistant")] for x in step_model_settings(k, l)))
     return (*keep, models)
 
 
-def find(path: str) -> Setting | None:
-    """The setting at `path`; llm.steps.<any step>.model|effort exist for every step of every flow."""
+def find(path: str, extra=()) -> Setting | None:
+    """The setting at `path`; llm.steps.<any step>.model|effort exist for every step of every flow; `extra`: the flow's step options."""
     if path in BY_PATH:
         return BY_PATH[path]
+    for x in extra:
+        if x.path == path:
+            return x
     parts = path.split(".")
     if len(parts) == 4 and parts[:2] == ["llm", "steps"] and parts[3] in ("model", "effort"):
         return step_model_settings(parts[2], parts[2])[0 if parts[3] == "model" else 1]
@@ -149,6 +161,9 @@ GATE_MODES = (("human", "human — stops for your review"), ("auto", "auto — a
 def get_value(cfg, path: str) -> Any:
     obj = cfg
     for part in path.split("."):
+        if isinstance(obj, dict) or obj is None:  # pipeline.step_options.<step>.<key>: absent = the flow file's value (see Ops.settings)
+            obj = None if obj is None else obj.get(part)
+            continue
         if not hasattr(obj, part) and path.startswith("llm.steps."):  # a step of another flow, no override set yet
             from q3tui.core.config import StepLLM
 

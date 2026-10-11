@@ -60,6 +60,7 @@ class Flow:
     actions: dict = field(default_factory=dict)  # name -> addons.Action (the add-on's user actions)
     tool_defaults: dict = field(default_factory=dict)  # role -> ToolRole data (<flow folder>/tools.json)
     panels_file: Path | None = None  # <flow folder>/panels.py: the TUI panels of its step kinds
+    settings: list = field(default_factory=list)  # settings.Setting of step options the add-on shows in the Settings dialog
 
     def spec(self, step_id: str) -> StepSpec | None:
         return next((s for s in self.steps if s.id == step_id), None)

@@ -249,13 +249,23 @@ class Ops:
         """Current values of every user-facing setting (see q3tui/core/settings.py)."""
         from q3tui.core import settings
 
-        return settings.current(self.project.cfg, self.settings_tabs())
+        vals = settings.current(self.project.cfg, self.settings_tabs())
+        for path in vals:
+            if settings.is_step_option(path):
+                vals[path] = self._step_option(path)
+        return vals
+
+    def _step_option(self, path: str):
+        """A step option as the live step has it (the flow file's value, q3tui.yaml's on top)."""
+        _, _, step, key = path.rsplit(".", 3)
+        st = self.engine.by_name.get(step)
+        return None if st is None else st.options.get(key)
 
     def settings_tabs(self):
-        """The settings tabs of this flow: its steps' model rows and (vlsit) per-step tabs."""
+        """The settings tabs of this flow: its steps' model rows, (vlsit) per-step tabs, the add-on's step options."""
         from q3tui.core import settings
 
-        return settings.tabs_for([(s.name, s.name) for s in self.engine.pipeline_steps])
+        return settings.tabs_for([(s.name, s.name) for s in self.engine.pipeline_steps], self.engine.flow.settings)
 
     def apply_settings(self, changes: dict, save: bool = False) -> str:
         """Validate and apply {"llm.effort": "low", ...}; `save` also writes them to q3tui.yaml."""
@@ -267,7 +277,7 @@ class Ops:
         cfg = self.project.cfg
         values: dict = {}
         for path, raw in changes.items():
-            setting = settings.find(path)
+            setting = settings.find(path, self.engine.flow.settings)
             if setting is None:
                 raise EngineError(f"unknown setting '{path}' (known: {', '.join(settings.BY_PATH)})")
             try:
@@ -276,7 +286,8 @@ class Ops:
                 raise EngineError(str(exc)) from None
         if str(values.get("llm.model", "")).startswith("claude-haiku-4") and "llm.effort" not in changes:
             values["llm.effort"] = None  # Haiku 4.5 has no effort setting
-        values = {p: v for p, v in values.items() if settings.get_value(cfg, p) != v}
+        values = {p: v for p, v in values.items()
+                  if (self._step_option(p) if settings.is_step_option(p) else settings.get_value(cfg, p)) != v}
         if not values:
             return "settings unchanged"
         try:  # validate against the real schema before touching the live config
@@ -288,6 +299,11 @@ class Ops:
                 f"{'.'.join(str(x) for x in e['loc'])}: {e['msg']}" for e in exc.errors())) from None
         for path in values:
             section, leaf = path.rsplit(".", 1)
+            if settings.is_step_option(path):  # the live step, and q3tui.yaml's step_options for the next start
+                step = section.rsplit(".", 1)[1]
+                cfg.pipeline.step_options.setdefault(step, {})[leaf] = values[path]
+                self.engine.by_name[step].options[leaf] = values[path]
+                continue
             if section.startswith("llm.steps.") and not hasattr(cfg.llm.steps, section.rsplit(".", 1)[1]):
                 setattr(cfg.llm.steps, section.rsplit(".", 1)[1], settings.get_value(checked, section))  # another flow's step
                 continue

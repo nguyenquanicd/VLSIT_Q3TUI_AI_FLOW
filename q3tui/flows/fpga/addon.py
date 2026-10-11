@@ -63,6 +63,17 @@ def _handoff(ops, ids: str) -> str:
 
 
 def register(api) -> None:
+    # the PPA step's options in the Settings dialog (its tab) and for the assistant; saved to pipeline.step_options in q3tui.yaml
+    api.setting("ppa_optimize", "max_iterations", "Max PPA rounds", "int",
+                "Optimization rounds (proposals) per set of constraints before the step stops and asks you. A new clock starts afresh.")
+    api.setting("ppa_optimize", "when", "Optimize when", "choice", "fail: only when the report misses a target; always: also to improve a passing result.",
+                (("fail", "fail — only when a target is missed"), ("always", "always — also to improve a passing result")))
+    api.setting("ppa_optimize", "goal", "Goal", "text", "What to improve, in words (\"fewer LUTs\", \"reach 250 MHz\"); empty = the missed targets.",
+                nullable=True)
+    api.setting("ppa_optimize", "handoff_flow", "Hand fixes to flow", "text", "The flow that owns the RTL and the spec (default vlsit).")
+    api.setting("ppa_optimize", "verify_after", "Verify after PPA", "bool",
+                "Targets met on RTL the optimization changed: check its function in that flow (tb → verify).")
+
     @api.action("ppa_handoff", "Hand the PPA fixes ppa_optimize proposed to the flow that owns the RTL and the spec: an RTL fix becomes a "
                 "scoped change request for its rtl step, a spec fix a change request for its spec step. That flow then updates the "
                 "RTL (run it), and this flow's synthesis runs again on the new RTL.",

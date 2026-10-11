@@ -8,6 +8,7 @@ options:
   max_iterations: 3   # proposals made for one project before the step stops asking (raise it to continue)
   goal: ""            # optional: what to improve ("fewer LUTs", "reach 250 MHz")
   handoff_flow: vlsit # the flow that owns the RTL and the spec: fixes go there as change requests
+  verify_after: true  # targets met on RTL the optimization changed: check its function in that flow (tb → verify; its own fix loop repairs)
 ---
 
 <!-- SYSTEM -->

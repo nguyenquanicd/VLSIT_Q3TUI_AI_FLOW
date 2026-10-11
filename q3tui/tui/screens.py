@@ -203,13 +203,18 @@ class SettingsScreen(ModalScreen[dict | None]):
         return Input(value="" if value is None else str(value), type=kind, id=wid,
                      placeholder="empty = none" if st.nullable else "")
 
+    def _by_path(self) -> dict:
+        from q3tui.core.settings import TABS
+
+        return {s.path: s for t in (self.tabs or TABS) for s in t.settings}
+
     def _read(self) -> dict:
         from textual.widgets import Select, SelectionList, Switch
 
-        from q3tui.core.settings import BY_PATH, TABS
+        from q3tui.core.settings import TABS
 
         out = {}
-        for path, st in {s.path: s for t in (self.tabs or TABS) for s in t.settings}.items():
+        for path, st in self._by_path().items():
             if st.hidden:
                 out[path] = self.values.get(path)
                 continue
@@ -229,11 +234,12 @@ class SettingsScreen(ModalScreen[dict | None]):
     def action_apply(self) -> None:
         from textual.widgets import Checkbox
 
-        from q3tui.core.settings import coerce, find
+        from q3tui.core.settings import coerce
 
         raw = self._read()
         try:
-            values = {p: coerce(find(p), v) for p, v in raw.items()}
+            by_path = self._by_path()
+            values = {p: coerce(by_path[p], v) for p, v in raw.items()}
         except ValueError as exc:
             self.query_one("#settings-error", Static).update(str(exc))
             return

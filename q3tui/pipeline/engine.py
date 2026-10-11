@@ -1039,6 +1039,8 @@ class Engine:
                 await self.run_step(step, regenerate=regen)
             if not self._gate_ok(step, yes):
                 return "gate"
+            if await self._unattended(step):
+                return "restart"
             earlier = [s.name for s in self.steps[: self.steps.index(step)] if s.name in selected
                        and any(f.startswith(DECISION_PREFIX) for f in self.state.feedback.get(s.name, []))]
             if earlier:
@@ -1046,6 +1048,14 @@ class Engine:
                                                         f"{'it' if len(earlier) == 1 else 'them'} first, then going on")
                 return "restart"
         return "complete"
+
+    async def _unattended(self, step: StepDef) -> bool:
+        """StepDef.unattended for a step finished under auto-answer (project-wide or its own gate mode)."""
+        if not (self.project.cfg.pipeline.auto_answer or self.gate_mode(step.name) == "auto_answer"):
+            return False
+        if self.evaluate(step).status not in ("done", "user"):
+            return False
+        return bool(await step.unattended(self))
 
     def _gate_ok(self, step: StepDef, yes: bool) -> bool:
         view = self.evaluate(step)

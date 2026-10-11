@@ -45,6 +45,15 @@ class AddonAPI:
 
         return deco
 
+    def setting(self, step: str, key: str, label: str, kind: str, help: str = "", choices: tuple = (),
+                nullable: bool = False) -> None:
+        """Show a step option in the Settings dialog (the step's own tab) and to the assistant: `api.setting("ppa_optimize",
+        "max_iterations", "PPA rounds", "int", "…")`. kind: bool | int | float | text | choice (with `choices` = ((value, label), …)).
+        Changes go to the live step and, saved, to `pipeline.step_options.<step>.<key>` in q3tui.yaml."""
+        from q3tui.core.settings import Setting
+
+        self.flow.settings.append(Setting(f"pipeline.step_options.{step}.{key}", label, kind, help, tuple(choices), nullable))
+
     def kind(self, kind: str, target: str) -> None:
         """Register a step kind ("package.module:Class") the flow's steps can name."""
         from q3tui.steps import register_kind
