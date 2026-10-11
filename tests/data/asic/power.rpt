@@ -1,0 +1,57 @@
+Information: Propagating switching activity (low effort zero delay simulation). (PWR-6)
+Warning: Design has unannotated primary inputs. (PWR-414)
+Warning: Design has unannotated sequential cell outputs. (PWR-415)
+ 
+****************************************
+Report : power
+        -analysis_effort low
+Design : m_vlsi_axi4_sram
+Version: V-2023.12-SP3
+Date   : Sun Oct 11 15:32:48 2026
+****************************************
+
+
+Library(s) Used:
+
+    gf180mcu_fd_sc_mcu7t5v0__tt_025C_5v00 (File: /tools/PDK/GF180/globalfoundries-pdk-libs-gf180mcu_fd_sc_mcu7t5v0/build/synopsys/gf180mcu_fd_sc_mcu7t5v0__tt_025C_5v00.db)
+
+
+Operating Conditions: gf180mcu_fd_sc_mcu7t5v0__tt_025C_5v00   Library: gf180mcu_fd_sc_mcu7t5v0__tt_025C_5v00
+Wire Load Model Mode: top
+
+
+Global Operating Voltage = 5    
+Power-specific unit information :
+    Voltage Units = 1V
+    Capacitance Units = 1.000000pf
+    Time Units = 1ns
+    Dynamic Power Units = 1mW    (derived from V,C,T units)
+    Leakage Power Units = 1uW
+
+
+Attributes
+----------
+i - Including register clock pin internal power
+
+
+  Cell Internal Power  = 300.0404 mW   (96%)
+  Net Switching Power  =  13.9032 mW    (4%)
+                         ---------
+Total Dynamic Power    = 313.9436 mW  (100%)
+
+Cell Leakage Power     =   1.4572 uW
+
+
+                 Internal         Switching           Leakage            Total
+Power Group      Power            Power               Power              Power   (   %    )  Attrs
+--------------------------------------------------------------------------------------------------
+io_pad             0.0000            0.0000            0.0000            0.0000  (   0.00%)
+memory             0.0000            0.0000            0.0000            0.0000  (   0.00%)
+black_box          0.0000            0.0000            0.0000            0.0000  (   0.00%)
+clock_network    278.8451            0.0000            0.0000          278.8451  (  88.82%)  i
+register           6.5656            1.6583            0.7545            8.2246  (   2.62%)
+sequential         0.0000            0.0000            0.0000            0.0000  (   0.00%)
+combinational     14.6298           12.2448            0.7025           26.8755  (   8.56%)
+--------------------------------------------------------------------------------------------------
+Total            300.0405 mW        13.9032 mW         1.4571 uW       313.9452 mW
+1

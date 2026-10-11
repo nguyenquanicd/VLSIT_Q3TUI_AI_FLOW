@@ -1,7 +1,7 @@
 # The FPGA flow (`fpga`) — PPA estimation on an FPGA part
 
 A built-in folder flow (`q3tui/flows/fpga/`, `pipeline.flow: fpga` or `q3tui --flow fpga`) that takes the RTL the VLSIT flow
-produced (`src/rtl/`, read only) and estimates area and timing on an FPGA part. It is for PPA estimation and optimisation,
+produced (`src/rtl/`, read only) and estimates area and timing on an FPGA part (the **template** picks the family and the tool, below). It is for PPA estimation and optimisation,
 not for deploying to a board. The vlsit flow is untouched; both can work in one project (their steps have different names).
 
 ```
@@ -11,8 +11,8 @@ sdc ─► fpga_synth ─► timing_util_report [gate: human] ─► ppa_optimiz
 | Step | Kind | Does | Writes |
 |---|---|---|---|
 | `sdc` | `fpga.sdc` | `sdc/sdc.json` → the SDC Tcl files (code only) | `sdc/{clocks,clock_groups,exceptions,io_constraints,env,sdc}.tcl` |
-| `fpga_synth` | `fpga.fpga_synth` | Tcl script (code) + tool role `fpga_synth` (Vivado: `synth_design -mode out_of_context`) | `fpga/synth.tcl`, `fpga/reports/*.rpt`, `schemas/fpga_synth.json` |
-| `timing_util_report` | `fpga.timing_util_report` | reads the reports: LUT / FF / BRAM / DSP, WNS / TNS / Fmax, worst path, unconstrained ports; verdict vs targets | `schemas/ppa_report.json` |
+| `fpga_synth` | `fpga.fpga_synth` | the template's script (code) + its tool roles: Vivado `synth_design -mode out_of_context`, or Yosys + nextpnr | `fpga/synth.tcl` (or `synth.ys`), `fpga/reports/*.rpt`, `schemas/fpga_synth.json` |
+| `timing_util_report` | `fpga.timing_util_report` | reads the reports: LUT / FF / BRAM / DSP, WNS / Fmax, worst path, unconstrained ports; verdict vs targets | `schemas/ppa_report.json` |
 | `ppa_optimize` | `fpga.ppa_optimize` | when a target is missed: one read-only LLM stage proposes fixes (below) | `schemas/ppa_plan.json` |
 
 Top module: `options.top` or `schemas/structured_spec.json` `metadata.top_module`; file list: `src/rtl/filelist.f`
@@ -49,10 +49,35 @@ remembered per project in `.q3tui/tui/layout.json`), like the columns of the oth
 | Exceptions (`exceptions.tcl`) | the asynchronous resets (false paths), then each exception |
 | Environment (`env.tcl`) | driving cell, load, max fanout / transition |
 
+The clocks table has two ASIC columns: *ASIC MHz* (the ASIC flow's own frequency for the clock, `e` to set it; `same` = this flow's) and *ASIC Fmax MHz*: the clock the ASIC flow's last synthesis says its library can reach (docs/spec/asic-flow.md; `*` = the RTL changed since, `–` = it has not run), so a frequency you type comes with what an ASIC could do (`E` runs a quick estimate, about a minute, if the ASIC flow has not synthesized yet: docs/spec/asic-flow.md); `sdc_set` and the step's log say it too.
+
 Three keys: `e` (or Enter) opens a dialog with all the fields of the highlighted item (`ctrl+s` applies, `Esc` cancels), `a` opens the same
 dialog empty to add a clock, clock group or exception, `d` removes the highlighted one. An empty optional field clears it.
 The Tcl files are regenerated at once and the sdc and synthesis steps go stale; `r`
 re-synthesizes.
+
+## Templates (`fpga_synth`)
+
+`options.template` picks what `fpga_synth` runs (Settings → `fpga_synth` → *FPGA template*; the same reports and the same `ppa_report.json`
+whatever the template, so `timing_util_report`, `ppa_optimize` and the hand-off do not change):
+
+| Template | Family | Tool (roles) | Default device | Notes |
+|---|---|---|---|---|
+| `xilinx7` (default) | Xilinx 7-series, 28 nm | Vivado batch (`fpga_synth`) | `xc7k325tffg900-2` | the `part` is a Vivado part name; `implement` adds place and route; hold judged then |
+| `ecp5` | Lattice ECP5, 40 nm | Yosys `synth_ecp5` (`fpga_yosys`) + `nextpnr-ecp5` (`fpga_pnr_ecp5`) | `85k`, package `CABGA381`, speed `6` | open source, no licence; out of context |
+| `ice40` | Lattice iCE40, 40 nm | Yosys `synth_ice40` + `nextpnr-ice40` (`fpga_pnr_ice40`) | `hx8k`, package `ct256` | no out-of-context mode: nextpnr places the IOs; a design that does not fit (LCs, or more IOs than the package) stops the step |
+
+Options of the step: `template`, `part` (empty: the template's default; a part of another family left in the settings is ignored with a
+warning), `package` and `speed` (the open-source templates), `fpga: {…}` for the Vivado extras below. For the open-source templates also
+`frontend: slang` (the yosys-slang plugin instead of `read_verilog -sv`), `defines`, `synth_args`. New templates are entries of
+`lib/templates.py` (a family, a tool role, how its numbers are read).
+
+Yosys + nextpnr: Yosys maps the RTL to the family's cells and writes a JSON netlist; nextpnr places and routes it against the clock
+frequencies of the SDC (`--freq` is the fastest clock, ECP5 gets one `FREQUENCY` line per clock when there are several) and reports Fmax per
+clock. The reports of `fpga/reports/`: `utilization.rpt` (the device utilisation + Yosys `stat`), `timing.rpt` (the last Fmax line of each
+clock), `paths.rpt` (the critical path), `pnr.rpt` (nextpnr's whole log), `yosys_stat.rpt`. WNS is the target period minus 1 / Fmax; nextpnr gives no
+total negative slack and **no hold analysis** (the report says "n/a"). LUT / FF are `TRELLIS_COMB` / `TRELLIS_FF` (ECP5) and the logic cells
+(iCE40; FF from Yosys' `stat`). Numbers across templates are comparisons, not predictions for another fabric.
 
 ## Tools and numbers
 
@@ -102,7 +127,8 @@ Verify after PPA — also `q3tui` assistant `set_settings`, or `pipeline.step_op
 
 ## Not built yet
 
-Quartus and Yosys role presets for `fpga_synth`.
+Quartus (Intel) and Gowin templates; UltraScale+ and Versal templates (the Vivado template takes any part name, but only 7-series is installed here); per-clock
+frequencies for iCE40 (one `--freq`).
 
 ## Where the code is
 

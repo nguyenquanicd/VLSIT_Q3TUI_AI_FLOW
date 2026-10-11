@@ -1,0 +1,10 @@
+{
+  "_comment": "Default tool roles of the ASIC flow (docs/spec/asic-flow.md): Design Compiler and Formality. Used by this flow only, when no tools.json / tools.roles of the project defines the role.",
+  "roles": {
+    "asic_synth": {"cmd": "dc_shell -f {script} -output_log_file {workdir}/dc.log", "parse": "dc", "modules": ["synopsys/syn/V-2023.12"], "timeout_s": 7200,
+                   "description": "Synopsys Design Compiler: the Tcl script Q3TUI writes (read RTL + SDC, compile_ultra, netlist, area / timing / power reports)"},
+    "asic_lec": {"cmd": "fm_shell -f {script}", "parse": {"error": ["^Error:", "^\\*Error\\*"], "warning": ["^Warning:"]},
+                 "modules": ["synopsys/formality/V-2023.12"], "timeout_s": 7200,
+                 "description": "Synopsys Formality: RTL (reference) against the netlist (implementation); the script is written by Q3TUI"}
+  }
+}

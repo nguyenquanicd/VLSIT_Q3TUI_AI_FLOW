@@ -1,0 +1,18 @@
+
+3. Printing statistics.
+
+=== blk ===
+
+        +----------Local Count, excluding submodules.
+        | 
+       39 wires
+      135 wire bits
+       39 public wires
+      135 public wire bits
+        5 ports
+       35 port bits
+       79 cells
+       15   SB_CARRY
+       32   SB_DFFER
+       32   SB_LUT4
+

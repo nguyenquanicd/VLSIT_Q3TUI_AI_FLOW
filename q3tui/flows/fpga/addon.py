@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+from q3tui.flows.fpga.lib import hints
 from q3tui.flows.fpga.lib import sdc as sdcmod
 
 
@@ -10,7 +11,7 @@ def _edit(ops, fn) -> str:
     """Load sdc/sdc.json, apply `fn(cfg) -> message`, validate by rendering, save, regenerate the Tcl files."""
     from q3tui.pipeline.engine import EngineError
 
-    step = next((s for s in ops.engine.steps if s.kind == "fpga.sdc"), None)
+    step = next((s for s in ops.engine.steps if s.kind.endswith(".sdc")), None)  # (the ASIC flow shares this step)
     if step is None:
         raise EngineError("this flow has no SDC step")
     cfg = sdcmod.load(ops.project)
@@ -21,7 +22,8 @@ def _edit(ops, fn) -> str:
     sdcmod.render(cfg, ports)  # validate before anything is written (a ValueError becomes the action's error)
     sdcmod.save(ops.project, cfg)
     sdcmod.write(ops.project, cfg, ports)
-    return ops._log(step.name, f"SDC: {msg} (sdc/*.tcl updated; run to re-synthesize)")
+    notes = [n for c in cfg.clocks if (n := hints.asic_note(ops.project, c.name))]
+    return ops._log(step.name, f"SDC: {msg} (sdc/*.tcl updated; run to re-synthesize)" + (f" · {'; '.join(f'{c.name}: {n}' for c in cfg.clocks if (n := hints.asic_note(ops.project, c.name)))}" if notes else ""))
 
 
 def _handoff(ops, ids: str) -> str:
@@ -63,6 +65,20 @@ def _handoff(ops, ids: str) -> str:
 
 
 def register(api) -> None:
+    from q3tui.flows.fpga.lib import templates
+
+    # the synthesis template and device (Settings → fpga_synth), then the PPA step's options
+    api.setting("fpga_synth", "template", "FPGA template", "choice", "The family and tool: Vivado for Xilinx 7-series, Yosys + nextpnr (open source) for Lattice ECP5 / iCE40.",
+                templates.choices())
+    api.setting("fpga_synth", "part", "Device (part)", "text", "Empty: the template's default. Vivado: a part name (xc7a100tcsg324-1); ECP5: 25k, 45k, 85k, um-85k; iCE40: hx8k, up5k, lp8k.",
+                nullable=True)
+    api.setting("fpga_synth", "package", "Package (open-source templates)", "text", "Empty: the device's default (ECP5 CABGA381, iCE40 hx8k ct256). More IOs than the package has stops nextpnr.",
+                nullable=True)
+    api.setting("fpga_synth", "speed", "Speed grade (ECP5)", "text", "6, 7 or 8; empty: 6.", nullable=True)
+    # the ASIC library: the ASIC flow's own option, here too (the estimate and the SDC tab use it; one choice for both flows)
+    api.setting("asic_synth", "library", "ASIC library (.db)", "text",
+                "The standard-cell library of the ASIC flow (a .db; one per corner in a PDK folder): the quick Fmax estimate and the ASIC synthesis use it. "
+                "Also in the clock dialog of the SDC tab.", default=hints.asic_default_library())
     # the PPA step's options in the Settings dialog (its tab) and for the assistant; saved to pipeline.step_options in q3tui.yaml
     api.setting("ppa_optimize", "max_iterations", "Max PPA rounds", "int",
                 "Optimization rounds (proposals) per set of constraints before the step stops and asks you. A new clock starts afresh.")
@@ -80,6 +96,15 @@ def register(api) -> None:
                 {"ids": "fix ids separated by commas (F1,F2); empty: every fix not handed off yet"}, optional=("ids",))
     def ppa_handoff(ops, ids: str = "") -> str:
         return _handoff(ops, ids)
+
+    register_sdc(api)
+    from q3tui.flows.asic.addon import register_estimate  # (what the ASIC library allows, asked where the frequency is typed)
+
+    register_estimate(api)
+
+
+def register_sdc(api) -> None:
+    """The SDC actions (the ASIC flow registers the same ones: both work on `sdc/`)."""
 
     @api.action("sdc_show", "Show the SDC settings (clocks and frequencies, I/O delay budget, resets, exceptions, clock groups, "
                 "environment) as `key | setting | value` lines.")

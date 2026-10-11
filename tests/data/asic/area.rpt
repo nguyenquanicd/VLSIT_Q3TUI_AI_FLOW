@@ -1,0 +1,45 @@
+ 
+****************************************
+Report : area
+Design : m_vlsi_axi4_sram
+Version: V-2023.12-SP3
+Date   : Sun Oct 11 15:32:47 2026
+****************************************
+
+Information: Updating design information... (UID-85)
+Warning: Design 'm_vlsi_axi4_sram' contains 2 high-fanout nets. A fanout number of 1000 will be used for delay calculations involving these nets. (TIM-134)
+Library(s) Used:
+
+    gf180mcu_fd_sc_mcu7t5v0__tt_025C_5v00 (File: /tools/PDK/GF180/globalfoundries-pdk-libs-gf180mcu_fd_sc_mcu7t5v0/build/synopsys/gf180mcu_fd_sc_mcu7t5v0__tt_025C_5v00.db)
+
+Number of ports:                          294
+Number of nets:                          7240
+Number of cells:                         7067
+Number of combinational cells:           5380
+Number of sequential cells:              1687
+Number of macros/black boxes:               0
+Number of buf/inv:                        861
+Number of references:                      81
+
+Combinational area:             101938.501122
+Buf/Inv area:                    12236.044666
+Noncombinational area:          126687.191132
+Macro/Black Box area:                0.000000
+Net Interconnect area:      undefined  (No wire load specified)
+
+Total cell area:                228625.692253
+Total area:                 undefined
+
+Hierarchical area distribution
+------------------------------
+
+                                  Global cell area              Local cell area
+                                  --------------------  -------------------------------- 
+Hierarchical cell                 Absolute     Percent  Combi-       Noncombi-    Black-
+                                  Total        Total    national     national     boxes   Design
+--------------------------------  -----------  -------  -----------  -----------  ------  ---------
+m_vlsi_axi4_sram                  228625.6923    100.0  101938.5011  126687.1911  0.0000  m_vlsi_axi4_sram
+--------------------------------  -----------  -------  -----------  -----------  ------  ---------
+Total                                                   101938.5011  126687.1911  0.0000
+
+1

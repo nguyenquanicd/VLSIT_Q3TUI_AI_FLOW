@@ -2,7 +2,7 @@
 
 Q3TUI's pipeline is a **flow**: a YAML / JSON file listing the steps (by *kind*), their order and dependencies and
 which review gates stop for a human. The built-in flows are the **VLSIT flow** (`vlsit`, the default;
-docs/spec/vlsit-flow.md), the **FPGA flow** (`fpga`, docs/spec/fpga-flow.md) and `example` (a minimal folder flow, spec → parse, to copy); users can write their own. The TUI,
+docs/spec/vlsit-flow.md), the **FPGA flow** (`fpga`, docs/spec/fpga-flow.md), the **ASIC flow** (`asic`, docs/spec/asic-flow.md) and `example` (a minimal folder flow, spec → parse, to copy); users can write their own. The TUI,
 `ops`, the assistant, the event bus, staleness, gates, questions and reset are the same for every flow.
 
 ## Flow files
@@ -99,7 +99,7 @@ Core (CLI, TUI, assistant, `Ops`, engine) knows no flow by name. A flow *folder*
 
 | File | Brings |
 |---|---|
-| `addon.py` | `register(api)`: **actions** (`@api.action(name, help, {param: description}, optional=(…))` on `fn(ops, **params) -> str`; all params strings; a `ValueError` is a user error) step kinds (`api.kind`) and step options for the Settings dialog (`api.setting(step, key, label, kind, help, choices, nullable)`: the step's own tab, the assistant's get/set_settings; applied to the live step, saved to `pipeline.step_options.<step>.<key>` in q3tui.yaml) |
+| `addon.py` | `register(api)`: **actions** (`@api.action(name, help, {param: description}, optional=(…))` on `fn(ops, **params) -> str`; all params strings; a `ValueError` is a user error) step kinds (`api.kind`) and step options for the Settings dialog (`api.setting(step, key, label, kind, help, choices, nullable, default)`: the step's own tab, the assistant's get/set_settings; applied to the live step, saved to `pipeline.step_options.<step>.<key>` in q3tui.yaml; `step` may be another flow's step — a choice both flows share, e.g. the ASIC library from the FPGA flow — and `default` is its value while q3tui.yaml sets none) |
 | `tools.json` | default tool roles (`{"roles": {…}}`) for a role the flow needs and nothing configures — this flow only (`load_tools(cfg, root, flow)`); a project's roles are otherwise exactly its own |
 | `panels.py` | TUI panels of the flow's step kinds (`register_panel`); imported when the TUI opens the flow |
 

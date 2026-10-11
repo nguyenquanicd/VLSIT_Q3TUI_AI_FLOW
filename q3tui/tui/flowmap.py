@@ -102,7 +102,7 @@ class FlowMapScreen(ModalScreen[str | None]):
                             yield Box(stage("FPGA synthesis", "RTL"))
                             yield Box(stage("Timing + util report", "Spec, RTL"))
                             yield Box(stage("PPA optimize", "Spec, RTL"))
-                        with self._g("ASIC synthesis", None):
+                        with self._g("ASIC synthesis", "asic"):
                             yield Box(stage("ASIC port", "RTL"))
                             yield Box(stage("ASIC synthesis", "Spec, RTL"))
                             yield Box(stage("LEC", "RTL"))

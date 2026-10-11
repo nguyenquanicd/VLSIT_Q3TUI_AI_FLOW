@@ -1,0 +1,40 @@
+ 
+****************************************
+Report : constraint
+        -all_violators
+Design : m_vlsi_axi4_sram
+Version: V-2023.12-SP3
+Date   : Sun Oct 11 15:32:48 2026
+****************************************
+
+
+   max_delay/setup ('i_clk' group)
+
+                             Required        Actual
+   Endpoint                 Path Delay     Path Delay        Slack
+   -----------------------------------------------------------------
+   u_vlsi_axfsm_1_reg_axaddr_reg_31_/D
+                                2.98           3.58 r        -0.61  (VIOLATED)
+   u_vlsi_axfsm_1_reg_axaddr_reg_17_/D
+                                2.98           3.59 r        -0.61  (VIOLATED)
+   u_vlsi_axfsm_0_reg_axaddr_reg_27_/D
+                                3.00           3.60 r        -0.61  (VIOLATED)
+   u_vlsi_axfsm_0_reg_axaddr_reg_30_/D
+                                3.00           3.60 r        -0.61  (VIOLATED)
+   u_vlsi_axfsm_0_reg_axaddr_reg_31_/D
+                                3.00           3.60 r        -0.61  (VIOLATED)
+   u_vlsi_axfsm_1_reg_axaddr_reg_11_/D
+                                2.98           3.59 r        -0.61  (VIOLATED)
+   u_vlsi_axfsm_1_reg_axaddr_reg_9_/D
+                                2.98           3.59 r        -0.61  (VIOLATED)
+   u_vlsi_fifo_1_reg_head_reg_1_/D
+                                2.98           3.58 r        -0.60  (VIOLATED)
+   u_vlsi_fifo_1_reg_head_reg_2_/D
+                                2.98           3.58 r        -0.60  (VIOLATED)
+   u_vlsi_fifo_1_reg_head_reg_4_/D
+                                2.98           3.58 r        -0.60  (VIOLATED)
+   u_vlsi_fifo_1_reg_head_reg_5_/D
+                                2.98           3.58 r        -0.60  (VIOLATED)
+   u_vlsi_fifo_1_reg_head_reg_7_/D
+                                2.98           3.58 r        -0.60  (VIOLATED)
+   u_vlsi_fifo_1_reg_head_reg_9_/D

@@ -13,6 +13,7 @@ from textual.binding import Binding
 from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.widgets import DataTable, Static
 
+from q3tui.flows.fpga.lib import hints
 from q3tui.flows.fpga.lib import sdc as sdcmod
 from q3tui.tui.panels import register_panel
 from q3tui.tui.screens import EditScreen
@@ -42,9 +43,19 @@ def _file_detail(name: str, hint: str):
     return detail
 
 
+def _asic_cell(hint: dict | None) -> Text:
+    """What the ASIC flow's last synthesis says this clock could run at (the library's limit), or – when it has not run."""
+    if not hint or not hint.get("fmax_mhz"):
+        return Text("–", style="grey50")
+    ok = hint["fmax_mhz"] >= (hint.get("target_mhz") or 0)
+    return Text(("≥ " if hint.get("bound") == "at_least" else "") + ("~" if hint.get("source") == "estimate" else "") + f"{hint['fmax_mhz']:g}" + (" *" if hint.get("stale") else ""), style="green" if ok else "yellow")
+
+
 def _clock_rows(app: "Q3TUIApp") -> list[tuple]:
     cfg = _cfg(app)
-    return [(f"clock.{c.name}", c.name, c.port, f"{c.freq_mhz:g}", f"{c.period_ns:g}", f"{c.uncertainty_ns:g}", f"{c.duty_pct:g}")
+    asic = hints.asic_hint(app.project)
+    return [(f"clock.{c.name}", c.name, c.port, f"{c.freq_mhz:g}",
+             f"{c.asic_freq_mhz:g}" if c.asic_freq_mhz else Text("same", style="grey50"), f"{c.period_ns:g}", f"{c.uncertainty_ns:g}", f"{c.duty_pct:g}", _asic_cell(asic.get(c.name)))
             for c in (cfg.clocks if cfg else [])]
 
 
@@ -89,7 +100,8 @@ class SdcEditor(Vertical):
     SdcEditor VerticalScroll { width: 1fr; padding: 0 1; }
     SdcEditor .sdc-hint { height: auto; }
     """
-    BINDINGS = [Binding("e", "edit", "Edit"), Binding("a", "add", "Add"), Binding("d", "remove", "Remove")]
+    BINDINGS = [Binding("e", "edit", "Edit"), Binding("a", "add", "Add"), Binding("d", "remove", "Remove"),
+                Binding("E", "estimate", "ASIC estimate")]
 
     def __init__(self, tab=None, **kw):
         super().__init__(classes="refreshable", **kw)
@@ -159,6 +171,14 @@ class SdcEditor(Vertical):
 
     # -- changes: always one of the flow's actions ----------------------------------------------------------------------
 
+    def _act_settings(self, changes: dict) -> None:
+        """A setting both flows share (the ASIC library): applied and saved through Ops, like Settings does."""
+        try:
+            self.capp.log_info(self.capp.ops.apply_settings(changes, save=True))
+        except Exception as exc:  # noqa: BLE001
+            self.app.notify(str(exc), severity="error")
+        self.capp.refresh_all()
+
     def _act(self, name: str, **kw) -> None:
         try:
             self.capp.log_info(self.capp.ops.run_action(name, **kw))
@@ -188,10 +208,49 @@ class SdcEditor(Vertical):
             c = next((c for c in cfg.clocks if f"clock.{c.name}" == key), None)
             if c is None:
                 return None
-            old = {"port": c.port, "freq_mhz": f"{c.freq_mhz:g}", "uncertainty_ns": f"{c.uncertainty_ns:g}", "duty_pct": f"{c.duty_pct:g}"}
+            old = {"port": c.port, "freq_mhz": f"{c.freq_mhz:g}", "uncertainty_ns": f"{c.uncertainty_ns:g}", "duty_pct": f"{c.duty_pct:g}",
+                   "asic_freq_mhz": "" if c.asic_freq_mhz is None else f"{c.asic_freq_mhz:g}"}
             fields = [("port", "Port", old["port"], "line"), ("freq_mhz", "Frequency (MHz)", old["freq_mhz"], "line"),
-                      ("uncertainty_ns", "Uncertainty (ns)", old["uncertainty_ns"], "line"), ("duty_pct", "Duty cycle (%)", old["duty_pct"], "line")]
-            return (f"Clock {c.name}", fields, lambda v: [set_(f"clock.{c.name}.{k}", x) for k, x in changed(v, old).items()])
+                      ("uncertainty_ns", "Uncertainty (ns)", old["uncertainty_ns"], "line"), ("duty_pct", "Duty cycle (%)", old["duty_pct"], "line"),
+                      ("asic_freq_mhz", "ASIC frequency (MHz) — the ASIC flow's own target; empty: the same as above", old["asic_freq_mhz"], "line")]
+            from q3tui.flows.asic.lib import pdks
+
+            cur = hints.asic_library(self.capp.project)
+            techs = pdks.catalog(self.capp.project)
+            found = pdks.locate(cur, self.capp.project)
+            by_title = {t.label: t for t in techs}
+            if found:  # a catalogued library: technology, then corner (the corners follow the technology)
+                tech, corner = found
+                fields.append(("asic_pdk", "ASIC technology — used by the estimate and the ASIC synthesis", tech.label, "choice", list(by_title)))
+                fields.append(("asic_corner", "ASIC library corner", corner, "choice", [c for c, _p in tech.corners]))
+            else:  # (a path of yours: Settings or here)
+                fields.append(("asic_lib", "ASIC library (.db) — used by the estimate and the ASIC synthesis", cur, "line"))
+
+            def pick_tech(screen, title: str) -> None:
+                t = by_title.get(title)
+                if t is not None:
+                    default = next((c for c, p in t.corners if p == t.default_path()), t.corners[0][0])
+                    screen.set_choices("asic_corner", [c for c, _p in t.corners], default)
+
+            def set_library(values: dict) -> bool:
+                """The library of the form, saved for both flows when it changed (before an estimate, so the button answers for it)."""
+                if "asic_pdk" in values:
+                    t = by_title.get(str(values.get("asic_pdk")))
+                    chosen = dict(t.corners).get(str(values.get("asic_corner")), "") if t else ""
+                else:
+                    chosen = str(values.get("asic_lib") or "").strip()
+                if chosen and chosen != cur:
+                    self._act_settings({hints.LIBRARY_OPTION: chosen})
+                    return True
+                return False
+
+            def estimate(screen) -> None:  # a button of the form: the ASIC library's Fmax for this RTL, answered in the form
+                set_library(screen._values())
+                self.action_estimate(screen.set_status)
+
+            return (f"Clock {c.name}", fields, lambda v: [set_(f"clock.{c.name}.{k}", x) for k, x in changed(v, {**old, "asic_lib": "", "asic_pdk": "", "asic_corner": ""}).items()
+                                       if k not in ("asic_lib", "asic_pdk", "asic_corner")] + [set_library(v)],
+                    [("estimate", "Estimate ASIC Fmax", estimate)], {"asic_pdk": pick_tech})
         if sec == "groups":
             g = next((g for i, g in enumerate(cfg.clock_groups) if f"group.{i}" == key), None) if not new else None
             if g is None and not new:
@@ -238,7 +297,7 @@ class SdcEditor(Vertical):
         if form is None:
             self.app.notify("nothing to edit here" if not new else f"nothing to add in {self.spec.title}", severity="information")
             return
-        title, fields, apply = form
+        title, fields, apply, *extra = form  # (+ the form's buttons and the fields that depend on another)
 
         def done(values: dict | None) -> None:
             if values is None:
@@ -248,7 +307,8 @@ class SdcEditor(Vertical):
             except (ValueError, ZeroDivisionError) as exc:  # a number that is not one (the actions report their own errors)
                 self.app.notify(str(exc), severity="error")
 
-        self.capp.push_screen(EditScreen(title, fields, "ctrl+s to apply · Esc to cancel · an empty optional field clears it"), done)
+        self.capp.push_screen(EditScreen(title, fields, "ctrl+s to apply · Esc to cancel · an empty optional field clears it", extra[0] if extra else (),
+                                           extra[1] if len(extra) > 1 else None), done)
 
     def action_edit(self) -> None:
         self._dialog(new=False)
@@ -260,6 +320,31 @@ class SdcEditor(Vertical):
         key = self.current_key()
         if key and key != "resets":
             self._act("sdc_remove", key=key)
+
+    def action_estimate(self, status=None) -> None:
+        """E (or the button of a clock's dialog): estimate the clock the ASIC library allows (about a minute, in a thread: the app stays alive);
+        the column and the log show it, and `status(text)` — the dialog's status line — says it too."""
+        import anyio
+
+        from q3tui.flows.asic.lib import estimate
+
+        app = self.capp
+        say = status or (lambda text: None)
+        say("Estimating with Design Compiler (low effort, about a minute)…")
+        app.notify("Estimating the ASIC clock with Design Compiler (about a minute)…")
+
+        async def go() -> None:
+            try:
+                msg = await anyio.to_thread.run_sync(lambda: estimate.compute(app.ops))
+            except Exception as exc:  # noqa: BLE001 - friendly message, never a traceback
+                app.notify(str(exc), severity="error")
+                say(f"Not estimated: {exc}")
+                return
+            app.log_info(app.ops._log(next((s.name for s in app.engine.steps if s.kind.endswith(".sdc")), app.engine.steps[0].name), msg))
+            app.refresh_all()
+            say(msg + "\nSet the ASIC frequency at or below it (the estimate leans a little low), then ctrl+s.")
+
+        self.run_worker(go(), exclusive=True, group="asic-estimate")
 
 
 @dataclass
@@ -274,9 +359,9 @@ class Section:
 
 
 SECTIONS = (
-    Section("clocks", "Clocks", ("Clock", "Port", "MHz", "Period ns", "Uncert. ns", "Duty %"), _clock_rows,
+    Section("clocks", "Clocks", ("Clock", "Port", "MHz", "ASIC MHz", "Period ns", "Uncert. ns", "Duty %", "ASIC Fmax MHz"), _clock_rows,
             _file_detail("clocks.tcl", "`e` edit · `a` add a clock · `d` remove"),
-            "e edit · a add a clock · d remove", "no sdc/sdc.json yet — run (r)"),
+            "e edit · a add a clock · d remove · ASIC MHz: the ASIC flow's own target for the clock (e; same = the FPGA's) · ASIC Fmax: what the library can reach for this clock — E estimates it in about a minute (~), the ASIC flow's synthesis is exact (≥ = it met the clock it was given and can go faster; * = RTL changed since; – = not run)", "no sdc/sdc.json yet — run (r)"),
     Section("groups", "Clock groups", ("Kind", "Groups"), _group_rows, _file_detail("clock_groups.tcl", "`e` edit · `a` add · `d` remove"),
             "relations between clocks (asynchronous / exclusive); a single clock needs none · e edit · a add · d remove",
             "no clock groups: a single clock domain needs none"),

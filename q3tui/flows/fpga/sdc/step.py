@@ -11,6 +11,7 @@ from pathlib import Path
 import anyio
 
 from q3tui.pipeline.base import StepContext, StepFailed
+from q3tui.flows.fpga.lib import hints
 from q3tui.flows.fpga.lib import sdc as sdcmod
 from q3tui.flows.fpga.lib.base import FpgaStep
 
@@ -57,6 +58,6 @@ class Step(FpgaStep):
             written = sdcmod.write(project, cfg, ports)
         except ValueError as exc:
             raise StepFailed(f"sdc/sdc.json: {exc}") from exc
-        ctx.emit("log", message=f"SDC: {', '.join(f'{c.name} {c.period_ns:g} ns ({c.freq_mhz:g} MHz)' for c in cfg.clocks)}; "
+        ctx.emit("log", message=f"SDC: {', '.join(f'{c.name} {c.period_ns:g} ns ({c.freq_mhz:g} MHz)' + (' — ' + n if (n := hints.asic_note(project, c.name)) else '') for c in cfg.clocks)}; "
                                 f"{len(written)} file(s) written")
         ctx.unchanged = not written
