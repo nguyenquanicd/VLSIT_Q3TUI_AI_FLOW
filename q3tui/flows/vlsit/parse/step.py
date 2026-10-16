@@ -17,6 +17,7 @@ from pydantic import BaseModel, Field
 
 from q3tui.llm.runtime import Stage
 from q3tui.pipeline.base import StepContext, StepFailed
+from q3tui.core.importer import facts_block
 from q3tui.core.project import sha256_file, sha256_json
 from q3tui.steps.common import Question, assign_question_ids, drop_settled, load_answers, settled_block, spec_block
 from q3tui.steps.vlsit import artifacts
@@ -172,6 +173,28 @@ def assemble(parsed: ParsedSpec, previous: dict | None, meta: dict, decided: set
     return data, warnings
 
 
+def fit_to_design(data: dict, design: dict) -> list[str]:
+    """Imported RTL is the module map: its names, hierarchy and top (code, core/importer.design_facts) replace what the
+    parser proposed; a requirement on a module the RTL does not have goes to the top. Returns warnings."""
+    mods = {n: m for n, m in (design.get("modules") or {}).items() if m.get("kind", "module") in ("module", "package")}
+    if not mods:
+        return []
+    warnings = []
+    described = {m["name"]: m.get("description", "") for m in data["modules"]}
+    top = design.get("top") if design.get("top") in mods else next(iter(mods))
+    for r in data["requirements"]:
+        keep = [m for m in r["rtl_modules"] if m in mods]
+        if len(keep) != len(r["rtl_modules"]):
+            gone = sorted(set(r["rtl_modules"]) - set(keep))
+            warnings.append(f"{r['req_id']} maps to {', '.join(gone)}, not in the imported RTL: mapped to " + (", ".join(keep) or top))
+        r["rtl_modules"] = keep or [top]
+    data["modules"] = [{"name": n, "description": described.get(n, ""), "instances": list(m.get("instances", [])),
+                        "req_ids": [r["req_id"] for r in data["requirements"] if n in r["rtl_modules"]]} for n, m in mods.items()]
+    data["metadata"]["top_module"] = top
+    data["module_order"] = modules_leaves_first(data)
+    return warnings
+
+
 def _strip_private(data: dict) -> dict:
     for r in data["requirements"]:
         for k in [k for k in r if k.startswith("_")]:
@@ -219,7 +242,12 @@ class ParseStep(VlsitStep):
         return self.lay(engine).schemas / "structured_spec.md"
 
     def inputs(self, engine) -> list[Path]:
-        return [*engine.project.spec_documents(), self._q_paths(engine)[1]]
+        imported = engine.import_record_path("rtl")  # (the imported RTL's module map; only once there is one)
+        return [*engine.project.spec_documents(), self._q_paths(engine)[1], *([imported] if imported.is_file() else [])]
+
+    @staticmethod
+    def _design(engine) -> dict:
+        return (engine.import_record("rtl") or {}).get("design") or {}
 
     def outputs(self, engine) -> list[Path]:
         lay = self.lay(engine)
@@ -252,7 +280,8 @@ class ParseStep(VlsitStep):
         answers = load_answers(self._q_paths(engine)[1])
         new_answers = self._answers_to_apply(engine, meta)
         docs = project.spec_documents()
-        sig = sha256_json({"spec": [sha256_file(p) for p in docs], "answers": answers})
+        design = self._design(engine)
+        sig = sha256_json({"spec": [sha256_file(p) for p in docs], "answers": answers, **({"design": design} if design else {})})
         if previous is not None and meta.get("sig") == sig and not ctx.feedback and not artifacts.validate(self.artifact, previous):
             ctx.unchanged = True
             ctx.emit("log", message="the spec and the answers are as when the requirements were extracted: nothing to do")
@@ -261,14 +290,14 @@ class ParseStep(VlsitStep):
         block, needs_tools = spec_block(project, docs)
         settled = settled_block(engine.settled_questions(self.name))
         if previous is None:
-            prompt = parse_prompts.first_prompt(block, settled, ctx.feedback)
+            prompt = parse_prompts.first_prompt(block, settled, ctx.feedback, facts_block(design) if design else "")
             ctx.emit("log", message=f"extracting requirements from {', '.join(project.rel(p) for p in docs)}")
         else:
             compact = "\n".join(f"- {r['req_id']} [{r['category']}, {r['ambiguity_score']}] {' '.join(r['text'].split())} "
                                 f"→ {', '.join(r['rtl_modules'])}" for r in previous["requirements"])
             prev_txt = compact + "\nParameters: " + ", ".join(f"{p['name']}={p['default']}" for p in previous["parameters"]) \
                 + "\nModules: " + ", ".join(m["name"] for m in previous["modules"])
-            prompt = parse_prompts.update_prompt(block, prev_txt, new_answers, settled, ctx.feedback)
+            prompt = parse_prompts.update_prompt(block, prev_txt, new_answers, settled, ctx.feedback, facts_block(design) if design else "")
             ctx.emit("log", message=f"updating the requirements ({len(new_answers)} new answer(s), {len(ctx.feedback)} change request(s))")
         stage = Stage(name="parse_spec", system_prompt=parse_prompts.SYSTEM, prompt=prompt, cwd=project.spec_dir,
                       builtin_tools=["Read", "Grep", "Glob"] if needs_tools else [], output_model=ParsedSpec)
@@ -282,6 +311,8 @@ class ParseStep(VlsitStep):
             if _DECISION_MARK in q and (m := re.match(r"(REQ-\d+)", q)):
                 decided.add(m.group(1))
         data, warnings = assemble(parsed, previous, meta, decided)
+        if design:
+            warnings += fit_to_design(data, design)
         for w in warnings:
             ctx.emit("warning", message=w)
         if len(data["requirements"]) < 10:
