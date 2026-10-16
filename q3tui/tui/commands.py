@@ -33,6 +33,8 @@ COMMANDS: dict[str, Command] = {
     "step": Command("<step> view|pass|notes [text] [--session]", "customise a step: files to show, pass conditions (a ;; b), notes for its LLM tasks",
                     ("step", ("view", "pass", "notes"), ("--session",))),
     "gates": Command("", "every review gate with its mode and state"),
+    "import": Command("<path> [all|spec|rtl|tb|sva]", "import your own files: a folder (spec documents, RTL, testbench / tests, "
+                      "SVA, sorted by code) or one file", ("file", ("all", "spec", "rtl", "tb", "sva"))),
     "reset": Command("<step>|all [--only]", "clear a step's outputs (and the steps after it), or everything", ("step_all", ("--only",))),
     "model": Command("[id] [--save]", "switch the LLM model (no id: the settings' LLM tab)", ("model", ("--save",))),
     "effort": Command("<level>|none [--save]", "set the reasoning effort", ("effort", ("--save",))),

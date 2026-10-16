@@ -583,3 +583,14 @@ def test_the_same_assertion_label_in_two_modules_is_two_assertions(project, llm)
     review.review_property(eng, "div:a_div_load_busy", "confirmed")
     status = {p["id"]: p["status"] for p in review.load_properties(eng)}
     assert status == {"div:a_div_load_busy": "confirmed", "muldiv:a_div_load_busy": "pending"}  # one review, one assertion
+
+
+def test_mutation_skips_elaboration_checks_and_strings():
+    text = ("module m #(parameter int P = 4) (input a);\n"
+            "  if ((P < 1) || (P & (P - 1)) != 0)\n"
+            "  begin : gen_chk_p\n"
+            '    $error("P must be a power of 2 - 1 or more");\n'
+            "  end\n"
+            "  assign y = a & b;\n"
+            "endmodule\n")
+    assert {n for n, *_ in mutation.candidates(text)} == {6}

@@ -721,16 +721,104 @@ class Engine:
         path.write_text(text.strip() + "\n")
         return path
 
-    def import_spec(self, files: list[Path]) -> list[Path]:
+    def import_spec(self, files: list[Path], names: dict[Path, str] | None = None) -> list[Path]:
         dest = []
         for f in files:
-            target = self.project.spec_dir / f.name
+            target = self.project.spec_dir / ((names or {}).get(f) or f.name)
             if f.resolve() != target.resolve():
                 self.project.backup([target])
                 target.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copy2(f, target)
             dest.append(target)
         return dest
+
+    def import_record(self, kind: str) -> dict | None:
+        """What the last import of `kind` brought in: {source, files: {relpath: sha}, at, (rtl) design}."""
+        from q3tui.core.project import read_json
+
+        return read_json(self.import_record_path(kind), default=None)
+
+    def import_record_path(self, kind: str) -> Path:
+        return self.project.state_dir / "imports" / f"{kind}.json"
+
+    def import_sources(self) -> list[Path]:
+        """The folders imported from that lie inside the project: no LLM stage reads them (their content is in the
+        project's own folders now; the originals would leak the RTL into the testbench and back)."""
+        from q3tui.core.importer import KINDS
+
+        root = self.project.root.resolve()
+        out = []
+        for kind in KINDS:
+            src = (self.import_record(kind) or {}).get("source")
+            if src and Path(src).resolve().is_relative_to(root) and Path(src).resolve() != root and Path(src).is_dir():
+                out.append(Path(src))
+        return list(dict.fromkeys(out))
+
+    def import_path(self, path: Path, kinds: set[str] | None = None) -> dict:
+        """Import a folder (or one file): spec documents into spec/, RTL / testbench and tests / SVA into the step of the
+        flow that takes them (`StepDef.import_dir`). Sorted by code (core/importer.py). Returns {kind: [targets],
+        skipped: [files not imported], not_taken: {kind: [files no step of this flow takes]}}."""
+        from q3tui.core import importer
+        from q3tui.core.project import write_json
+
+        plan = importer.scan(path)
+        report: dict = {"source": str(plan.root), "skipped": [plan.rel(f) for f in plan.skipped], "not_taken": {}}
+        for kind in importer.KINDS:
+            files = plan.files[kind] if kinds is None or kind in kinds else []
+            if not files:
+                continue
+            step = next((s for s in self.steps if s.import_dir(self, kind) is not None), None)
+            if step is None and kind == "spec":  # no step ports documents: they are the spec, as they are
+                targets = self.import_spec(files, importer.flat_names(files, plan.root))
+                report["spec"] = [self.project.rel(t) for t in targets]
+                self._write_import_record(kind, plan, targets)
+                continue
+            if step is None:
+                report["not_taken"][kind] = [plan.rel(f) for f in files]
+                continue
+            dest = step.import_dir(self, kind)
+            old = self.import_record(kind) or {}
+            targets = self._copy_import(kind, files, plan.root, dest, old)
+            record = self._write_import_record(kind, plan, targets)
+            if kind == "rtl":
+                record["design"] = importer.design_facts(targets)
+                write_json(self.import_record_path(kind), record)
+            step.on_import(self, kind, targets)
+            report[kind] = [self.project.rel(t) for t in targets]
+        self.save()
+        return report
+
+    def _copy_import(self, kind: str, files: list[Path], root: Path, dest: Path, old: dict) -> list[Path]:
+        from q3tui.core import importer
+
+        if kind in ("rtl", "spec"):  # one flat folder: module files / documents by name
+            names = importer.flat_names(files, root)
+            targets = [dest / names[f] for f in files]
+        else:  # a folder of references: the files' own structure below their common folder
+            import os
+
+            base = Path(os.path.commonpath([str(f.parent) for f in files]))
+            targets = [dest / f.relative_to(base) for f in files]
+        # the previous import of this kind that this one does not bring again goes (backed up)
+        stale = [self.project.root / r for r in old.get("files", {}) if (self.project.root / r) not in targets]
+        self.project.backup([*stale, *targets])
+        for f in stale:
+            f.unlink(missing_ok=True)
+        for f, t in zip(files, targets):
+            if f.resolve() != t.resolve():
+                t.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(f, t)
+        return targets
+
+    def _write_import_record(self, kind: str, plan, targets: list[Path]) -> dict:
+        from q3tui.core.project import write_json
+
+        record = {"source": str(plan.root), "files": {self.project.rel(t): sha256_file(t) for t in targets},
+                  "at": datetime.now().isoformat(timespec="seconds")}
+        path = self.import_record_path(kind)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        write_json(path, record)
+        return record
 
     # -- execution -----------------------------------------------------------------------------
 

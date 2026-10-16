@@ -44,6 +44,13 @@ class StepContext:
         # a reset or regeneration would otherwise "start from scratch" with the old answer.
         if self.project.state_dir not in stage.deny_dirs:
             stage.deny_dirs.append(self.project.state_dir)
+        # the originals of an import (e.g. ref/<project>/): their RTL / tests are in src/ now, under the independence rules
+        stage.deny_dirs.extend(d for d in self.engine.import_sources() if d not in stage.deny_dirs)
+        # documents a step ports (spec/ref/): only that step reads them; the others read what it made of them
+        for s in self.engine.steps:
+            d = s.import_dir(self.engine, "spec")
+            if d is not None and s.name != self.emit.step and d not in stage.deny_dirs:
+                stage.deny_dirs.append(d)
         # every stage runs at its configured effort (no lowered effort is remembered: it capped rv32im's designer,
         # modeler and debugger at "low" for good after a few long thoughts — Claude Code has no such guard either)
         from q3tui import flows
@@ -189,6 +196,15 @@ class StepDef:
 
     def on_reset(self, engine: "Engine") -> None:
         """Called after a reset deleted this step's files (a step that moved your documents aside puts them back)."""
+
+    def import_dir(self, engine: "Engine", kind: str) -> Path | None:
+        """Where this step takes imported files of `kind` (rtl | tb | sva; core/importer.py), None: it takes none.
+        Files imported into the step's own output folder are its starting point (it checks them and updates what does
+        not follow its rules); a sub-folder of its own (e.g. src/tb/imported/) holds references it ports from."""
+        return None
+
+    def on_import(self, engine: "Engine", kind: str, files: list[Path]) -> None:
+        """Called after `files` of `kind` were imported into `import_dir` (engine state is saved afterwards)."""
 
     def on_approve(self, engine: "Engine") -> None:
         """Called when this step's review gate was approved (before downstream steps run): a step whose artifact records

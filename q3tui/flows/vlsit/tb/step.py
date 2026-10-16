@@ -43,6 +43,7 @@ class _Run:
     general: list[str]
     by_unit: dict[str, list[str]]
     meta: dict
+    refs: dict = field(default_factory=dict)  # your imported testbench: {tests, env, docs: [relpath], hash}
     asked: dict[str, list[Question]] = field(default_factory=dict)  # unit -> questions its stage raised this run
     wrote: set[str] = field(default_factory=set)
     llm_calls: int = 0
@@ -67,8 +68,25 @@ class TbGenStep(VlsitStep):
 
     def inputs(self, engine) -> list[Path]:
         p = engine.project
+        imported = engine.import_record_path("tb")  # (your imported testbench / tests, once there are some)
         return [*p.spec_documents(), artifacts.path(p, "structured_spec.json"), artifacts.path(p, "final_config.json"),
-                self._q_paths(engine)[1]]  # (not the RTL: the testbench is written without it)
+                self._q_paths(engine)[1], *([imported] if imported.is_file() else [])]  # (not the RTL: the testbench is written without it)
+
+    # -- imports: your testbench and tests are references the test cases are ported from ----------------------
+
+    def import_dir(self, engine, kind: str) -> Path | None:
+        return self.lay(engine).tb / "imported" if kind == "tb" else None
+
+    def _references(self, engine) -> dict:
+        from q3tui.core.project import SPEC_DOC_EXTS
+
+        rec = engine.import_record("tb") or {}
+        files = [r for r in rec.get("files", {}) if (engine.project.root / r).is_file()]
+        docs = [r for r in files if Path(r).suffix.lower() in SPEC_DOC_EXTS]
+        hdl = [r for r in files if r not in docs]
+        tests = [r for r in hdl if {"tests", "test", "testcases", "tc"} & {x.lower() for x in Path(r).parts[:-1]} or "test" in Path(r).stem.lower()]
+        return {"tests": tests, "env": [r for r in hdl if r not in tests], "docs": docs,
+                "hash": sha256_json(rec.get("files", {})) if files else ""}
 
     def outputs(self, engine) -> list[Path]:
         lay = self.lay(engine)
@@ -113,7 +131,8 @@ class TbGenStep(VlsitStep):
                      builtin_tools=["Read", "Grep", "Glob", "Write", "Edit"], output_model=TbUnitResult, deny_dirs=self._deny(run),
                      write_dirs=[run.lay.tb], write_files=files, max_turns=ctx.cfg.tb.max_turns)
 
-    async def _plan(self, run: _Run, previous: list[dict] | None, changes: list[str], uncovered: list[str]) -> TbPlan:
+    async def _plan(self, run: _Run, previous: list[dict] | None, changes: list[str], uncovered: list[str],
+                    imported: list[dict] | None = None) -> TbPlan:
         ctx = run.ctx
         reqs = [(r["req_id"], r.get("category", ""), r.get("text", "")) for r in run.spec.get("requirements", []) if r.get("req_id")]
         res = await ctx.llm(Stage(
@@ -121,7 +140,8 @@ class TbGenStep(VlsitStep):
             output_model=TbPlan, deny_dirs=self._deny(run), max_turns=ctx.cfg.tb.max_turns,
             prompt=tb_prompts.plan_prompt(reqs=reqs, params=run.params, spec_files=run.spec_files, top=run.top, previous=previous,
                                           changes=changes, answers=run.answers, settled=run.settled,
-                                          feedback=[*run.general, *run.by_unit.get("plan", [])], uncovered=uncovered)))
+                                          feedback=[*run.general, *run.by_unit.get("plan", [])], uncovered=uncovered,
+                                          imported=imported, imported_docs=run.refs.get("docs", []))))
         run.llm_calls += 1
         return res.output
 
@@ -151,6 +171,7 @@ class TbGenStep(VlsitStep):
         run = _Run(ctx, lay, tools, spec, params, reqs, [project.rel(p) for p in project.spec_documents()],
                    (spec.get("metadata") or {}).get("top_module"), load_answers(answers_path), settled_block(engine.settled_questions(self.name)),
                    general, by_unit, meta)
+        run.refs = self._references(engine)
         lay.tb.mkdir(parents=True, exist_ok=True)
         (lay.tb / "tests").mkdir(parents=True, exist_ok=True)
         if not run.top:
@@ -161,7 +182,7 @@ class TbGenStep(VlsitStep):
 
         # 1. the plan -------------------------------------------------------------------------
         snapshot = {"reqs": {r["req_id"]: [r.get("category"), r.get("sva_hint"), r.get("text")] for r in spec.get("requirements", []) if r.get("req_id")},
-                    "params": params, "top": run.top}
+                    "params": params, "top": run.top, **({"imported": run.refs["hash"]} if run.refs.get("hash") else {})}
         plan_hash = sha256_json({**snapshot, "answers": run.answers})
         old = meta.get("plan") or {}
         need_plan = bool(ctx.regenerate or general or "plan" in by_unit or not old.get("cases") or old.get("hash") != plan_hash)
@@ -170,23 +191,36 @@ class TbGenStep(VlsitStep):
         if need_plan:
             changes = self._plan_changes(old.get("snapshot"), snapshot, old.get("answers"), run.answers)
             ctx.emit("log", message="planning the test cases …" if not cases else "updating the test plan …")
-            plan = await self._plan(run, cases or None, changes, [])
-            norm, warnings = tb_plan.normalize(plan.test_cases, set(reqs), cases)
+            # your tests are the plan (one test case each, id / name / source fixed by code); the LLM maps them to REQs
+            seed = tb_plan.seed_imported(run.refs.get("tests", []), cases)
+            plan = await self._plan(run, cases or None, changes, [], seed)
+            sources = set(run.refs.get("tests", []))
+            norm, warnings = tb_plan.normalize(plan.test_cases, set(reqs), cases, sources)
             cases = [c.model_dump() for c in norm]
             run.asked["plan"] = plan.questions
             sel = [c for c in cases if tb_plan.applies(c, params)]
             cov = tb_plan.coverage(sel, spec)
-            if cov["uncovered_req_ids"] and not ctx.cfg.tb.max_fix_attempts == 0:
-                ctx.emit("warning", message=f"no test case covers {', '.join(cov['uncovered_req_ids'])}: asking for more")
-                plan = await self._plan(run, cases, [], cov["uncovered_req_ids"])
-                norm, w2 = tb_plan.normalize(plan.test_cases, set(reqs), cases)
+            unported = tb_plan.unported(cases, run.refs.get("tests", []))
+            if (cov["uncovered_req_ids"] or unported) and not ctx.cfg.tb.max_fix_attempts == 0:
+                ctx.emit("warning", message="asking for more test cases: " + "; ".join(
+                    ([f"no test case covers {', '.join(cov['uncovered_req_ids'])}"] if cov["uncovered_req_ids"] else [])
+                    + ([f"{len(unported)} imported test(s) not ported"] if unported else [])))
+                plan = await self._plan(run, cases, [], cov["uncovered_req_ids"], [s for s in seed if s["source"] in unported])
+                norm, w2 = tb_plan.normalize(plan.test_cases, set(reqs), cases, sources)
                 warnings += w2
                 cases = [c.model_dump() for c in norm]
                 run.asked["plan"] = [*run.asked.get("plan", []), *plan.questions]
+            if seed:
+                cases, w3 = tb_plan.apply_imported(cases, seed)
+                warnings += w3
             meta["plan"] = {"hash": plan_hash, "snapshot": snapshot, "answers": dict(run.answers), "cases": cases}
             run.wrote.add("plan")
         for w in warnings:
             ctx.emit("warning", message=w)
+        unported = tb_plan.unported(cases, run.refs.get("tests", []))
+        if unported:
+            ctx.emit("warning", message=f"imported test(s) no test case is ported from: {', '.join(Path(t).name for t in unported[:10])}"
+                                        + (" …" if len(unported) > 10 else ""))
         selected = [c for c in cases if tb_plan.applies(c, params)]
         excluded = [c for c in cases if c not in selected]
         for c in excluded:
@@ -248,7 +282,8 @@ class TbGenStep(VlsitStep):
         ctx, project = run.ctx, run.ctx.project
         path = run.tb_path("tb_top.sv")
         h = sha256_json({"top": run.top, "params": run.params, "answers": run.answers,
-                         "spec": [p.read_text() if p.suffix in (".md", ".txt") else p.name for p in project.spec_documents()]})
+                         "spec": [p.read_text() if p.suffix in (".md", ".txt") else p.name for p in project.spec_documents()],
+                         **({"imported": run.refs["hash"]} if run.refs.get("hash") else {})})
         saved = run.meta.get("top_hash")
         todo = bool(ctx.regenerate or run.general or "top" in run.by_unit or not path.is_file() or saved != h)
         problems = ""
@@ -259,7 +294,8 @@ class TbGenStep(VlsitStep):
         ctx.emit("log", message="writing tb_top.sv …")
         res = await ctx.llm(self._write_stage(run, "tb_top", tb_prompts.top_prompt(
             path=project.rel(path), top=run.top, params=run.params, spec_files=run.spec_files, answers=run.answers, settled=run.settled,
-            feedback=[*run.general, *run.by_unit.get("top", [])], problems=problems, existing=path.is_file(), cases=selected), [path]))
+            feedback=[*run.general, *run.by_unit.get("top", [])], problems=problems, existing=path.is_file(), cases=selected,
+            imported=[*run.refs.get("env", []), *run.refs.get("docs", [])]), [path]))
         run.llm_calls += 1
         run.asked["top"] = res.output.questions if res.output else []
         for attempt in range(ctx.cfg.tb.max_fix_attempts):
@@ -279,7 +315,9 @@ class TbGenStep(VlsitStep):
     # -- test case files --------------------------------------------------------------------------------------
 
     def _tc_hash(self, run: _Run, c: dict) -> str:
-        return sha256_json({"tc": c, "reqs": {r: run.reqs.get(r, "") for r in c["req_ids"]}, "params": run.params, "answers": run.answers})
+        src = run.ctx.project.root / c["source"] if c.get("source") else None
+        return sha256_json({"tc": c, "reqs": {r: run.reqs.get(r, "") for r in c["req_ids"]}, "params": run.params, "answers": run.answers,
+                            **({"source": sha256_json(src.read_text(errors="replace"))} if src and src.is_file() else {})})
 
     def _tc_problems(self, run: _Run, c: dict) -> list[str]:
         p = run.tc_path(c)
@@ -454,6 +492,7 @@ class TbGenStep(VlsitStep):
             tcs.append({
                 "tc_id": c["tc_id"], "name": c["name"], "title": c["name"], "description": c.get("description", ""),
                 "req_ids": c["req_ids"], "selected": sel, "conditional_param": c.get("conditional_param"),
+                **({"source": c["source"]} if c.get("source") else {}),
                 **({"file": project.rel(run.tc_path(c))} if sel else {}),
                 "compile_status": ("not selected" if not sel else "fail" if fname in bad_files else
                                    "skipped" if compile_info["status"] == "skipped" else "pass" if compile_info["status"] == "pass" else "fail")})

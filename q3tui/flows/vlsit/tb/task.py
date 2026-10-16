@@ -16,19 +16,29 @@ WRITE_SYSTEM = TEXT["WRITE_SYSTEM"]
 
 def plan_prompt(*, reqs: list[tuple[str, str, str]], params: dict[str, str], spec_files: list[str], top: str | None,
                 previous: list[dict] | None, changes: list[str], answers: dict[str, str], settled: str, feedback: list[str],
-                uncovered: list[str]) -> str:
+                uncovered: list[str], imported: list[dict] | None = None, imported_docs: list[str] | None = None) -> str:
     parts = ["# Task: test plan" + (" (cập nhật)" if previous else "")]
     parts.append(f"\nSpec: {', '.join(spec_files) or 'spec/'}" + (f"\nModule top (DUT): `{top}`" if top else ""))
     parts.append("\n## Requirement\n" + "\n".join(f"- {rid} [{cat}]: {text}" for rid, cat, text in reqs))
     parts.append("\n## Tham số đã chốt (final_config.json)\n" + ("\n".join(f"- {k} = {v}" for k, v in params.items()) or "(không có)"))
     if previous:
         parts.append("\n## Test plan hiện tại (giữ nguyên id; chỉ thay đổi phần bị ảnh hưởng)\n"
-                     + "\n".join(f"- {c['tc_id']} {c['name']} → {', '.join(c['req_ids'])}: {c.get('description', '')}" for c in previous))
+                     + "\n".join(f"- {c['tc_id']} {c['name']} → {', '.join(c['req_ids'])}: {c.get('description', '')}"
+                               + (f" (source: {c['source']})" if c.get("source") else "") for c in previous))
         if changes:
             parts.append("\n## Đầu vào đã thay đổi\n" + "\n".join(f"- {c}" for c in changes))
     if uncovered:
         parts.append("\n## Chưa có TC cover (thêm TC, hoặc giải thích trong questions vì sao không kiểm tra được bằng mô phỏng)\n"
                      + "\n".join(f"- {r}" for r in uncovered))
+    if imported:
+        parts.append("\n## Test plan nhập từ test có sẵn của người dùng (import; đọc từng file)\n"
+                     "Mỗi test dưới đây LÀ một TC của test plan: giữ đúng `tc_id`, `name` và `source` đã cho (không đổi tên, không gộp, "
+                     "không bỏ). Đọc file rồi điền `description` (kịch bản kích thích + điều kiện kiểm tra của chính test đó), `req_ids` "
+                     "(REQ mà nó kiểm) và `conditional_param` nếu test chỉ áp dụng cho một cấu hình. Môi trường cũ (VIP/UVM/VMM/class) "
+                     "KHÔNG được dùng: TC sẽ được viết lại theo framework của testbench này. Chỉ thêm TC mới (`source` = \"\") cho REQ "
+                     "chưa test nào kiểm.\n"
+                     + "\n".join(f"- {c['tc_id']} {c['name']} ← {c['source']}" for c in imported)
+                     + ("\nTài liệu của môi trường cũ: " + ", ".join(imported_docs) if imported_docs else ""))
     if answers:
         parts.append("\n## Câu trả lời của người dùng\n" + "\n".join(f"- {k}: {v}" for k, v in answers.items()))
     if settled:
@@ -40,7 +50,8 @@ def plan_prompt(*, reqs: list[tuple[str, str, str]], params: dict[str, str], spe
 
 
 def top_prompt(*, path: str, top: str | None, params: dict[str, str], spec_files: list[str], answers: dict[str, str],
-               settled: str, feedback: list[str], problems: str, existing: bool, cases: list[dict]) -> str:
+               settled: str, feedback: list[str], problems: str, existing: bool, cases: list[dict],
+               imported: list[str] | None = None) -> str:
     parts = [f"# Task: viết testbench top → `{path}`", f"\nDUT: module `{top or '(xem spec)'}`; interface (port, clock, reset, giao thức) lấy từ spec: "
              f"{', '.join(spec_files) or 'spec/'}.",
              "\n## Tham số (instantiate DUT với các giá trị này)\n" + ("\n".join(f"- {k} = {v}" for k, v in params.items()) or "(không có)"),
@@ -54,6 +65,10 @@ def top_prompt(*, path: str, top: str | None, params: dict[str, str], spec_files
         parts.append(settled)
     if feedback:
         parts.append("\nYêu cầu thay đổi:\n" + "\n".join(f"- {f}" for f in feedback))
+    if imported:
+        parts.append("\nMôi trường testbench cũ của người dùng (import, tham khảo — cách nối DUT, clock/reset, model bộ nhớ, task bus): "
+                     + ", ".join(imported) + ". Viết lại theo framework này, KHÔNG dùng VIP/UVM/VMM/class của nó; model cần cho DUT "
+                     "(ví dụ SRAM) thì viết lại thành module trong chính file tb_top.sv.")
     if existing:
         parts.append(f"\n`{path}` đã tồn tại: đọc rồi chỉ sửa phần cần sửa.")
     if problems:
@@ -67,7 +82,10 @@ def group_prompt(*, cases: list[dict], paths: dict[str, str], reqs: dict[str, st
     parts = ["# Task: viết các test case sau (mỗi TC một file, chỉ ghi các file này)"]
     for c in cases:
         parts.append(f"\n### {c['tc_id']} {c['name']} → `{paths[c['tc_id']]}`" + (" (đã tồn tại: đọc rồi sửa)" if c["tc_id"] in existing else "")
-                     + f"\n{c.get('description', '')}\nREQ: " + "; ".join(f"{r}: {reqs.get(r, '')}" for r in c["req_ids"]))
+                     + f"\n{c.get('description', '')}\nREQ: " + "; ".join(f"{r}: {reqs.get(r, '')}" for r in c["req_ids"])
+                     + (f"\nPort từ test có sẵn của người dùng `{c['source']}`: đọc nó, giữ kịch bản và các kiểm tra; viết lại theo "
+                        "framework này (task, `TC_CHECK, task trợ giúp của tb_top) — không dùng VIP/UVM/VMM/class của môi trường cũ."
+                        if c.get("source") else ""))
     parts.append("\n## Tham số đã chốt\n" + ("\n".join(f"- {k} = {v}" for k, v in params.items()) or "(không có)"))
     parts.append(f"\nĐọc `{top_path}` để biết tín hiệu và task trợ giúp có sẵn trong tb_top (task TC được include vào bên trong module đó). "
                  f"Spec: {', '.join(spec_files) or 'spec/'}.")

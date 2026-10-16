@@ -124,6 +124,26 @@ def _template_block(template: str) -> str:
     return f"\n<spec_template>\n{template}\n</spec_template>\n"
 
 
+def port_intent(intent: str, documents: str) -> str:
+    """The 'intent' of a spec ported from the user's own documents (imported): the documents are the source of truth,
+    the template gives the structure."""
+    head = (f"{intent.strip()}\n\n" if intent.strip() else "")
+    return f"""\
+{head}Port the user's own specification documents below into the template (read every listed file fully \
+yourself — HTML and PDF included — before writing): every section of the template, \
+in its order, with its fields. The documents are the source of truth: carry over every fact they state \
+(signal tables, burst types, encodings, parameters and defaults, latencies, error conditions, corner cases), \
+reworded into the section it belongs to — do not drop, weaken or invent behaviour. Keep module names and \
+port names exactly as the documents give them (the user's RTL and tests use them); parameters follow the \
+template's naming (e.g. PR_<NAME>), with the documents' original name noted once in the Parameters table. \
+A template section or field the documents do not cover: write what follows from them, else "TBD" plus a \
+question. Where the documents contradict each other, write the more specific statement and raise a question.
+
+<user_documents>
+{documents.strip()}
+</user_documents>"""
+
+
 def draft_prompt(*, intent: str, template: str, feedback: list[str]) -> str:
     return f"""\
 Write the specification for this block.
