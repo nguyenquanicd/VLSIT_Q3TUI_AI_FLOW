@@ -53,8 +53,8 @@ class SpecStep(StepDef):
         return bool(self._user_documents(engine))
 
     def missing_input(self, engine) -> str | None:
-        intent = self._paths(engine)[0]
-        if not intent.is_file():
+        intent, spec = self._paths(engine)[:2]
+        if not intent.is_file() and not spec.is_file():  # (the intent only seeds the first spec: with a spec, a missing intent is fine)
             return f"no spec and no intent: write {engine.project.rel(intent)}, pass --intent \"...\", or provide --spec FILE"
         return None
 
@@ -99,8 +99,9 @@ class SpecStep(StepDef):
     def _record_meta(self, engine, template_path: Path, applied: list[str], template=None) -> None:
         intent_path = self._paths(engine)[0]
         meta = self._meta(engine)
-        meta["intent"] = sha256_file(intent_path) if intent_path.is_file() else None
-        meta["intent_text"] = intent_path.read_text() if intent_path.is_file() else None  # to diff the next intent change
+        if intent_path.is_file():  # (no intent file: keep what was recorded, so one that comes back is diffed, not a rewrite)
+            meta["intent"] = sha256_file(intent_path)
+            meta["intent_text"] = intent_path.read_text()  # to diff the next intent change
         meta["template"] = sha256_file(template_path)
         meta["applied_answers"] = sorted(set(meta.get("applied_answers", [])) | set(applied))
         if template is not None:  # snapshot, so the next run knows exactly which sections changed
@@ -153,10 +154,11 @@ class SpecStep(StepDef):
         new_answers = {k: v for k, v in answers.items() if k not in set(meta.get("applied_answers", []))}
         intent_same = meta.get("intent") is not None and meta.get("intent") == (sha256_file(intent_path) if intent_path.is_file() else None)
         old_intent = meta.get("intent_text")
-        if spec_path.is_file() and not ctx.regenerate and (intent_same or (old_intent is not None and intent_path.is_file())):
+        no_intent = spec_path.is_file() and not intent_path.is_file()  # a spec without its intent (a copied project): nothing to compare with
+        if spec_path.is_file() and not ctx.regenerate and (intent_same or no_intent or (old_intent is not None and intent_path.is_file())):
             # the spec exists: update only what changed (an intent change revises the sections it affects)
             changes = self._template_changes(engine, template, spec_path.read_text())
-            intent_change = None if intent_same else (old_intent, intent_path.read_text())
+            intent_change = None if intent_same or no_intent else (old_intent, intent_path.read_text())
             await self._apply_updates(ctx, template, template_path, new_answers, changes, intent_change)
         else:
             await self._write_full(ctx, template, template_path, answers)
