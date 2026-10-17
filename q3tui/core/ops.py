@@ -282,9 +282,16 @@ class Ops:
 
     def _step_option(self, path: str):
         """A step option as the live step has it (the flow file's value, q3tui.yaml's on top)."""
+        from q3tui.core import settings
+
         _, _, step, key = path.rsplit(".", 3)
         st = self.engine.by_name.get(step)
-        return None if st is None else st.options.get(key)
+        if st is not None:
+            return st.options.get(key)
+        # a step of another flow (a setting both flows share, made from this one): q3tui.yaml's value, else the setting's default
+        mine = (self.project.cfg.pipeline.step_options.get(step) or {}).get(key)
+        found = settings.find(path, self.engine.flow.settings)
+        return mine if mine is not None else (found.default if found else None)
 
     def settings_tabs(self):
         """The settings tabs of this flow: its steps' model rows, (vlsit) per-step tabs, the add-on's step options."""
@@ -327,7 +334,8 @@ class Ops:
             if settings.is_step_option(path):  # the live step, and q3tui.yaml's step_options for the next start
                 step = section.rsplit(".", 1)[1]
                 cfg.pipeline.step_options.setdefault(step, {})[leaf] = values[path]
-                self.engine.by_name[step].options[leaf] = values[path]
+                if step in self.engine.by_name:  # (a step of another flow reads q3tui.yaml's value when that flow starts)
+                    self.engine.by_name[step].options[leaf] = values[path]
                 continue
             if section.startswith("llm.steps.") and not hasattr(cfg.llm.steps, section.rsplit(".", 1)[1]):
                 setattr(cfg.llm.steps, section.rsplit(".", 1)[1], settings.get_value(checked, section))  # another flow's step

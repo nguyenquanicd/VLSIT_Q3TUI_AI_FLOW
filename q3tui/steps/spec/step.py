@@ -87,6 +87,8 @@ class SpecStep(StepDef):
         return bool(self._user_documents(engine))
 
     def missing_input(self, engine) -> str | None:
+        intent, spec = self._paths(engine)[:2]
+        if not intent.is_file() and not spec.is_file():  # (the intent only seeds the first spec: with a spec, a missing intent is fine)
         intent = self._paths(engine)[0]
         if not intent.is_file() and not self.references(engine):
             return f"no spec and no intent: write {engine.project.rel(intent)}, pass --intent \"...\", or provide --spec FILE"
@@ -133,8 +135,9 @@ class SpecStep(StepDef):
     def _record_meta(self, engine, template_path: Path, applied: list[str], template=None) -> None:
         intent_path = self._paths(engine)[0]
         meta = self._meta(engine)
-        meta["intent"] = sha256_file(intent_path) if intent_path.is_file() else None
-        meta["intent_text"] = intent_path.read_text() if intent_path.is_file() else None  # to diff the next intent change
+        if intent_path.is_file():  # (no intent file: keep what was recorded, so one that comes back is diffed, not a rewrite)
+            meta["intent"] = sha256_file(intent_path)
+            meta["intent_text"] = intent_path.read_text()  # to diff the next intent change
         meta["template"] = sha256_file(template_path)
         meta["applied_answers"] = sorted(set(meta.get("applied_answers", [])) | set(applied))
         if template is not None:  # snapshot, so the next run knows exactly which sections changed

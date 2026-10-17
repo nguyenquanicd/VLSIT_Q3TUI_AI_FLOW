@@ -222,6 +222,9 @@ class Engine:
             "missing": sorted(self.project.rel(f) for f in step.inputs(self) if not f.is_file()),
             "feedback": self.state.feedback.get(step.name, []),
         }
+        opts = {k: step.options[k] for k in step.hashed_options if step.options.get(k) not in (None, "", [], {})}
+        if opts:
+            data["options"] = opts
         if step.checks_version:  # Q3TUI's checks on this step's result changed: re-check it (no LLM when it passes)
             data["checks"] = step.checks_version
         spec = self.flow.spec(step.name)

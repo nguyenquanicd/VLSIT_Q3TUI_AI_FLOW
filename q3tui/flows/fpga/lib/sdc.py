@@ -28,6 +28,7 @@ class Clock(BaseModel):
     period_ns: float = 10.0
     uncertainty_ns: float = 0.0
     duty_pct: float = 50.0
+    asic_freq_mhz: float | None = None  # the ASIC flow's own target for this clock (None: the same as the FPGA's)
 
     @property
     def freq_mhz(self) -> float:
@@ -307,7 +308,7 @@ def write(project, cfg: SdcConfig, ports: list[dict]) -> list[Path]:
 
 # -- editing (the TUI's SDC tab, the assistant, Ops) --------------------------------------------------------------------
 
-_CLOCK_FIELDS = {"period_ns": float, "freq_mhz": float, "uncertainty_ns": float, "duty_pct": float, "port": str}
+_CLOCK_FIELDS = {"period_ns": float, "freq_mhz": float, "uncertainty_ns": float, "duty_pct": float, "port": str, "asic_freq_mhz": float}
 _ENV_FIELDS = {"driving_cell": str, "load_pf": float, "max_fanout": int, "max_transition_ns": float}
 
 
@@ -318,7 +319,8 @@ def rows(cfg: SdcConfig) -> list[tuple[str, str, str]]:
         out += [(f"clock.{c.name}.freq_mhz", f"clock {c.name}: frequency (MHz)", f"{c.freq_mhz:g}"),
                 (f"clock.{c.name}.period_ns", f"clock {c.name}: period (ns)", f"{c.period_ns:g}"),
                 (f"clock.{c.name}.uncertainty_ns", f"clock {c.name}: uncertainty (ns)", f"{c.uncertainty_ns:g}"),
-                (f"clock.{c.name}.duty_pct", f"clock {c.name}: duty cycle (%)", f"{c.duty_pct:g}")]
+                (f"clock.{c.name}.duty_pct", f"clock {c.name}: duty cycle (%)", f"{c.duty_pct:g}"),
+                (f"clock.{c.name}.asic_freq_mhz", f"clock {c.name}: ASIC frequency (MHz; empty: the same)", "" if c.asic_freq_mhz is None else f"{c.asic_freq_mhz:g}")]
     out += [("io.input_pct", "input delay (% of period)", f"{cfg.io.input_pct:g}"),
             ("io.output_pct", "output delay (% of period)", f"{cfg.io.output_pct:g}"),
             ("io.clock", "I/O reference clock", cfg.io.clock),
@@ -352,6 +354,12 @@ def apply_edit(cfg: SdcConfig, key: str, value: str) -> str:
         if clk is None or parts[2] not in _CLOCK_FIELDS:
             raise ValueError(f"unknown setting '{key}' (clocks: {', '.join(c.name for c in cfg.clocks) or 'none'})")
         field = parts[2]
+        if field == "asic_freq_mhz":  # the ASIC flow's own target; empty: the same as the FPGA's
+            new = _conv(float, value, key) if value.strip() else None
+            if new is not None and new <= 0:
+                raise ValueError("the frequency must be positive")
+            clk.asic_freq_mhz = new
+            return f"clock {clk.name}: ASIC frequency " + (f"{new:g} MHz" if new else "= the FPGA's")
         if field == "freq_mhz":
             mhz = _conv(float, value, key)
             if mhz <= 0:

@@ -1,0 +1,7 @@
+{
+  "_comment": "The open-source standard-cell libraries the ASIC flow offers (technology, then corner) in the SDC tab's clock dialog and the Settings. Only open-source PDKs are listed here; a foundry or educational PDK under a licence (TSMC, SAED, …) goes in <project>/pdks.json (same format; an entry with the same id replaces one here; \"only\": true hides these). Only entries whose files exist show. `globs`: Design Compiler .db files; `include`: a regex a file name must match; `default`: the corner (label) chosen when the technology is picked; `probe_ns`: the clock period the quick Fmax estimate starts from (a period the library cannot meet, tighter for a faster node); the corner label is the file name without what all its files share. The paths are this site's: change them in your project's pdks.json if your PDKs live elsewhere.",
+  "pdks": [
+    {"id": "gf180", "probe_ns": 1.0, "title": "GF180MCU 7-track 5 V", "node_nm": 180, "foundry": "GlobalFoundries", "globs": ["/tools/PDK/GF180/*/build/synopsys/*.db"], "default": "tt_025C_5v00"},
+    {"id": "freepdk45", "probe_ns": 0.5, "title": "FreePDK45 OSU gscl45nm", "node_nm": 45, "foundry": "NCSU / OSU (open)", "globs": ["/tools/PDK/FreePDK45/osu_soc/lib/files/gscl45nm.db"]}
+  ]
+}

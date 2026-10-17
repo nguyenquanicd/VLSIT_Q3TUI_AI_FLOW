@@ -354,7 +354,9 @@ async def test_sdc_view_has_three_columns(proj):
         sec_table, items = ed.query_one("#sdc-sections", DataTable), ed.query_one("#sdc-items", DataTable)  # column 1, column 2
         ed.refresh_view()
         assert [sec_table.get_row_at(i)[0] for i in range(sec_table.row_count)] == ["Clocks", "Clock groups", "I/O", "Exceptions", "Environment"]
-        assert sections["clocks"].rows(app) == [("clock.i_clk", "i_clk", "i_clk", "200", "5", "0", "50")]
+        (row,) = sections["clocks"].rows(app)
+        assert row[:4] == ("clock.i_clk", "i_clk", "i_clk", "200") and str(row[4]) == "same" and row[5:8] == ("5", "0", "50")
+        assert str(row[8]) == "–"  # (the ASIC flow has not run: no hint)
         assert [r[0] for r in sections["io"].rows(app)] == ["io.input_pct", "io.output_pct", "io.clock", "io.exclude"]
         assert [r[0] for r in sections["exceptions"].rows(app)] == ["resets"] and str(sections["exceptions"].rows(app)[0][2]) == "i_rst_n"
         assert [r[0] for r in sections["env"].rows(app)] == ["env.driving_cell", "env.load_pf", "env.max_fanout", "env.max_transition_ns"]
@@ -367,7 +369,7 @@ async def test_sdc_view_has_three_columns(proj):
         assert ed.spec.id == "io" and items.row_count == 4 and [str(c.label) for c in items.columns.values()] == ["Setting", "Value"]
         sec_table.move_cursor(row=0)
         await pilot.pause()
-        assert ed.spec.id == "clocks" and len(items.columns) == 6
+        assert ed.spec.id == "clocks" and len(items.columns) == 8
 
         # changes go through the actions; every section follows
         app.ops.run_action("sdc_add", what="clock", text="clk2 i_clk 8")
@@ -397,7 +399,7 @@ async def test_sdc_view_has_three_columns(proj):
         ed.refresh_view()
         ed.action_edit()
         await dialog(freq_mhz="250", uncertainty_ns="0.2")
-        assert sections["clocks"].rows(app)[1][1:6] == ("clk2", "i_clk", "250", "4", "0.2") and sections["clocks"].rows(app)[0][3] == "200"
+        assert (sections["clocks"].rows(app)[1][1:4], sections["clocks"].rows(app)[1][5:7]) == (("clk2", "i_clk", "250"), ("4", "0.2")) and sections["clocks"].rows(app)[0][3] == "200"
         # a: a new clock from name / port / frequency
         ed.action_add()
         await dialog(name="clk3", port="i_clk3", mhz="100")
@@ -637,7 +639,7 @@ async def test_the_flow_map_picks_the_flow_of_a_box(proj):
         await pilot.pause()
         assert isinstance(app.screen, FlowMapScreen)
         by_title = {g.border_title.split("  ·")[0]: g for g in app.screen.query(Group)}
-        assert {t for t, g in by_title.items() if g.developed} == {"Spec", "RTL gen", "FPGA synthesis"}
+        assert {t for t, g in by_title.items() if g.developed} == {"Spec", "RTL gen", "FPGA synthesis", "ASIC synthesis", "Project settings"}
         assert by_title["DV"].has_class("off") and by_title["FPGA synthesis"].has_class("current")
         app.screen.pick(by_title["DV"])  # not developed: stays open
         await pilot.pause()
@@ -948,3 +950,69 @@ async def test_the_ppa_options_are_in_the_settings_dialog(proj):
         await pilot.pause()
         assert "set-tab-ppa_optimize" in {p.id for p in app.screen.query(TabPane)}  # the selected step's tab opens
         assert app.screen.query_one("#set-pipeline-step_options-ppa_optimize-max_iterations", Input).value == "6"
+
+
+def test_the_synthesis_options_are_settings_of_fpga_synth(proj):
+    ops = Ops(Engine(proj))
+    base = "pipeline.step_options.fpga_synth."
+    paths = {s.path for t in ops.settings_tabs() for s in t.settings}
+    assert {base + k for k in ("template", "part", "package", "speed", "implement", "frontend", "synth_args")} <= paths
+    ops.apply_settings({base + "implement": "on", base + "synth_args": "-flatten_hierarchy full\n-retiming"})
+    step = ops.engine.by_name["fpga_synth"]
+    assert step._fpga_cfg()["implement"] is True and step._fpga_cfg()["synth_args"] == ["-flatten_hierarchy full", "-retiming"]
+    tcl = vivado.script_text([], "blk", proj.root / "sdc", proj.root, {"fpga": step._fpga_cfg()})
+    assert "-flatten_hierarchy full -retiming" in tcl and "route_design" in tcl
+
+
+async def test_the_fpga_is_picked_in_the_synthesis_step_view(proj):
+    from textual.widgets import DataTable
+
+    from q3tui.flows.fpga import panels
+    from q3tui.tui.app import Q3TUIApp
+
+    app = Q3TUIApp(proj)
+    async with app.run_test(size=(150, 45)) as pilot:
+        await pilot.pause()
+        app._select_step("fpga_synth")
+        await pilot.pause()
+        rows = {r[0]: r for r in panels._synth_rows(app)}
+        assert "Xilinx 7-series" in str(rows["template"][2]) and "implement" in rows and "package" not in rows  # (Vivado: no package / speed)
+        app.ops.apply_settings({"pipeline.step_options.fpga_synth.template": "ecp5", "pipeline.step_options.fpga_synth.part": "45k"}, save=True)
+        rows = {r[0]: r for r in panels._synth_rows(app)}
+        assert rows["part"][2] == "45k" and rows["package"][2] == "CABGA381" and "speed" in rows and "frontend" in rows
+        app.refresh_all()
+        await pilot.pause(0.5)
+        tab = app.screen.query_one(panels.SynthTab)
+        assert tab.query_one(DataTable).row_count == len(rows)
+        assert "45k" in panels._synth_detail(app, "part") or "`25k`" in panels._synth_detail(app, "part")
+
+
+async def test_an_asic_frequency_leaves_the_fpga_results_alone(proj):
+    eng = Engine(proj)
+    await eng.run(yes=True, stop="timing_util_report")
+    before = {v.name: v.status for v in eng.status()}
+    Ops(eng).run_action("sdc_set", key="clock.i_clk.asic_freq_mhz", value="120")  # the ASIC flow's own target for the clock
+    assert "i_clk: ASIC frequency 120 MHz" in Ops(eng).run_action("sdc_set", key="clock.i_clk.asic_freq_mhz", value="120")
+    eng2 = Engine(Project.open(proj.root))
+    await eng2.run(yes=True, stop="timing_util_report")  # (the sdc step reruns, writes no Tcl: nothing downstream goes stale)
+    assert {v.name: v.status for v in eng2.status()}["fpga_synth"] == "done" and before["fpga_synth"] == "done"
+    assert "asic_freq_mhz" in {k.split(".")[2] for k, _n, _v in sdc.rows(sdc.load(proj)) if k.startswith("clock.")}
+
+
+# -- the ASIC library, chosen from this flow too ----------------------------------------------------------------------------------------------
+
+
+def test_the_asic_library_is_a_setting_of_this_flow_too(proj):
+    from q3tui.flows.fpga.lib import hints
+
+    ops = Ops(Engine(proj))
+    tabs = {t.id: t for t in ops.settings_tabs()}
+    path = "pipeline.step_options.asic_synth.library"
+    assert path in {s.path for s in tabs["asic_synth"].settings}  # a tab of its own: the step is the ASIC flow's
+    assert ops.settings()[path].endswith("gf180mcu_fd_sc_mcu7t5v0__tt_025C_5v00.db")  # the ASIC flow file's, while nothing is set
+    assert hints.asic_library(proj).endswith("tt_025C_5v00.db")
+    msg = ops.apply_settings({path: "/pdk/other__ss_n40C_4v50.db"}, save=True)
+    assert path in msg and "saved to q3tui.yaml" in msg
+    assert ops.settings()[path] == "/pdk/other__ss_n40C_4v50.db" and hints.asic_library(proj) == "/pdk/other__ss_n40C_4v50.db"
+    assert "other__ss_n40C_4v50.db" in (proj.root / "q3tui.yaml").read_text()
+    assert Ops(Engine(Project.open(proj.root))).settings()[path] == "/pdk/other__ss_n40C_4v50.db"  # the next start (and the ASIC flow) read it

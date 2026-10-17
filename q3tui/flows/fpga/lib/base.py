@@ -7,6 +7,7 @@ from pathlib import Path
 from q3tui.core.project import read_json, write_json
 from q3tui.pipeline.base import StepDef
 from q3tui.flows.fpga.lib import sdc as sdcmod
+from q3tui.flows.fpga.lib import templates
 
 SYNTH_JSON = "fpga_synth.json"  # schemas/: what the synthesis run produced (tool, part, status, reports)
 PPA_JSON = "ppa_report.json"  # schemas/: utilization + timing + verdict against the targets
@@ -37,6 +38,14 @@ class FpgaStep(StepDef):
         if not self.top(engine):
             return "no top module: set `options.top` (or run the vlsit flow's parse step: schemas/structured_spec.json)"
         return None
+
+    def template(self) -> templates.Template:
+        """The FPGA template of the step's options (`template`, default Xilinx 7-series / Vivado)."""
+        return templates.get(self.options.get("template"))
+
+    def part(self) -> tuple[str, str]:
+        """(device, note): `options.part` (or the older `fpga.part`) when it belongs to the template, else the template's default."""
+        return templates.device(self.template(), self.options.get("part") or (self.options.get("fpga") or {}).get("part"))
 
     def workdir(self, engine) -> Path:
         d = engine.project.state_dir / "fpga" / self.name

@@ -1,0 +1,110 @@
+ 
+****************************************
+Report : timing
+        -path full
+        -delay max
+        -max_paths 5
+Design : m_vlsi_axi4_sram
+Version: V-2023.12-SP3
+Date   : Sun Oct 11 15:32:48 2026
+****************************************
+
+ # A fanout number of 1000 was used for high fanout net computations.
+
+Operating Conditions: gf180mcu_fd_sc_mcu7t5v0__tt_025C_5v00   Library: gf180mcu_fd_sc_mcu7t5v0__tt_025C_5v00
+Wire Load Model Mode: top
+
+  Startpoint: u_vlsi_axfsm_1_reg_axsize_reg_2_
+              (rising edge-triggered flip-flop clocked by i_clk)
+  Endpoint: u_vlsi_axfsm_1_reg_axaddr_reg_31_
+            (rising edge-triggered flip-flop clocked by i_clk)
+  Path Group: i_clk
+  Path Type: max
+
+  Point                                                   Incr       Path
+  --------------------------------------------------------------------------
+  clock i_clk (rise edge)                                 0.00       0.00
+  clock network delay (ideal)                             0.00       0.00
+  u_vlsi_axfsm_1_reg_axsize_reg_2_/CLK (gf180mcu_fd_sc_mcu7t5v0__dffrnq_2)
+                                                          0.00 #     0.00 r
+  u_vlsi_axfsm_1_reg_axsize_reg_2_/Q (gf180mcu_fd_sc_mcu7t5v0__dffrnq_2)
+                                                          1.01       1.01 r
+  U5521/ZN (gf180mcu_fd_sc_mcu7t5v0__inv_3)               0.10       1.11 f
+  U5269/ZN (gf180mcu_fd_sc_mcu7t5v0__nand2_2)             0.17       1.28 r
+  U5323/ZN (gf180mcu_fd_sc_mcu7t5v0__nor2_2)              0.14       1.41 f
+  U5776/ZN (gf180mcu_fd_sc_mcu7t5v0__nor2_2)              0.29       1.70 r
+  U5773/ZN (gf180mcu_fd_sc_mcu7t5v0__oai21_2)             0.18       1.88 f
+  U5522/ZN (gf180mcu_fd_sc_mcu7t5v0__aoi21_4)             0.30       2.18 r
+  U5768/ZN (gf180mcu_fd_sc_mcu7t5v0__oai21_4)             0.17       2.35 f
+  U5924/ZN (gf180mcu_fd_sc_mcu7t5v0__nand2_2)             0.26       2.61 r
+  U8625/ZN (gf180mcu_fd_sc_mcu7t5v0__nor2_1)              0.16       2.77 f
+  U8626/ZN (gf180mcu_fd_sc_mcu7t5v0__xnor2_2)             0.59       3.36 r
+  U8627/ZN (gf180mcu_fd_sc_mcu7t5v0__nand2_2)             0.08       3.45 f
+  U8630/ZN (gf180mcu_fd_sc_mcu7t5v0__nand3_1)             0.14       3.58 r
+  u_vlsi_axfsm_1_reg_axaddr_reg_31_/D (gf180mcu_fd_sc_mcu7t5v0__dffrnq_2)
+                                                          0.00       3.58 r
+  data arrival time                                                  3.58
+
+  clock i_clk (rise edge)                                 3.33       3.33
+  clock network delay (ideal)                             0.00       3.33
+  u_vlsi_axfsm_1_reg_axaddr_reg_31_/CLK (gf180mcu_fd_sc_mcu7t5v0__dffrnq_2)
+                                                          0.00       3.33 r
+  library setup time                                     -0.36       2.98
+  data required time                                                 2.98
+  --------------------------------------------------------------------------
+  data required time                                                 2.98
+  data arrival time                                                 -3.58
+  --------------------------------------------------------------------------
+  slack (VIOLATED)                                                  -0.61
+
+
+  Startpoint: u_vlsi_axfsm_1_reg_axsize_reg_2_
+              (rising edge-triggered flip-flop clocked by i_clk)
+  Endpoint: u_vlsi_axfsm_1_reg_axaddr_reg_17_
+            (rising edge-triggered flip-flop clocked by i_clk)
+  Path Group: i_clk
+  Path Type: max
+
+  Point                                                   Incr       Path
+  --------------------------------------------------------------------------
+  clock i_clk (rise edge)                                 0.00       0.00
+  clock network delay (ideal)                             0.00       0.00
+  u_vlsi_axfsm_1_reg_axsize_reg_2_/CLK (gf180mcu_fd_sc_mcu7t5v0__dffrnq_2)
+                                                          0.00 #     0.00 r
+  u_vlsi_axfsm_1_reg_axsize_reg_2_/Q (gf180mcu_fd_sc_mcu7t5v0__dffrnq_2)
+                                                          1.01       1.01 r
+  U5922/ZN (gf180mcu_fd_sc_mcu7t5v0__nand2_2)             0.17       1.18 f
+  U5809/ZN (gf180mcu_fd_sc_mcu7t5v0__nor2_2)              0.23       1.41 r
+  U5923/ZN (gf180mcu_fd_sc_mcu7t5v0__nor2_2)              0.19       1.60 f
+  U5771/ZN (gf180mcu_fd_sc_mcu7t5v0__nor2_2)              0.38       1.98 r
+  U5770/ZN (gf180mcu_fd_sc_mcu7t5v0__nand2_2)             0.17       2.15 f
+  U5768/ZN (gf180mcu_fd_sc_mcu7t5v0__oai21_4)             0.31       2.47 r
+  U5824/ZN (gf180mcu_fd_sc_mcu7t5v0__inv_4)               0.22       2.68 f
+  U8783/ZN (gf180mcu_fd_sc_mcu7t5v0__nor2_1)              0.26       2.94 r
+  U8785/ZN (gf180mcu_fd_sc_mcu7t5v0__xnor2_1)             0.38       3.32 r
+  U8786/ZN (gf180mcu_fd_sc_mcu7t5v0__nand2_1)             0.12       3.44 f
+  U5515/ZN (gf180mcu_fd_sc_mcu7t5v0__nand3_1)             0.15       3.59 r
+  u_vlsi_axfsm_1_reg_axaddr_reg_17_/D (gf180mcu_fd_sc_mcu7t5v0__dffrnq_4)
+                                                          0.00       3.59 r
+  data arrival time                                                  3.59
+
+  clock i_clk (rise edge)                                 3.33       3.33
+  clock network delay (ideal)                             0.00       3.33
+  u_vlsi_axfsm_1_reg_axaddr_reg_17_/CLK (gf180mcu_fd_sc_mcu7t5v0__dffrnq_4)
+                                                          0.00       3.33 r
+  library setup time                                     -0.35       2.98
+  data required time                                                 2.98
+  --------------------------------------------------------------------------
+  data required time                                                 2.98
+  data arrival time                                                 -3.59
+  --------------------------------------------------------------------------
+  slack (VIOLATED)                                                  -0.61
+
+
+  Startpoint: u_vlsi_axfsm_0_reg_axsize_reg_2_
+              (rising edge-triggered flip-flop clocked by i_clk)
+  Endpoint: u_vlsi_axfsm_0_reg_axaddr_reg_27_
+            (rising edge-triggered flip-flop clocked by i_clk)
+  Path Group: i_clk
+  Path Type: max
+

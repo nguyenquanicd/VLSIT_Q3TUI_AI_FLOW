@@ -12,7 +12,7 @@ from pathlib import Path
 
 from q3tui.pipeline.base import StepContext, StepFailed
 from q3tui.flows.fpga.lib import sdc as sdcmod
-from q3tui.flows.fpga.lib import vivado
+from q3tui.flows.fpga.lib import oss, templates, vivado
 from q3tui.flows.fpga.lib.base import PPA_JSON, SYNTH_JSON, FpgaStep
 
 
@@ -20,12 +20,13 @@ class Step(FpgaStep):
     name = "timing_util_report"
     title = "Timing and utilization report"
     deps = ("fpga_synth",)
+    hashed_options = ("targets",)  # (staleness: these change the result)
 
     def inputs(self, engine) -> list[Path]:
         rep = self.reports_dir(engine)
         # (the report states the clocks of sdc.json: a changed clock is a new report, even when the tool printed the same text)
         return [self.artifact(engine, SYNTH_JSON), sdcmod.config_path(engine.project),
-                *(rep / n for n in ("utilization.rpt", "timing.rpt", "check_timing.rpt", "paths.rpt"))]
+                *(rep / n for n in ("utilization.rpt", "timing.rpt", "check_timing.rpt", "paths.rpt", "pnr.rpt", "yosys_stat.rpt"))]
 
     def outputs(self, engine) -> list[Path]:
         p = self.artifact(engine, PPA_JSON)
@@ -48,7 +49,11 @@ class Step(FpgaStep):
             return f.read_text(errors="replace") if f.is_file() else ""
 
         synth = self.read(engine, SYNTH_JSON, {})
-        util, timing = vivado.parse_utilization(text("utilization.rpt")), vivado.parse_timing(text("timing.rpt"))
+        tpl = templates.TEMPLATES.get(synth.get("template") or "") or templates.get(None)
+        if synth.get("backend") == "yosys":  # nextpnr's reports (written by fpga_synth in the same names)
+            util, timing = oss.parse_utilization(text("pnr.rpt"), text("yosys_stat.rpt"), tpl), oss.parse_timing(text("timing.rpt"))
+        else:
+            util, timing = vivado.parse_utilization(text("utilization.rpt")), vivado.parse_timing(text("timing.rpt"))
         if not util or "wns_ns" not in timing:
             if re.search(r"^\s*NA(\s+NA)+\s*$", text("timing.rpt"), re.M):  # the summary is all NA: no clock reached anything
                 raise StepFailed("Vivado reported no timing (WNS NA): no clock constraint matched the design — check the clock / reset "
@@ -56,7 +61,8 @@ class Step(FpgaStep):
             raise StepFailed("could not read the reports in fpga/reports/ (utilization.rpt / timing.rpt)")
         sdc = sdcmod.load(project)
         clocks = [{"name": c.name, "period_ns": c.period_ns, "freq_mhz": c.freq_mhz} for c in (sdc.clocks if sdc else [])]
-        if clocks:  # the worst setup slack limits the clock of the (first) domain: period - WNS is the period it could run at
+        if clocks and synth.get("backend") != "yosys":  # (nextpnr gives its own Fmax)
+            # the worst setup slack limits the clock of the (first) domain: period - WNS is the period it could run at
             period = clocks[0]["period_ns"]
             timing["fmax_mhz"] = round(1000.0 / (period - timing["wns_ns"]), 1) if period - timing["wns_ns"] > 0 else None
         targets = self.options.get("targets") or {}
@@ -70,9 +76,10 @@ class Step(FpgaStep):
                    "utilization": ("fail" if over else "pass") if targets.get("max_util_pct") else "n/a",
                    "over_budget": over}
         verdict["overall"] = "pass" if "fail" not in (verdict["timing"], verdict["hold"], verdict["utilization"]) else "fail"
-        data = {"part": synth.get("part"), "top": synth.get("top"), "tool": synth.get("tool"), "stage": "implemented" if implemented else "post-synthesis",
+        data = {"part": synth.get("part"), "template": synth.get("template"), "top": synth.get("top"), "tool": synth.get("tool"), "stage": "implemented" if implemented else "post-synthesis",
                 "clocks": clocks, "utilization": util, "timing": timing,
-                "critical_path": vivado.critical_path(text("paths.rpt")), "unconstrained": vivado.unconstrained(text("check_timing.rpt")),
+                "critical_path": (oss if synth.get("backend") == "yosys" else vivado).critical_path(text("paths.rpt")),
+                "unconstrained": {} if synth.get("backend") == "yosys" else vivado.unconstrained(text("check_timing.rpt")),
                 "targets": targets, "verdict": verdict}
         self.write(engine, PPA_JSON, data)
         lut, ff = util.get("lut", {}).get("used"), util.get("ff", {}).get("used")

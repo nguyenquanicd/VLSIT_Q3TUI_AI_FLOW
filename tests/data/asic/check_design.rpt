@@ -1,0 +1,20 @@
+ 
+****************************************
+check_design summary:
+Version:     V-2023.12-SP3
+Date:        Sun Oct 11 15:32:48 2026
+****************************************
+
+                   Name                                            Total
+--------------------------------------------------------------------------------
+Inputs/Outputs                                                      4
+    Unconnected ports (LINT-28)                                     1
+    Shorted outputs (LINT-31)                                       1
+    Constant outputs (LINT-52)                                      2
+--------------------------------------------------------------------------------
+
+Warning: In design 'm_vlsi_axi4_sram', port 'i_wlast' is not connected to any nets. (LINT-28)
+Warning: In design 'm_vlsi_axi4_sram', output port 'o_bresp[0]' is connected directly to output port 'o_rresp[0]'. (LINT-31)
+Warning: In design 'm_vlsi_axi4_sram', output port 'o_bresp[0]' is connected directly to 'logic 0'. (LINT-52)
+Warning: In design 'm_vlsi_axi4_sram', output port 'o_rresp[0]' is connected directly to 'logic 0'. (LINT-52)
+1

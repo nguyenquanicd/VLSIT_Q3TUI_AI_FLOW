@@ -1,0 +1,22 @@
+
+10. Printing statistics.
+
+=== m_vlsi_axi4_sram ===
+
+        +----------Local Count, excluding submodules.
+        | 
+     8915 wires
+    22887 wire bits
+     8915 public wires
+    22887 public wire bits
+       37 ports
+      294 port bits
+    12726 cells
+       12   $scopeinfo
+       82   CCU2C
+      548   L6MUX21
+     8072   LUT4
+        4   MULT18X18D
+     2303   PFUMX
+     1705   TRELLIS_FF
+

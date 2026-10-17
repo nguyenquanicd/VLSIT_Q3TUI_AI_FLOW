@@ -31,6 +31,7 @@ class Setting:
     nullable: bool = False  # empty / "none" = null
     none_label: str = "none"  # how null is shown in the dialog (e.g. "default")
     hidden: bool = False  # not in the dialog (the assistant and ops still have it)
+    default: Any = None  # a step option of a step this flow does not have (another flow's): what it is when q3tui.yaml sets nothing
 
 
 @dataclass(frozen=True)
@@ -208,6 +209,10 @@ def coerce(setting: Setting, raw: Any) -> Any:
         if bad:
             raise ValueError(f"{setting.label}: unknown {', '.join(bad)} (allowed: {', '.join(allowed)})")
         return [v for v in allowed if v in items]
+    if setting.kind == "choice" and setting.choices and is_step_option(setting.path):  # (a flow's option has a fixed set; model names are free)
+        allowed = [v for v, _ in setting.choices]
+        if str(raw).strip() not in allowed:
+            raise ValueError(f"{setting.label}: {raw!r} is not one of {', '.join(allowed)}")
     return str(raw).strip()
 
 
