@@ -952,6 +952,41 @@ async def test_the_ppa_options_are_in_the_settings_dialog(proj):
         assert app.screen.query_one("#set-pipeline-step_options-ppa_optimize-max_iterations", Input).value == "6"
 
 
+def test_the_synthesis_options_are_settings_of_fpga_synth(proj):
+    ops = Ops(Engine(proj))
+    base = "pipeline.step_options.fpga_synth."
+    paths = {s.path for t in ops.settings_tabs() for s in t.settings}
+    assert {base + k for k in ("template", "part", "package", "speed", "implement", "frontend", "synth_args")} <= paths
+    ops.apply_settings({base + "implement": "on", base + "synth_args": "-flatten_hierarchy full\n-retiming"})
+    step = ops.engine.by_name["fpga_synth"]
+    assert step._fpga_cfg()["implement"] is True and step._fpga_cfg()["synth_args"] == ["-flatten_hierarchy full", "-retiming"]
+    tcl = vivado.script_text([], "blk", proj.root / "sdc", proj.root, {"fpga": step._fpga_cfg()})
+    assert "-flatten_hierarchy full -retiming" in tcl and "route_design" in tcl
+
+
+async def test_the_fpga_is_picked_in_the_synthesis_step_view(proj):
+    from textual.widgets import DataTable
+
+    from q3tui.flows.fpga import panels
+    from q3tui.tui.app import Q3TUIApp
+
+    app = Q3TUIApp(proj)
+    async with app.run_test(size=(150, 45)) as pilot:
+        await pilot.pause()
+        app._select_step("fpga_synth")
+        await pilot.pause()
+        rows = {r[0]: r for r in panels._synth_rows(app)}
+        assert "Xilinx 7-series" in str(rows["template"][2]) and "implement" in rows and "package" not in rows  # (Vivado: no package / speed)
+        app.ops.apply_settings({"pipeline.step_options.fpga_synth.template": "ecp5", "pipeline.step_options.fpga_synth.part": "45k"}, save=True)
+        rows = {r[0]: r for r in panels._synth_rows(app)}
+        assert rows["part"][2] == "45k" and rows["package"][2] == "CABGA381" and "speed" in rows and "frontend" in rows
+        app.refresh_all()
+        await pilot.pause(0.5)
+        tab = app.screen.query_one(panels.SynthTab)
+        assert tab.query_one(DataTable).row_count == len(rows)
+        assert "45k" in panels._synth_detail(app, "part") or "`25k`" in panels._synth_detail(app, "part")
+
+
 async def test_an_asic_frequency_leaves_the_fpga_results_alone(proj):
     eng = Engine(proj)
     await eng.run(yes=True, stop="timing_util_report")

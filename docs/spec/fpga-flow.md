@@ -83,7 +83,7 @@ total negative slack and **no hold analysis** (the report says "n/a"). LUT / FF 
 
 `fpga_synth` has a Vivado default (`flows/fpga/tools.json`, module `xilinx/vivado`) used by this flow only when no
 `tools.json` / `tools.roles` of the project defines the role. `options.fpga` of the step: `part` (default `xc7k325tffg900-2`), `implement`
-(adds opt / place / route), `synth_args`, `defines`, `generics`, `extra_tcl`. Out of context means the block alone, no pins or
+(adds opt / place / route), `synth_args`, `defines`, `generics`, `extra_tcl`. `implement`, `synth_args` (and, for the open-source templates, `frontend`) are also flat options of the step, editable in Settings → fpga_synth next to template / part / package / speed; the flat value wins. The `fpga_synth` step view has an **FPGA** tab with the same settings: Enter on a row picks the family, the device (a list for ECP5 / iCE40) or an option; saved to `q3tui.yaml`, then run (r). Out of context means the block alone, no pins or
 wrapper; numbers after synthesis are estimates. Setup slack is judged at every stage, hold slack only after implementation
 (before placement the tool has no routing delay: the report shows it but does not judge it).
 

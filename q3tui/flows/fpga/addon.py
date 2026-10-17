@@ -75,6 +75,12 @@ def register(api) -> None:
     api.setting("fpga_synth", "package", "Package (open-source templates)", "text", "Empty: the device's default (ECP5 CABGA381, iCE40 hx8k ct256). More IOs than the package has stops nextpnr.",
                 nullable=True)
     api.setting("fpga_synth", "speed", "Speed grade (ECP5)", "text", "6, 7 or 8; empty: 6.", nullable=True)
+    api.setting("fpga_synth", "implement", "Place and route (Vivado)", "bool",
+                "Add opt / place / route after synthesis: numbers closer to the board, and hold slack is judged. Slower.")
+    api.setting("fpga_synth", "frontend", "Verilog frontend (open source)", "choice", "verilog: Yosys read_verilog -sv; slang: the yosys-slang plugin (fuller SystemVerilog).",
+                (("verilog", "verilog — read_verilog -sv"), ("slang", "slang — yosys-slang plugin")), nullable=True)
+    api.setting("fpga_synth", "synth_args", "Extra synthesis arguments", "lines",
+                "One per line, added to the synthesis command (Vivado synth_design: -flatten_hierarchy full; Yosys synth_ecp5 / synth_ice40: -abc9).")
     # the ASIC library: the ASIC flow's own option, here too (the estimate and the SDC tab use it; one choice for both flows)
     api.setting("asic_synth", "library", "ASIC library (.db)", "text",
                 "The standard-cell library of the ASIC flow (a .db; one per corner in a PDK folder): the quick Fmax estimate and the ASIC synthesis use it. "

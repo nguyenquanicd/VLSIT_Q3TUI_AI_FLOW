@@ -472,7 +472,102 @@ class FixTab(DataTab):
             self._hand(key)
 
 
+# -- FPGA synthesis: the family, the device and the synthesis options of the step, picked here (the Settings dialog has them too) -----------------
+
+_SYNTH = "pipeline.step_options.fpga_synth."
+_DEFAULT = "(template default)"
+
+
+def _synth_step(app: "Q3TUIApp"):
+    return next((s for s in app.engine.steps if s.kind == "fpga.fpga_synth"), None)
+
+
+def _synth_rows(app: "Q3TUIApp") -> list[tuple]:
+    from q3tui.flows.fpga.lib import templates
+
+    step = _synth_step(app)
+    if step is None:
+        return []
+    o = step.options
+    t = step.template()
+    dev, note = step.part()
+    rows = [("template", "FPGA family / tool", t.label, ""),
+            ("part", "Device (part)", dev, note or ("default of the family" if not o.get("part") else "")),
+            ("implement", "Place and route (Vivado)", "on" if step._fpga_cfg().get("implement") else "off", "" if t.backend == "vivado" else "n/a: nextpnr always places and routes")]
+    if t.backend == "yosys":
+        rows += [("package", "Package", str(o.get("package") or t.devices.get(dev, "")), "" if o.get("package") else "default of the device")]
+        if t.speed:
+            rows.append(("speed", "Speed grade", str(o.get("speed") or t.speed), "" if o.get("speed") else "default"))
+        rows.append(("frontend", "Verilog frontend", str(o.get("frontend") or "verilog"), ""))
+    rows.append(("synth_args", "Extra synthesis arguments", " ".join(map(str, step._fpga_cfg().get("synth_args") or [])) or "–", ""))
+    return [(k, n, v, Text(m, style="yellow" if "not a" in m else "grey50")) for k, n, v, m in rows]
+
+
+def _synth_detail(app: "Q3TUIApp", key: str) -> str:
+    from q3tui.flows.fpga.lib import templates
+
+    step = _synth_step(app)
+    if step is None:
+        return ""
+    t = step.template()
+    if key == "template":
+        return "\n\n".join(f"**{x.label}** — {x.help}" for x in templates.TEMPLATES.values())
+    if key == "part":
+        listing = ", ".join(f"`{d}`" for d in t.devices) if t.devices else "a Vivado part name (`xc7a100tcsg324-1`, `xc7k325tffg900-2`, …)"
+        return f"**Device** of {t.label}\n\nDefault `{t.part}`. Choices: {listing}.\n\nChanging the family or the device makes synthesis stale (Enter to change)."
+    return f"**{key}** — Enter to change. {t.help}"
+
+
+class SynthTab(DataTab):
+    """Enter on a row changes it: the family, the device (a list for the open-source families), the options; saved to q3tui.yaml."""
+
+    BINDINGS = [Binding("e", "edit", "Edit")]
+
+    def on_data_table_row_selected(self, event: DataTable.RowSelected) -> None:
+        event.stop()
+        self.action_edit()
+
+    def action_edit(self) -> None:
+        from q3tui.flows.fpga.lib import templates
+
+        key, step = self.current_key(), _synth_step(self.capp)
+        if not key or step is None:
+            return
+        t, o = step.template(), step.options
+        title, current = dict((k, n) for k, n, *_ in _synth_rows(self.capp))[key], ""
+        if key == "template":
+            labels = {x.label: x.id for x in templates.TEMPLATES.values()}
+            field, back = ("value", title, t.label, "choice", list(labels)), lambda v: labels[v]
+        elif key == "part" and t.devices:
+            opts = [_DEFAULT, *t.devices]
+            field, back = ("value", f"{title} — {t.family}", str(o.get("part") or _DEFAULT) if str(o.get("part") or "") in t.devices else _DEFAULT, "choice", opts), \
+                (lambda v: "" if v == _DEFAULT else v)
+        elif key in ("implement",):
+            field, back = ("value", title, "on" if step._fpga_cfg().get("implement") else "off", "choice", ["off", "on"]), lambda v: v
+        elif key == "frontend":
+            field, back = ("value", title, str(o.get("frontend") or "verilog"), "choice", ["verilog", "slang"]), lambda v: v
+        elif key == "synth_args":
+            field, back = ("value", f"{title} — one per line", "\n".join(map(str, step._fpga_cfg().get("synth_args") or [])), "text"), lambda v: v
+        else:  # part of Vivado, package, speed
+            current = str(o.get("part") or "") if key == "part" else str(o.get(key) or "")
+            field, back = ("value", f"{title} — empty: the default", current, "line"), lambda v: v
+
+        def done(values: dict | None) -> None:
+            if values is None:
+                return
+            try:
+                self.capp.log_info(self.capp.ops.apply_settings({_SYNTH + key: back(str(values["value"]).strip() if field[3] != "text" else values["value"])}, save=True))
+            except Exception as exc:  # noqa: BLE001 - friendly message, never a traceback
+                self.app.notify(str(exc), severity="error")
+            self.capp.refresh_all()
+
+        self.capp.push_screen(EditScreen(f"FPGA synthesis — {title}", [field], "ctrl+s to apply · Esc to cancel · run (r) to synthesize again"), done)
+
+
 def _tabs_for(kind: str) -> tuple[TabSpec, ...]:
+    if kind == "fpga.fpga_synth":
+        return (TabSpec("fpga", "FPGA", ("Setting", "Name", "Value", "Note"), _synth_rows, _synth_detail,
+                        "Enter: choose the FPGA family, the device and the synthesis options (saved to q3tui.yaml) — then run (r)", widget=SynthTab),)
     if kind == "fpga.sdc":
         return (TabSpec("sdc", "SDC", (), lambda app: [], widget=SdcEditor),)
     if kind == "fpga.timing_util_report":
@@ -492,5 +587,5 @@ def _builder(kind: str):
     return build
 
 
-for _kind in ("fpga.sdc", "fpga.timing_util_report", "fpga.ppa_optimize"):
+for _kind in ("fpga.sdc", "fpga.fpga_synth", "fpga.timing_util_report", "fpga.ppa_optimize"):
     register_panel(_kind, _builder(_kind))

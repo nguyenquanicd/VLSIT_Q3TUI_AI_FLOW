@@ -37,7 +37,7 @@ class Step(FpgaStep):
     title = "FPGA synthesis"
     deps = ("sdc",)
     tool_roles = ("fpga_synth", "fpga_yosys", "fpga_pnr_ecp5", "fpga_pnr_ice40")
-    hashed_options = ("template", "part", "package", "speed", "fpga", "frontend", "defines", "synth_args")  # (staleness: these change the result)
+    hashed_options = ("template", "part", "package", "speed", "fpga", "frontend", "defines", "synth_args", "implement")  # (staleness: these change the result)
 
     def inputs(self, engine) -> list[Path]:
         return [self.filelist(engine), *self.rtl_files(engine), *self.sdc_inputs(engine)]
@@ -101,6 +101,11 @@ class Step(FpgaStep):
                     await anyio.to_thread.run_sync(lambda: subprocess.run(["pkill", "-TERM", "-f", kill], capture_output=True))
         return res
 
+    def _fpga_cfg(self) -> dict:
+        """Vivado's options: the `fpga` dict, with the flat `implement` / `synth_args` (the Settings dialog, like the open-source flow's) on top."""
+        flat = {k: self.options[k] for k in ("implement", "synth_args") if self.options.get(k) not in (None, [], "")}
+        return {**(self.options.get("fpga") or {}), **flat}
+
     async def run(self, ctx: StepContext) -> None:
         tpl = self.template()
         if tpl.backend == "yosys":
@@ -121,7 +126,7 @@ class Step(FpgaStep):
         script = project.root / "fpga" / "synth.tcl"
         script.parent.mkdir(parents=True, exist_ok=True)
         project.backup([script])
-        script.write_text(vivado.script_text(self.rtl_files(engine), top, project.root / "sdc", work, {**self.options, "fpga": {**(self.options.get("fpga") or {}), "part": part}}))
+        script.write_text(vivado.script_text(self.rtl_files(engine), top, project.root / "sdc", work, {**self.options, "fpga": {**self._fpga_cfg(), "part": part}}))
         ctx.emit("log", message=f"synthesizing {top} for {part} (out of context)…")
         t0 = time.monotonic()
         res = await self._watched(ctx, tools, "fpga_synth", {"script": script, "top": top, "filelist": self.filelist(engine), "files": self.rtl_files(engine),
@@ -144,7 +149,7 @@ class Step(FpgaStep):
         for m in critical[:3]:  # (an SDC that matched nothing shows up here first)
             ctx.emit("warning", message=f"vivado critical warning: {m[:200]}")
         self.write(engine, SYNTH_JSON, {"tool": _version(res.log_path), "template": tpl.id, "backend": "vivado", "part": part, "top": top, "mode": "out_of_context",
-                                        "implemented": bool((self.options.get("fpga") or {}).get("implement")), "status": "pass",
+                                        "implemented": bool(self._fpga_cfg().get("implement")), "status": "pass",
                                         "runtime_s": round(time.monotonic() - t0, 1), "log": project.rel(Path(res.log_path)),
                                         "warnings": sum(d.severity == "warning" for d in res.diagnostics) - crit,
                                         "critical_warnings": crit, "critical_warning_messages": list(dict.fromkeys(critical))[:10], "reports": got})
