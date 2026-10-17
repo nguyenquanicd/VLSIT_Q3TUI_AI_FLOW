@@ -110,6 +110,13 @@ def render_review(engine) -> Path:
     return path
 
 
+def bind_name(spec: dict) -> str:
+    """The generated bind file's name: from the IP's name, as a file name (the IP's title has spaces: `AXI4 SRAM Controller`, and a
+    filelist line is split at them)."""
+    ip = re.sub(r"[^A-Za-z0-9_]+", "_", str((spec.get("metadata") or {}).get("ip_name") or "")).strip("_").lower() or "design"
+    return f"{ip}_bind.sv"
+
+
 class SvaStep(VlsitStep):
     name = "sva"
     title = "SVA"
@@ -277,8 +284,10 @@ class SvaStep(VlsitStep):
 
         engine, project = ctx.engine, ctx.project
         lay = self.lay(engine)
-        ip = (spec.get("metadata") or {}).get("ip_name") or "design"
-        bind = lay.sva / f"{ip}_bind.sv"
+        bind = lay.sva / bind_name(spec)
+        for old in lay.sva.glob("*_bind.sv"):  # (the IP was named differently before: two bind files would bind every module twice)
+            if old != bind:
+                old.unlink()
         body = ["`default_nettype none", "`ifndef SYNTHESIS"]
         body += [f"bind {n} {n}_sva u_{n}_sva (.*);" for n in names if (lay.sva / f"{n}_sva.sv").is_file()]
         body += ["`endif", "`default_nettype wire", ""]

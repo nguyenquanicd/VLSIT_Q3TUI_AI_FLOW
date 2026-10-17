@@ -180,6 +180,13 @@ def test_mutation_candidates():
 # -- sva step -----------------------------------------------------------------------------------
 
 
+def test_the_bind_file_name_has_no_spaces():
+    from q3tui.flows.vlsit.sva.step import bind_name
+
+    assert bind_name({"metadata": {"ip_name": "AXI4 SRAM Controller"}}) == "axi4_sram_controller_bind.sv"  # (real run: the simulator opened "…/AXI4")
+    assert bind_name({"metadata": {"ip_name": "toy"}}) == "toy_bind.sv" and bind_name({}) == "design_bind.sv"
+
+
 def test_sva_step_writes_files_review_and_rtm(project, llm):
     eng = engine_of(project)
     run_step(eng, "sva")
