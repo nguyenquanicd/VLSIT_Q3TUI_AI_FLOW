@@ -27,8 +27,28 @@ The flow starts at `spec`, which is Q3TUI's spec step with the VLSIT layout (`op
   Registers, Error Handling, Notes), reviews it, and asks what the intent leaves open (questions; the spec gate is human by default).
   What you answer is written into the spec, and `parse` follows the changed sections only.
 - **a spec** (`--spec FILE`, or a file in `spec/`): `spec` counts as done (user-provided, never rewritten) and the flow starts at `parse`.
+- **a whole project of your own** (`q3tui import DIR`, `q3tui run --import DIR`, the assistant's `import_file` with kind
+  `all`): see *Importing your own project* below.
 A model that puts a table into an invented field of the template gets it moved into the section body (the Parameters table).
 `examples/fifo_sync_vlsit/` is an intent-only project.
+
+### Importing your own project (Q3TUI extension; VLSIT has no import)
+
+Code (`core/importer.py`, no LLM) sorts a folder by its folder names (`rtl/ src/ hdl/` · `tb/ sim/ test(s)/ verif/ env/` ·
+`sva/ assert*/ formal/` · `doc(s)/`) and, for HDL files outside such folders, by their content (`bind` / `assert property`
+→ SVA; classes, programs, `$finish`, UVM/VMM/SVT → testbench; else RTL). Scripts, Makefiles, filelists and images are
+listed as left out. Each kind goes to the step that takes it (`StepDef.import_dir`); a kind no step of the flow takes is
+reported, not copied. Re-importing a kind replaces its previous import (backed up).
+
+| Kind | Goes to | What the flow does with it |
+|---|---|---|
+| spec documents | `spec/ref/` (name clashes get their folder as prefix) | references: the `spec` step's LLM **ports** them into `spec/spec.md` with the template's predefined sections (Overview, Key Features, Parameters `PR_*`, Interface, …): it reads every document itself (text in the prompt as it is, HTML / PDF with its Read tool — no conversion by code), carries every fact over, keeps module and port names, names parameters by the template (original name noted), and marks what the documents do not cover TBD + a question; the review pass checks it against them. No intent is needed. A re-import updates only the sections the changed documents affect. Only the spec step reads `spec/ref/`; later steps read the ported spec. Documents that were taken as the spec before (identical copies in `spec/`) become references. `--spec FILE` still takes a document as the spec as it is |
+| RTL | `src/rtl/` (the rtl step's own folder) | its module names, hierarchy, top and ports (pyslang, at import time: `.q3tui/imports/rtl.json`) are given to `parse` as fact: the module map **is** the imported RTL (`fit_to_design`), a requirement on another module goes to the top. `rtl` then **checks** each imported module (rules, REQ tags, lint) instead of writing it: one that passes is kept unchanged without the LLM; one that does not goes to the fix sessions, told to keep the function, architecture and timing and only conform it to the RTL rules and tag its REQs. The imported **top keeps its port names** (the interface of the spec and of your tests): their naming-rule findings are reported as a warning, not fixed |
+| testbench / tests | `src/tb/imported/` (structure kept) | **the imported tests are the test plan**: code makes one test case per test (`TC-001…` in file order, kept across re-imports; name = the file name without what all of them share, e.g. `ts.wrap_len2_axi_sram_test.sv` → `wrap_len2`; `source`: its path, also in `selected_testplan.json`); the `tb_plan` LLM reads each test and fills in its description, REQs and condition, and adds test cases only for REQs none of them checks (an id / name it changes is put back; a test it leaves out is asked for once more, then kept with no REQ and reported). Each test case is written by porting its test into the plain-SystemVerilog framework (no VIP / UVM / VMM); `tb_top` is written with the old environment as reference |
+| SVA | `src/sva/imported/` | references: the `sva` stage of a module gets the imported files bound to it (or named after it) to port into its `<module>_sva.sv` |
+
+Independence holds: RTL stages never see `src/tb/` or `src/sva/` (imported ones included), testbench stages never see
+`src/rtl/`; and the folder imported from, when it lies inside the project (e.g. `ref/<project>/`), is denied to every stage.
 
 ## One session
 

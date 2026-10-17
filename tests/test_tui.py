@@ -769,3 +769,18 @@ def test_a_tree_without_a_code_fence_keeps_its_lines():
     fenced = "```text\n" + tree + "\n```"
     assert fence_diagrams(fenced) == fenced  # already fenced: untouched
     assert fence_diagrams("one line ├── x") == "one line ├── x"  # a single line is just text
+
+
+async def test_import_command(app, llm):
+    ref = app.project.root / "ref"
+    (ref / "rtl").mkdir(parents=True)
+    (ref / "README.md").write_text("# my block\n")
+    (ref / "rtl" / "blk.sv").write_text("module blk (input logic i_a); endmodule\n")
+    async with app.run_test(size=(140, 45)) as pilot:
+        await pilot.press("slash")
+        app.query_one("#cmd").value = "/import ref"
+        await pilot.press("enter")
+        await pilot.pause()
+        lines = "\n".join(str(line.text) for line in app.query_one("#activity").lines)
+        assert (app.project.root / "spec" / "ref" / "README.md").is_file()  # (a reference the spec step ports)
+        assert "1 spec documents" in lines and "no step of this flow takes rtl" in lines  # (the test flow's rtl takes none)

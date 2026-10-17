@@ -444,6 +444,12 @@ async def run_stage(stage: Stage, cfg: Config, emit: StepEmitter) -> StageResult
     try:
         return await _run_stage(stage, cfg, emit, options)
     except StageError as exc:
+        if stage.resume and not stage.role and LOST_SESSION in str(exc).lower():
+            # the session to continue is gone (another machine / config dir, cleaned up): once more, fresh
+            emit("warning", message=f"{stage.name}: its earlier session was not found; starting a new one")
+            result = await run_stage(dataclasses.replace(stage, resume=None, fork=False, fork_at=None), cfg, emit)
+            result.cost_usd += exc.cost_usd
+            return result
         if stage.text_json or not stage.output_model or "valid structured output" not in str(exc):
             raise
         # the SDK's structured output gave up (long Markdown values break its JSON): once more, the result as a JSON
@@ -458,6 +464,8 @@ async def run_stage(stage: Stage, cfg: Config, emit: StepEmitter) -> StageResult
     except TimeoutError as exc:
         raise StageError(f"{stage.name}: did not finish within {stage.timeout_s or cfg.llm.timeout_s} s (llm.timeout_s)", 0.0) from exc
 
+
+LOST_SESSION = "no conversation found"
 
 TEXT_JSON = """
 
