@@ -327,7 +327,9 @@ def build_options(stage: Stage, cfg: Config, emit: StepEmitter | None = None) ->
         output_format=({"type": "json_schema", "schema": output_schema(stage.output_model)}
                        if stage.output_model and not stage.submit_tool and not stage.text_json else None),
         # a tool may run for minutes (the architect's `delegate` runs sub-architects): wait as long as the stage may
-        env={"MCP_TOOL_TIMEOUT": str((cfg.llm.timeout_s or 7 * 24 * 3600) * 1000), **cfg.llm.env},
+        # (no claude.ai connectors of the account: with them every stage that used a tool carried ~100–200k tokens of connector tool
+        # lists, measured ~$1.5 for one Read; `llm.env: {ENABLE_CLAUDEAI_MCP_SERVERS: "true"}` turns them back on)
+        env={"MCP_TOOL_TIMEOUT": str((cfg.llm.timeout_s or 7 * 24 * 3600) * 1000), "ENABLE_CLAUDEAI_MCP_SERVERS": "false", **cfg.llm.env},
         setting_sources=[],  # isolate from the user's own Claude Code settings/CLAUDE.md
         resume=stage.resume,
         fork_session=bool(stage.fork and stage.resume),
