@@ -40,6 +40,18 @@ flowchart LR
 `rtl` and `tb` only need `config`'s output — run them one after another (default) or in parallel
 (`pipeline.parallel_rtl_tb`). Yellow = a gate that stops for your review by default.
 
+## Other flows
+
+`pipeline.flow` picks the flow (`q3tui flow list`). Besides `vlsit`:
+
+- **`rtl`** — RTL on its own, checked and ready for verification: `spec → rules → parse → config → csr → rtl → format → style_lint → smoke`. Your rules
+  (`rules/rtl_rules.md`) over Q3TUI's defaults become **Verible** flags (checked for contradictions before any RTL is written); the software-visible
+  registers are **generated** by the [APB-CSR-Generator](https://github.com/nguyenquanicd/APB-CSR-Generator) from a register map drafted from the spec
+  (`q3tui act csr_tool_install`); the RTL is formatted, style-linted by an LLM judge whose fixes go back to `rtl`, and smoke-tested with a testbench
+  written from the spec alone. The chain and its fix loops run by themselves. LLM stages use markdown **skills** (`skills/<name>/SKILL.md`, yours
+  can replace or add). See [docs/spec/rtl-flow.md](docs/spec/rtl-flow.md).
+- `fpga`, `asic`, `project` — synthesis / PPA estimation and the project settings ([docs/spec/flows.md](docs/spec/flows.md)).
+
 ## The TUI
 
 ![Q3TUI stopped at Gate 1 on an APB slave: requirements to review](docs/images/tui-parse.svg)
