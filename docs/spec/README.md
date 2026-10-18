@@ -13,6 +13,7 @@ configuration, write the RTL and a testbench independently, add assertions, veri
 | [fpga-flow.md](fpga-flow.md) | The FPGA flow: SDC, Vivado out-of-context synthesis, timing / utilization report (PPA estimation) |
 | [project-flow.md](project-flow.md) | The project settings flow: the project's settings, the tools (found or not, modules), the ASIC libraries (add one by scanning a folder) |
 | [asic-flow.md](asic-flow.md) | The ASIC flow: port check, SDC, Design Compiler synthesis (netlist, area / timing / power), Formality equivalence check |
+| [sanity-flow.md](sanity-flow.md) | The Sanity flow: CDC / RDC analysis (VC Static) on the shared SDC, a violation table, a waiver review (waive / RTL fix / spec / SDC request / ask you), the check of the waivers |
 | [project-layout.md](project-layout.md) | Files Q3TUI reads/writes, pipeline state, staleness, entry points |
 | [tui.md](tui.md) | Terminal UI: pipeline dashboard, gates, questions, assistant |
 | [architecture.md](architecture.md) | Runtime layers: LLM stages, tools by role, HDL layer |

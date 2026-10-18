@@ -1,0 +1,406 @@
+
+  -----------------------------------------------------------------------------
+  Report Summary
+  -----------------------------------------------------------------------------
+  Product Info
+    Name    : VC Static Master Shell
+    Version : X-2025.06 -- May 29, 2025
+
+  Report Info
+    Created : Oct 12, 2026  23:17:54
+
+
+  -----------------------------------------------------------------------------
+  Management Summary
+  -----------------------------------------------------------------------------
+  Stage  Family       Fatals    Errors  Warnings     Infos
+  -----  ---------  --------  --------  --------  --------
+  SETUP  CLKPROP           0         1         0        24
+  SETUP  RESET             0         0         0         1
+  -----  ---------  --------  --------  --------  --------
+  Total                    0         1         0        25
+
+
+  -----------------------------------------------------------------------------
+  Tree Summary
+  -----------------------------------------------------------------------------
+  Severity  Stage  Tag                                 Count
+  --------  -----  ----------------------------------  -----
+  error     SETUP  SETUP_PORT_PARTIALLY_CONSTRAINED        1
+  info      SETUP  SETUP_CLOCK_PROPAGATED                  1
+  info      SETUP  SETUP_DATA_CONSTANT                     3
+  info      SETUP  SETUP_PORT_CONSTRAINED                 20
+  info      SETUP  SETUP_RESET_PROPAGATED                  1
+  --------  -----  ----------------------------------  -----
+  Total                                                   26
+
+
+
+  -----------------------------------------------------------------------------
+  SETUP_PORT_PARTIALLY_CONSTRAINED  (1 error/0 waived)
+  -----------------------------------------------------------------------------
+  Tag                       : SETUP_PORT_PARTIALLY_CONSTRAINED
+  Description               : Port [PortName] is partially constrained
+  Violation                 : CDC:4
+  PortName                  : i_rst_n
+  Direction                 : Input
+  Status                    : Partially constrained
+  ConstraintInfoList
+    ConstraintInfo
+      SDCConstraintName     : create_reset
+      FileName              : /proj/sanity/cdc_setup.tcl
+      LineNumber            : 8
+  PotentialSourceClockList
+    DataPathSourceClock
+      ClockName             : i_clk
+      ClockObject           : i_clk
+
+
+  -----------------------------------------------------------------------------
+  SETUP_CLOCK_PROPAGATED  (1 info/0 waived)
+  -----------------------------------------------------------------------------
+  Tag                 : SETUP_CLOCK_PROPAGATED
+  Description         : Clock domain [ClkDomainId], consisting of the clock(s) [ClksPropagated], has been inferred by the tool. It reaches to [SeqPinReachable] sequential pin(s)
+  Violation           : CDC:2
+  ClkDomainId         : 1
+  ClksPropagated
+    Clock
+      ClkName         : i_clk
+      ClkType         : SDC_CLOCK
+      ClkRootList
+        ClkRoot       : i_clk
+  SeqPinReachable     : 3364
+  BBoxPinReachable    : 0
+  ContainerInstance   : m_vlsi_axi4_sram
+  Module              : m_vlsi_axi4_sram
+
+
+  -----------------------------------------------------------------------------
+  SETUP_DATA_CONSTANT  (3 infos/0 waived)
+  -----------------------------------------------------------------------------
+  Tag                 : SETUP_DATA_CONSTANT
+  Description         : Data [InstPinName] set to a constant
+  Violation           : CDC:24
+  ReasonInfoList
+    ReasonInfo
+      ReasonCode      : CONST_DATA_RESET
+      ReasonCodeMsg   : Reports sequential element with reset pin that has data pin tied to low.
+  InstPinName         : u_vlsi_fifo_3/reg_mem/Q[7:0][33]
+  PinValue            : 0
+  InstanceName        : u_vlsi_fifo_3
+  DriverClock         : i_clk
+  DestObjectType      : flip-flop
+  ContainerInstance   : u_vlsi_fifo_3
+  Module              : m_vlsi_fifo
+
+  -----------------------------------------------------------------------------
+  Tag                 : SETUP_DATA_CONSTANT
+  Description         : Data [InstPinName] set to a constant
+  Violation           : CDC:25
+  ReasonInfoList
+    ReasonInfo
+      ReasonCode      : CONST_DATA_RESET
+      ReasonCodeMsg   : Reports sequential element with reset pin that has data pin tied to low.
+  InstPinName         : u_vlsi_fifo_4/reg_mem/Q[7:0][0]
+  PinValue            : 0
+  InstanceName        : u_vlsi_fifo_4
+  DriverClock         : i_clk
+  DestObjectType      : flip-flop
+  ContainerInstance   : u_vlsi_fifo_4
+  Module              : m_vlsi_fifo
+
+  -----------------------------------------------------------------------------
+  Tag                 : SETUP_DATA_CONSTANT
+  Description         : Data [InstPinName] set to a constant
+  Violation           : CDC:26
+  ReasonInfoList
+    ReasonInfo
+      ReasonCode      : CONST_DATA_RESET
+      ReasonCodeMsg   : Reports sequential element with reset pin that has data pin tied to low.
+  InstPinName         : u_vlsi_sram_misc/u_vlsi_sram_fanout/o_reg_rd_bank_d/Q[0]
+  PinValue            : 0
+  InstanceName        : u_vlsi_sram_misc/u_vlsi_sram_fanout
+  DriverClock         : u_vlsi_sram_misc/u_vlsi_sram_fanout/i_clk_core
+  DestObjectType      : flip-flop
+  ContainerInstance   : u_vlsi_sram_misc/u_vlsi_sram_fanout
+  Module              : m_vlsi_sram_fanout
+
+
+  -----------------------------------------------------------------------------
+  SETUP_PORT_CONSTRAINED  (20 infos/0 waived)
+  -----------------------------------------------------------------------------
+  Tag                       : SETUP_PORT_CONSTRAINED
+  Description               : Port [PortName] is fully constrained
+  Violation                 : CDC:3
+  PortName                  : i_clk
+  Direction                 : Input
+  Status                    : Fully constrained
+  ConstraintInfoList
+    ConstraintInfo
+      SDCConstraintName     : create_clock
+      FileName              : /proj/sdc/clocks.tcl
+      LineNumber            : 3
+
+  -----------------------------------------------------------------------------
+  Tag                       : SETUP_PORT_CONSTRAINED
+  Description               : Port [PortName] is fully constrained
+  Violation                 : CDC:5
+  PortName                  : i_awaddr[31:0]
+  Direction                 : Input
+  Status                    : Fully constrained
+  ConstraintInfoList
+    ConstraintInfo
+      SDCConstraintName     : set_input_delay
+      FileName              : /proj/sdc/io_constraints.tcl
+      LineNumber            : 4
+
+  -----------------------------------------------------------------------------
+  Tag                       : SETUP_PORT_CONSTRAINED
+  Description               : Port [PortName] is fully constrained
+  Violation                 : CDC:6
+  PortName                  : i_awvalid
+  Direction                 : Input
+  Status                    : Fully constrained
+  ConstraintInfoList
+    ConstraintInfo
+      SDCConstraintName     : set_input_delay
+      FileName              : /proj/sdc/io_constraints.tcl
+      LineNumber            : 4
+
+  -----------------------------------------------------------------------------
+  Tag                       : SETUP_PORT_CONSTRAINED
+  Description               : Port [PortName] is fully constrained
+  Violation                 : CDC:7
+  PortName                  : i_awburst[1:0]
+  Direction                 : Input
+  Status                    : Fully constrained
+  ConstraintInfoList
+    ConstraintInfo
+      SDCConstraintName     : set_input_delay
+      FileName              : /proj/sdc/io_constraints.tcl
+      LineNumber            : 4
+
+  -----------------------------------------------------------------------------
+  Tag                       : SETUP_PORT_CONSTRAINED
+  Description               : Port [PortName] is fully constrained
+  Violation                 : CDC:8
+  PortName                  : i_awlen[7:0]
+  Direction                 : Input
+  Status                    : Fully constrained
+  ConstraintInfoList
+    ConstraintInfo
+      SDCConstraintName     : set_input_delay
+      FileName              : /proj/sdc/io_constraints.tcl
+      LineNumber            : 4
+
+  -----------------------------------------------------------------------------
+  Tag                       : SETUP_PORT_CONSTRAINED
+  Description               : Port [PortName] is fully constrained
+  Violation                 : CDC:9
+  PortName                  : i_awid[3:0]
+  Direction                 : Input
+  Status                    : Fully constrained
+  ConstraintInfoList
+    ConstraintInfo
+      SDCConstraintName     : set_input_delay
+      FileName              : /proj/sdc/io_constraints.tcl
+      LineNumber            : 4
+
+  -----------------------------------------------------------------------------
+  Tag                       : SETUP_PORT_CONSTRAINED
+  Description               : Port [PortName] is fully constrained
+  Violation                 : CDC:10
+  PortName                  : i_awsize[2:0]
+  Direction                 : Input
+  Status                    : Fully constrained
+  ConstraintInfoList
+    ConstraintInfo
+      SDCConstraintName     : set_input_delay
+      FileName              : /proj/sdc/io_constraints.tcl
+      LineNumber            : 4
+
+  -----------------------------------------------------------------------------
+  Tag                       : SETUP_PORT_CONSTRAINED
+  Description               : Port [PortName] is fully constrained
+  Violation                 : CDC:11
+  PortName                  : i_wdata[31:0]
+  Direction                 : Input
+  Status                    : Fully constrained
+  ConstraintInfoList
+    ConstraintInfo
+      SDCConstraintName     : set_input_delay
+      FileName              : /proj/sdc/io_constraints.tcl
+      LineNumber            : 4
+
+  -----------------------------------------------------------------------------
+  Tag                       : SETUP_PORT_CONSTRAINED
+  Description               : Port [PortName] is fully constrained
+  Violation                 : CDC:12
+  PortName                  : i_wstrb[3:0]
+  Direction                 : Input
+  Status                    : Fully constrained
+  ConstraintInfoList
+    ConstraintInfo
+      SDCConstraintName     : set_input_delay
+      FileName              : /proj/sdc/io_constraints.tcl
+      LineNumber            : 4
+
+  -----------------------------------------------------------------------------
+  Tag                       : SETUP_PORT_CONSTRAINED
+  Description               : Port [PortName] is fully constrained
+  Violation                 : CDC:13
+  PortName                  : i_wvalid
+  Direction                 : Input
+  Status                    : Fully constrained
+  ConstraintInfoList
+    ConstraintInfo
+      SDCConstraintName     : set_input_delay
+      FileName              : /proj/sdc/io_constraints.tcl
+      LineNumber            : 4
+
+  -----------------------------------------------------------------------------
+  Tag                       : SETUP_PORT_CONSTRAINED
+  Description               : Port [PortName] is fully constrained
+  Violation                 : CDC:14
+  PortName                  : i_wlast
+  Direction                 : Input
+  Status                    : Fully constrained
+  ConstraintInfoList
+    ConstraintInfo
+      SDCConstraintName     : set_input_delay
+      FileName              : /proj/sdc/io_constraints.tcl
+      LineNumber            : 4
+
+  -----------------------------------------------------------------------------
+  Tag                       : SETUP_PORT_CONSTRAINED
+  Description               : Port [PortName] is fully constrained
+  Violation                 : CDC:15
+  PortName                  : i_bready
+  Direction                 : Input
+  Status                    : Fully constrained
+  ConstraintInfoList
+    ConstraintInfo
+      SDCConstraintName     : set_input_delay
+      FileName              : /proj/sdc/io_constraints.tcl
+      LineNumber            : 4
+
+  -----------------------------------------------------------------------------
+  Tag                       : SETUP_PORT_CONSTRAINED
+  Description               : Port [PortName] is fully constrained
+  Violation                 : CDC:16
+  PortName                  : i_araddr[31:0]
+  Direction                 : Input
+  Status                    : Fully constrained
+  ConstraintInfoList
+    ConstraintInfo
+      SDCConstraintName     : set_input_delay
+      FileName              : /proj/sdc/io_constraints.tcl
+      LineNumber            : 4
+
+  -----------------------------------------------------------------------------
+  Tag                       : SETUP_PORT_CONSTRAINED
+  Description               : Port [PortName] is fully constrained
+  Violation                 : CDC:17
+  PortName                  : i_arvalid
+  Direction                 : Input
+  Status                    : Fully constrained
+  ConstraintInfoList
+    ConstraintInfo
+      SDCConstraintName     : set_input_delay
+      FileName              : /proj/sdc/io_constraints.tcl
+      LineNumber            : 4
+
+  -----------------------------------------------------------------------------
+  Tag                       : SETUP_PORT_CONSTRAINED
+  Description               : Port [PortName] is fully constrained
+  Violation                 : CDC:18
+  PortName                  : i_arburst[1:0]
+  Direction                 : Input
+  Status                    : Fully constrained
+  ConstraintInfoList
+    ConstraintInfo
+      SDCConstraintName     : set_input_delay
+      FileName              : /proj/sdc/io_constraints.tcl
+      LineNumber            : 4
+
+  -----------------------------------------------------------------------------
+  Tag                       : SETUP_PORT_CONSTRAINED
+  Description               : Port [PortName] is fully constrained
+  Violation                 : CDC:19
+  PortName                  : i_arlen[7:0]
+  Direction                 : Input
+  Status                    : Fully constrained
+  ConstraintInfoList
+    ConstraintInfo
+      SDCConstraintName     : set_input_delay
+      FileName              : /proj/sdc/io_constraints.tcl
+      LineNumber            : 4
+
+  -----------------------------------------------------------------------------
+  Tag                       : SETUP_PORT_CONSTRAINED
+  Description               : Port [PortName] is fully constrained
+  Violation                 : CDC:20
+  PortName                  : i_arid[3:0]
+  Direction                 : Input
+  Status                    : Fully constrained
+  ConstraintInfoList
+    ConstraintInfo
+      SDCConstraintName     : set_input_delay
+      FileName              : /proj/sdc/io_constraints.tcl
+      LineNumber            : 4
+
+  -----------------------------------------------------------------------------
+  Tag                       : SETUP_PORT_CONSTRAINED
+  Description               : Port [PortName] is fully constrained
+  Violation                 : CDC:21
+  PortName                  : i_arsize[2:0]
+  Direction                 : Input
+  Status                    : Fully constrained
+  ConstraintInfoList
+    ConstraintInfo
+      SDCConstraintName     : set_input_delay
+      FileName              : /proj/sdc/io_constraints.tcl
+      LineNumber            : 4
+
+  -----------------------------------------------------------------------------
+  Tag                       : SETUP_PORT_CONSTRAINED
+  Description               : Port [PortName] is fully constrained
+  Violation                 : CDC:22
+  PortName                  : i_rready
+  Direction                 : Input
+  Status                    : Fully constrained
+  ConstraintInfoList
+    ConstraintInfo
+      SDCConstraintName     : set_input_delay
+      FileName              : /proj/sdc/io_constraints.tcl
+      LineNumber            : 4
+
+  -----------------------------------------------------------------------------
+  Tag                       : SETUP_PORT_CONSTRAINED
+  Description               : Port [PortName] is fully constrained
+  Violation                 : CDC:23
+  PortName                  : i_sram_rdata[0][31:0]
+  Direction                 : Input
+  Status                    : Fully constrained
+  ConstraintInfoList
+    ConstraintInfo
+      SDCConstraintName     : set_input_delay
+      FileName              : /proj/sdc/io_constraints.tcl
+      LineNumber            : 4
+
+
+  -----------------------------------------------------------------------------
+  SETUP_RESET_PROPAGATED  (1 info/0 waived)
+  -----------------------------------------------------------------------------
+  Tag               : SETUP_RESET_PROPAGATED
+  Description       : Reset [Reset] reaches to set/reset pin of [SeqPinReachable] sequential(s)
+  Violation         : CDC:1
+  Reset
+    ResetName       : i_rst_n
+    RstType         : Async
+    RstRootList
+      RstRoot       : i_rst_n
+  SeqPinReachable   : 1537
+  ContainerInstance : m_vlsi_axi4_sram
+  Module            : m_vlsi_axi4_sram
+
