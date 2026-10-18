@@ -52,6 +52,7 @@ class Step(AsicStep):
         notes: list[str] = []
         planned: dict[str, str] = {}
         key = ""
+        orders: dict[tuple[str, int], dict] = {}
         if self.options.get("port", True):
             rules = porter.resolve_rules([str(n) for n in self.options.get("rules") or []], project.root, Path(__file__).parent)
             key = porter.rules_key(rules, min_words, waive)
@@ -61,6 +62,8 @@ class Step(AsicStep):
             todo = [f for f in files if old.get(rel[f]) != hashes[rel[f]]]
             same = {k for k, v in hashes.items() if old.get(k) == v}
             extra = [f for f in prev.get("findings", []) if f.get("source") == "llm" and f["file"] in same]
+            orders = {(f["file"], f["line"]): f["order"] for f in prev.get("findings", [])
+                      if f.get("source") == "code" and f.get("order") and f["file"] in same}  # (the porter's orders for scan findings)
             if todo:
                 stage = Stage(name="asic_port", system_prompt=SYSTEM, cwd=project.root, builtin_tools=["Read", "Grep", "Glob"],
                               prompt=porter.prompt(rules, [f.stem for f in files], [rel[f] for f in todo],
@@ -70,22 +73,29 @@ class Step(AsicStep):
                 out: porter.PortPlan = (await ctx.llm(stage)).output
                 known = porter.port_rules("\n".join(t for _, t in rules))
                 by_module = {f.stem: f for f in todo}
-                taken = {(f["module"], f["line"]) for f in found}
+                scanned = {(f["file"], f["line"]) for f in found}
                 for r in out.changes:
-                    if r.rule not in known:
+                    at = (rel[by_module[r.module]], r.line) if r.module in by_module else None
+                    if at in scanned:  # an order for a scan finding: it becomes that finding's port
+                        orders[at] = {"rule": r.rule, "wrapper": r.wrapper, "fix": r.fix}
+                    elif r.rule not in known:
                         notes.append(f"{r.rule}: not a port rule")
                     elif r.rule in waive:
                         notes.append(f"{r.rule}: waived")
                     elif r.module not in by_module:
                         notes.append(f"{r.rule}: unknown module '{r.module}'")
-                    elif (r.module, r.line) not in taken:  # (a line the scan has: its finding stands)
+                    else:
                         extra.append({"rule": r.rule, "severity": known[r.rule]["severity"], "title": known[r.rule]["title"],
                                       "module": r.module, "file": rel[by_module[r.module]], "line": r.line, "text": r.text[:160],
-                                      "wrapper": r.wrapper, "fix": r.fix, "source": "llm"})
+                                      "wrapper": r.wrapper, "fix": r.fix, "source": "llm", "order": {"rule": r.rule, "wrapper": r.wrapper, "fix": r.fix}})
                 same = set(hashes)
             planned = {k: v for k, v in hashes.items() if k in same}
         else:
-            extra = []
+            extra, orders = [], {}
+        for f in found:  # (the porter's order replaces the scan's generic fix: the wrapper, its ports, where it goes)
+            o = orders.get((f["file"], f["line"]))
+            if o:
+                f.update(order=o, scan_fix=f["fix"], fix=o["fix"], wrapper=o["wrapper"])
         found = sorted([*({**f, "source": "code"} for f in found), *extra], key=lambda f: (f["file"], f["line"]))
         found = [{**f, "id": f"P{i}"} for i, f in enumerate(found, 1)]
         sent = {(f["rule"], f["module"], f["text"]): f["handed_off"] for f in prev.get("findings", []) if f.get("handed_off")}

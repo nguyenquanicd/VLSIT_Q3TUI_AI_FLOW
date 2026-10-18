@@ -344,11 +344,14 @@ async def test_only_changed_files_are_ported_again(proj, llm):
 async def test_a_code_finding_is_not_ported_twice_and_the_porter_can_be_off(proj, llm):
     (proj.root / "src" / "rtl" / "mem_wrap.sv").write_text(DIRTY)
     (proj.root / "src" / "rtl" / "filelist.f").write_text("src/rtl/blk.sv\nsrc/rtl/mem_wrap.sv\n")
-    llm.plan = _plan(("mem_sram_wrapper", "mem_wrap", 2))  # the scan has a memory_array finding at that line
+    llm.plan = _plan(("memory_array", "mem_wrap", 2))  # the scan has a memory_array finding at that line: the order is its port
     eng = Engine(proj)
     await eng.run(yes=True, only="asic_port")
     p = json.loads((proj.schemas_dir / "asic_port.json").read_text())
     assert not [f for f in p["findings"] if f["source"] == "llm"] and any(f["source"] == "code" for f in p["findings"])
+    mem = next(f for f in p["findings"] if f["rule"] == "memory_array")
+    assert mem["wrapper"] == "m_mem_wrap_sram" and mem["fix"] == "make a wrapper" and "SRAM" in mem["scan_fix"]
+    assert [f["fix"] for f in p["findings"] if f["rule"] == "tristate"] == [port.RULES["tristate"].fix]  # (no order: the scan's fix)
     _yaml(proj.root, extra="    asic_port:\n      port: false\n")
     llm.stages.clear()
     eng = Engine(Project.open(proj.root))

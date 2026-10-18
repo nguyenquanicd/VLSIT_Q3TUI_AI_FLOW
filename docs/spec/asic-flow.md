@@ -44,8 +44,8 @@ it decides what changes, which wrapper replaces what and with which ports, and w
 `m_<function>` module with fixed ports), the scan's rules (not reported again) and the port rules: `mem_sram_wrapper` (memories →
 SRAM / register-file / ROM wrappers), `sync_lib_cell` (synchronizers → library cells behind `m_sync_*`), `clock_gate_icg`,
 `clock_mux_divider`, `pll_macro_wrapper`, `pad_wrapper`, `latch_inferred`, `async_reset_style`, `fpga_only_branch`. Code checks the answer:
-an unknown rule id, an unknown module or a waived rule is dropped (and said in `dropped`), and a line the scan already has keeps the
-scan's finding. The porter follows "changes propagate as updates": `asic_port.json` records each file's hash and the rules / options key,
+an unknown rule id, an unknown module or a waived rule is dropped (and said in `dropped`), and an order at a line the scan already has becomes that finding's port (its `wrapper` and `fix` replace the scan's generic fix, kept as
+`scan_fix`), not a second finding. The porter follows "changes propagate as updates": `asic_port.json` records each file's hash and the rules / options key,
 and only the files whose text changed (or all of them, when a rule file or option changed) go back to the LLM; the others keep their findings.
 `options.port: false` runs the scan only. The step writes no RTL: the RTL is the VLSIT flow's, so the orders go there (`asic_handoff`) and its rtl step writes the ported code.
 

@@ -19,7 +19,7 @@ RULE_ID = re.compile(r"^- \*\*`(\w+)`\*\*\s*\((error|warn)\)\s*—\s*(.+?)(?=\n-
 
 
 class PortChange(BaseModel):
-    rule: str = Field(description="The id of a port rule of the rule file (section 3), e.g. mem_sram_wrapper")
+    rule: str = Field(description="The id of a port rule of the rule file (section 3), e.g. mem_sram_wrapper; for a line the scan found, the scan's rule id")
     module: str = Field(description="The module (the RTL file name without extension) the finding is in")
     line: int = Field(description="The line of the code it is about (1-based, in src/rtl/<module>.sv)")
     text: str = Field(description="That code, shortened to one line")
@@ -64,7 +64,8 @@ def prompt(rules: list[tuple[str, str]], modules: list[str], files: list[str], f
              f"All modules of the design: {', '.join(modules)}",
              f"`min_mem_words` = {min_words}." + (f" Waived rules (never report): {', '.join(waive)}." if waive else "")]
     if found:
-        lines += ["\nThe scan (ground truth) already reported these: do not report them again.",
+        lines += ["\nThe scan (ground truth) found these. Port them too: when one needs a wrapper or a change, give an order at the same "
+                  "file and line (the rule id may be the scan's); the scan's generic fix is only a hint.",
                   *(f"- {f['rule']} {f['file']}:{f['line']} `{f['text']}`" for f in found)]
     return "\n".join(lines)
 

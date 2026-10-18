@@ -1,13 +1,13 @@
 # ASIC port rules
 
 > **Purpose:** what an RTL written for simulation or an FPGA has to change before a standard-cell flow (Design Compiler, Formality, place and route) can take it. The `asic_port` step ports `src/rtl/` by these rules: it writes the work orders (what changes, which wrapper, which ports); the flow that owns the RTL writes the new code (`asic_handoff`). Behaviour, ports and requirement tags never change in a fix.
-> **How to read it:** each rule has an id, a severity (`error`: no ASIC flow takes it; `warn`: it takes it, usually not as intended) and the fix. **Code rules** are found by a deterministic scan, ahead of the porter: do not port them again. **Port rules** are the porting work the scan cannot do; an order needs a file, a line and the code it is about.
+> **How to read it:** each rule has an id, a severity (`error`: no ASIC flow takes it; `warn`: it takes it, usually not as intended) and the fix. **Code rules** are found by a deterministic scan, ahead of the porter: the scan gives the finding and a generic fix; you give the order that ports it (the wrapper, its ports, where it goes). **Port rules** are the porting work the scan cannot do; an order needs a file, a line and the code it is about.
 
 ## 1. Wrapper convention
 
 A structure that a library or a macro implements goes behind a **wrapper module**: one small module that holds the structure and nothing else, named `m_<function>` (the VLSIT naming), with the same ports whatever implements it. The RTL keeps a behavioural body in the wrapper (so simulation and synthesis still work); the ASIC flow replaces the body, or the whole module, with the macro or the library cell. Never instantiate a macro or a library cell by its vendor name inside functional RTL.
 
-## 2. Code rules (already found by the scan: do not port again)
+## 2. Code rules (found by the scan; port them too)
 
 | id | severity | what |
 |---|---|---|
@@ -34,7 +34,7 @@ A structure that a library or a macro implements goes behind a **wrapper module*
 
 ## 4. What is not ported
 
-- Anything the code rules cover (section 2): the scan's findings carry their own fix.
+- A new finding for what the scan already reported: an order for a scan finding goes at its file and line, it is not a second finding.
 - Plain registers, counters, FSMs, adders, multipliers, comparators, muxes: synthesis maps them to library cells without help.
 - A structure already behind a wrapper of section 1.
 - A memory below `min_mem_words` words.
