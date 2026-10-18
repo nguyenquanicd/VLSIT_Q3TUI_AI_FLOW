@@ -88,9 +88,8 @@ class SpecStep(StepDef):
 
     def missing_input(self, engine) -> str | None:
         intent, spec = self._paths(engine)[:2]
-        if not intent.is_file() and not spec.is_file():  # (the intent only seeds the first spec: with a spec, a missing intent is fine)
-        intent = self._paths(engine)[0]
-        if not intent.is_file() and not self.references(engine):
+        # (the intent only seeds the first spec: with a spec, a missing intent is fine)
+        if not intent.is_file() and not spec.is_file() and not self.references(engine):
             return f"no spec and no intent: write {engine.project.rel(intent)}, pass --intent \"...\", or provide --spec FILE"
         return None
 
@@ -196,10 +195,11 @@ class SpecStep(StepDef):
         ported = meta.get("refs") is not None  # the spec was ported from your documents
         if not intent_path.is_file() and ported:
             intent_same = True  # (no intent: the documents are what it was written from)
-        if spec_path.is_file() and not ctx.regenerate and (intent_same or (old_intent is not None and intent_path.is_file())):
+        no_intent = spec_path.is_file() and not intent_path.is_file()  # a spec without its intent (a copied project): nothing to compare with
+        if spec_path.is_file() and not ctx.regenerate and (intent_same or no_intent or (old_intent is not None and intent_path.is_file())):
             # the spec exists: update only what changed (an intent change revises the sections it affects)
             changes = self._template_changes(engine, template, spec_path.read_text())
-            intent_change = None if intent_same else (old_intent, intent_path.read_text())
+            intent_change = None if intent_same or no_intent else (old_intent, intent_path.read_text())
             extra = []
             now = (engine.import_record("spec") or {}).get("files") if refs else None
             if now != meta.get("refs") and refs:  # re-imported documents: the sections they affect follow them
