@@ -88,9 +88,7 @@ class SpecStep(StepDef):
 
     def missing_input(self, engine) -> str | None:
         intent, spec = self._paths(engine)[:2]
-        if not intent.is_file() and not spec.is_file():  # (the intent only seeds the first spec: with a spec, a missing intent is fine)
-        intent = self._paths(engine)[0]
-        if not intent.is_file() and not self.references(engine):
+        if not intent.is_file() and not spec.is_file() and not self.references(engine):  # (the intent only seeds the first spec: with a spec, a missing intent is fine)
             return f"no spec and no intent: write {engine.project.rel(intent)}, pass --intent \"...\", or provide --spec FILE"
         return None
 
@@ -194,8 +192,8 @@ class SpecStep(StepDef):
         old_intent = meta.get("intent_text")
         refs = self.references(engine)
         ported = meta.get("refs") is not None  # the spec was ported from your documents
-        if not intent_path.is_file() and ported:
-            intent_same = True  # (no intent: the documents are what it was written from)
+        if not intent_path.is_file() and (ported or spec_path.is_file()):
+            intent_same = True  # (no intent: the documents are what it was written from, or a copied project's spec has none to compare with)
         if spec_path.is_file() and not ctx.regenerate and (intent_same or (old_intent is not None and intent_path.is_file())):
             # the spec exists: update only what changed (an intent change revises the sections it affects)
             changes = self._template_changes(engine, template, spec_path.read_text())
