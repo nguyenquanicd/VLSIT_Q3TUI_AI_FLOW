@@ -58,6 +58,31 @@ print('  %s Passing compare points')
 """
 
 
+class PorterLLM:
+    """The asic_port porter (an LLM stage): answers with `plan` (a PortPlan) and keeps the stages it was asked."""
+
+    def __init__(self, plan=None):
+        from q3tui.flows.asic.lib.porter import PortPlan
+
+        self.plan, self.stages = plan or PortPlan(), []
+
+    async def __call__(self, stage, cfg, emit):
+        from q3tui.llm.runtime import StageResult
+
+        self.stages.append(stage)
+        emit.add_cost(0.01)
+        return StageResult("ok", self.plan, 0.01, 2, "s")
+
+
+@pytest.fixture(autouse=True)
+def llm(monkeypatch):
+    from q3tui.llm import runtime
+
+    fake = PorterLLM()
+    monkeypatch.setattr(runtime, "run_stage", fake)  # (no live LLM: the porter finds nothing unless a test says so)
+    return fake
+
+
 @pytest.fixture
 def proj(tmp_path):
     (tmp_path / "src" / "rtl").mkdir(parents=True)
@@ -257,6 +282,91 @@ async def test_handoff_sends_the_findings_to_the_owning_flow(proj):
     p = json.loads((proj.schemas_dir / "asic_port.json").read_text())
     assert all(f["handed_off"]["flow"] == "owner" for f in p["findings"])
     assert {v.name: v for v in Engine(Project.open(proj.root)).status()}["asic_port"].edited == []  # recording the hand-off is not a user edit
+
+
+# -- the porter (LLM) ----------------------------------------------------------------------------------------------------------
+
+MEM_RTL = """module m_fifo (input i_clk, input i_we, input [4:0] i_a, input [7:0] i_d, output reg [7:0] o_q);
+  logic [7:0] r_w0, r_w1;
+  always @(posedge i_clk) if (i_we) r_w0 <= i_d;
+endmodule
+"""
+
+
+def _plan(*changes):
+    from q3tui.flows.asic.lib.porter import PortChange, PortPlan
+
+    return PortPlan(changes=[PortChange(rule=r, module=m, line=n, text="code", wrapper=f"m_{m}_sram", fix="make a wrapper") for r, m, n in changes], summary="ok")
+
+
+def _two_modules(proj):
+    (proj.root / "src" / "rtl" / "m_fifo.sv").write_text(MEM_RTL)
+    (proj.root / "src" / "rtl" / "filelist.f").write_text("src/rtl/blk.sv\nsrc/rtl/m_fifo.sv\n")
+
+
+def test_the_rule_file_lists_the_port_rules():
+    from q3tui.flows.asic.lib import porter
+
+    text = (Path(port.__file__).parents[1] / "asic_port" / "rules" / "asic_port_rules.md").read_text()
+    rules = porter.port_rules(text)
+    assert {"mem_sram_wrapper", "sync_lib_cell", "clock_gate_icg"} <= set(rules) and all(r["severity"] in ("error", "warn") for r in rules.values())
+    assert not set(rules) & set(port.RULES)  # (the scan's rules are not the porter's)
+
+
+async def test_the_porter_adds_what_the_scan_cannot_see(proj, llm):
+    _two_modules(proj)
+    llm.plan = _plan(("mem_sram_wrapper", "m_fifo", 2), ("nope", "m_fifo", 2), ("sync_lib_cell", "ghost", 1))
+    eng = Engine(proj)
+    await eng.run(yes=True, only="asic_port")
+    (stage,) = llm.stages
+    assert stage.name == "asic_port" and set(stage.builtin_tools) == {"Read", "Grep", "Glob"} and "src/rtl/m_fifo.sv" in stage.prompt
+    assert "## asic_port_rules.md" in stage.prompt and "mem_sram_wrapper" in stage.prompt and stage.output_model.__name__ == "PortPlan"
+    p = json.loads((proj.schemas_dir / "asic_port.json").read_text())
+    (f,) = p["findings"]
+    assert f["rule"] == "mem_sram_wrapper" and f["source"] == "llm" and f["wrapper"] == "m_m_fifo_sram" and f["module"] == "m_fifo" and f["file"] == "src/rtl/m_fifo.sv" and f["id"] == "P1"
+    assert p["status"] == "warn" and len(p["dropped"]) == 2  # an unknown rule and an unknown module are dropped, said
+
+
+async def test_only_changed_files_are_ported_again(proj, llm):
+    _two_modules(proj)
+    llm.plan = _plan(("mem_sram_wrapper", "m_fifo", 2))
+    eng = Engine(proj)
+    await eng.run(yes=True, only="asic_port")
+    assert len(llm.stages) == 1
+    (proj.root / "src" / "rtl" / "blk.sv").write_text(RTL + "// changed\n")  # one file changes: only it goes back to the porter
+    eng = Engine(Project.open(proj.root))
+    await eng.run(yes=True, only="asic_port")
+    assert len(llm.stages) == 2 and "src/rtl/blk.sv" in llm.stages[1].prompt and "src/rtl/m_fifo.sv" not in llm.stages[1].prompt.split("# This run")[1].split("All modules")[0]
+    p = json.loads((proj.schemas_dir / "asic_port.json").read_text())
+    assert [f["module"] for f in p["findings"]] == ["m_fifo"]  # (kept from the first run)
+
+
+async def test_a_code_finding_is_not_ported_twice_and_the_porter_can_be_off(proj, llm):
+    (proj.root / "src" / "rtl" / "mem_wrap.sv").write_text(DIRTY)
+    (proj.root / "src" / "rtl" / "filelist.f").write_text("src/rtl/blk.sv\nsrc/rtl/mem_wrap.sv\n")
+    llm.plan = _plan(("mem_sram_wrapper", "mem_wrap", 2))  # the scan has a memory_array finding at that line
+    eng = Engine(proj)
+    await eng.run(yes=True, only="asic_port")
+    p = json.loads((proj.schemas_dir / "asic_port.json").read_text())
+    assert not [f for f in p["findings"] if f["source"] == "llm"] and any(f["source"] == "code" for f in p["findings"])
+    _yaml(proj.root, extra="    asic_port:\n      port: false\n")
+    llm.stages.clear()
+    eng = Engine(Project.open(proj.root))
+    await eng.run(yes=True, only="asic_port")
+    assert llm.stages == []
+
+
+async def test_a_port_order_is_handed_off_with_its_wrapper(proj, llm):
+    (proj.root / "flows").mkdir(exist_ok=True)
+    (proj.root / "flows" / "owner.yaml").write_text("name: owner\nsteps:\n  - {id: spec, kind: spec}\n  - {id: rtl, kind: reads, deps: [spec]}\n")
+    _two_modules(proj)
+    llm.plan = _plan(("mem_sram_wrapper", "m_fifo", 2))
+    _yaml(proj.root, extra="    asic_port:\n      handoff_flow: owner\n")
+    eng = Engine(Project.open(proj.root))
+    await eng.run(yes=True, only="asic_port")
+    Ops(eng).run_action("asic_handoff")
+    (req,) = Engine(proj, flow=flows.load_flow("owner", proj.root)).state.feedback["rtl"]
+    assert req.startswith("[rtl:m_fifo] ASIC port (src/rtl/m_fifo.sv:2, ") and "make a wrapper" in req and "Create the wrapper module `m_m_fifo_sram`" in req
 
 
 # -- Settings and the TUI -----------------------------------------------------------------------------------------------------------
