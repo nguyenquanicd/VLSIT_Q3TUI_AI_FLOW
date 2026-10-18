@@ -34,7 +34,8 @@ llm:
   max_budget_usd: null            # per LLM stage
   tool_output_limit: 6000         # characters one tool call may return (head + tail kept): results are re-sent every turn
   stage_token_budget: 1000000     # warn when one stage reads more input tokens (cache included); null = never
-  steps:                          # per-step model / effort (Settings → "Models per step"); unset = the values above
+  steps:                          # per-step model / effort (Settings → "Models per step"); unset = the values above,
+                                  # except spec: effort medium by default (`spec: {effort: default}` = the global one)
     rtl:    {model: claude-sonnet-5-5, effort: high}
     tb:     {model: claude-haiku-4-5}               # effort: default | none | low … max ("none" for Haiku)
     verify: {effort: medium}

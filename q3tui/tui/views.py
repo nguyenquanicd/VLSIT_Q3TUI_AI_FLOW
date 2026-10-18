@@ -141,17 +141,41 @@ def split_fences(text: str) -> list[tuple[str, str, str]]:
     return parts
 
 
+DIAGRAM_LANGS = (*mermaid.LANGS, "wavedrom", "wavejson")
+
+
 class MdCode(ScrollableContainer):
-    """A fenced code block: never wrapped (diagrams, waveforms, SV); scrolls sideways when wide."""
+    """A fenced code block: never wrapped (diagrams, waveforms, SV); scrolls sideways when wide (←/→ when focused,
+    shift+wheel). A diagram opens full screen with Enter or a double-click (DiagramScreen; the app's `D` too)."""
 
     DEFAULT_CSS = """
     MdCode { height: auto; overflow-x: auto; overflow-y: hidden; margin: 0 0 1 0; background: $boost; }
     MdCode > Static { width: auto; padding: 0 1; }
+    MdCode:focus { background-tint: $accent 10%; }
     """
+    BINDINGS = [Binding("enter", "full_screen", "Full screen", show=False)]
 
     def __init__(self, code: str, lang: str):
         super().__init__()
+        self.code, self.lang, self.caption = code, lang, ""
         self._static = Static(self.renderable(code, lang))
+        self._tip()
+
+    @property
+    def is_diagram(self) -> bool:
+        return self.lang.lower() in DIAGRAM_LANGS
+
+    def _tip(self) -> None:
+        self.tooltip = "Enter / double-click: full screen · ←/→ or shift+wheel: scroll" if self.is_diagram else None
+
+    def action_full_screen(self) -> None:
+        if self.is_diagram:
+            self.app.open_diagrams(self)  # type: ignore[attr-defined]
+
+    def on_click(self, event) -> None:
+        if event.chain >= 2 and self.is_diagram:
+            event.stop()
+            self.app.open_diagrams(self)  # type: ignore[attr-defined]
 
     @staticmethod
     def renderable(code: str, lang: str):
@@ -160,6 +184,11 @@ class MdCode(ScrollableContainer):
             if art is not None:
                 return Text(art, no_wrap=True, overflow="ignore")
             return Text(code, no_wrap=True, overflow="ignore")
+        if lang.lower() in ("wavedrom", "wavejson"):  # a timing diagram: drawn as waveforms (its source when it cannot be read)
+            from q3tui.steps.spec.diagrams import wave_text
+
+            art = wave_text(code)
+            return Text(art if art is not None else code, no_wrap=True, overflow="ignore")
         if lang in ("", "text", "txt", "plain"):
             return Text(code, no_wrap=True, overflow="ignore")
         from rich.syntax import Syntax
@@ -170,7 +199,44 @@ class MdCode(ScrollableContainer):
         yield self._static
 
     def set(self, code: str, lang: str) -> None:
+        self.code, self.lang = code, lang
         self._static.update(self.renderable(code, lang))
+        self._tip()
+
+
+_FIELD_HEAD = re.compile(r"^\|\s*\|\s*\|\s*$")
+_FIELD_SEP = re.compile(r"^\|\s*:?-+:?\s*\|\s*:?-+:?\s*\|\s*$")
+_FIELD_ROW = re.compile(r"^\|\s*\*\*(.+?)\*\*\s*\|\s*(.*?)\s*\|\s*$")
+
+
+def _prose_renderables(body: str) -> list:
+    """Rich renderables of a prose run: Markdown, except the spec's field tables (`| | |` header, `| **name** | value |`
+    rows), which Rich would draw with an empty header and a rule above them — drawn as a plain two-column list."""
+    from rich.table import Table
+
+    lines = body.split("\n")
+    parts: list = []
+    buf: list[str] = []
+    i = 0
+    while i < len(lines):
+        if _FIELD_HEAD.match(lines[i]) and i + 2 < len(lines) and _FIELD_SEP.match(lines[i + 1]) and _FIELD_ROW.match(lines[i + 2]):
+            if "\n".join(buf).strip():
+                parts.append(RichMarkdown("\n".join(buf), code_theme="ansi_dark", hyperlinks=False))
+            buf = []
+            table = Table(show_header=False, box=None, pad_edge=False, padding=(0, 2, 0, 0), expand=False)
+            table.add_column(style="bold", no_wrap=True)
+            table.add_column()
+            i += 2
+            while i < len(lines) and (m := _FIELD_ROW.match(lines[i])):
+                table.add_row(m.group(1).strip(), RichMarkdown(m.group(2).replace("\\|", "|")))
+                i += 1
+            parts.append(table)
+            continue
+        buf.append(lines[i])
+        i += 1
+    if "\n".join(buf).strip() or not parts:
+        parts.append(RichMarkdown("\n".join(buf), code_theme="ansi_dark", hyperlinks=False))
+    return parts
 
 
 class MdProse(Static):
@@ -200,8 +266,11 @@ class MdProse(Static):
 
         self._width = width
         console = Console(width=width, file=StringIO(), force_terminal=True, color_system="truecolor")
-        lines = console.render_lines(RichMarkdown(self.body, code_theme="ansi_dark", hyperlinks=False),
-                                     console.options.update(width=width), pad=False)
+        lines = []
+        for part in _prose_renderables(self.body):
+            if lines:
+                lines.append([])  # a blank line between a field table and the prose around it
+            lines += console.render_lines(part, console.options.update(width=width), pad=False)
         out = Text()
         for i, line in enumerate(lines):
             if i:
@@ -238,6 +307,7 @@ class Markdown(Vertical):
         parts = split_fences(self.source)
         self._kinds = [p[0] for p in parts]
         self._parts = [self._make(p) for p in parts]
+        _set_captions(self._parts, parts)
         yield from self._parts
 
     def update_md(self, text: str) -> None:
@@ -254,12 +324,27 @@ class Markdown(Vertical):
                     widget.set(body, lang)
                 else:
                     widget.set(body)
+            _set_captions(self._parts, parts)
             return
         self._kinds = kinds
         self.remove_children()
         self._parts = [self._make(p) for p in parts]
+        _set_captions(self._parts, parts)
         if self._parts:
             self.mount_all(self._parts)
+
+
+_CAPTION_LINE = re.compile(r"^\s*\*?\s*(Figure|Table)\b[^\n]*", re.I)
+
+
+def _set_captions(widgets: list, parts: list[tuple[str, str, str]]) -> None:
+    """A code block's caption = the `*Figure …*` line right after it (the title of its full-screen view)."""
+    for i, (kind, _body, _lang) in enumerate(parts):
+        if kind != "code":
+            continue
+        nxt = parts[i + 1][1].lstrip("\n") if i + 1 < len(parts) and parts[i + 1][0] == "md" else ""
+        m = _CAPTION_LINE.match(nxt.split("\n", 1)[0])
+        widgets[i].caption = m.group(0).strip().strip("*_ ") if m else ""
 
 
 def set_markdown(widget: Markdown, text: str) -> None:

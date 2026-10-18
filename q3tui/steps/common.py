@@ -26,9 +26,16 @@ KIND_HELP = {
 }
 
 
+IMPACT_HELP = ("How choosing it changes the design compared with the other options, on the axes it touches: area "
+               "(gates / flops / memory), speed (fmax, throughput, latency in cycles), power, complexity / verification "
+               "effort — concrete and short, e.g. \"area +1 16x8 FIFO (~1.2 Kgate); latency −1 cycle; more tests\" or "
+               "\"no area / timing change; software must poll\". Always filled for a design decision")
+
+
 class QuestionOption(BaseModel):
     label: str = Field(description="One possible answer, worded as the answer itself (the text that is recorded)")
     description: str = Field("", description="What choosing it means for the design (one short sentence)")
+    impact: str = Field("", description=IMPACT_HELP)
 
 
 class Question(BaseModel):
@@ -48,7 +55,8 @@ class Question(BaseModel):
         default_factory=list,
         description="ALWAYS propose 2–4 answers (the TUI shows them as a pick list; the user can still type something "
                     "else): the alternatives for a choice, yes / no for a yes-no question, plausible values for an open "
-                    "one. The default_assumption should be one of them.")
+                    "one. The default_assumption should be one of them. Each says its design impact (area, speed, "
+                    "power, complexity) so the user can weigh them.")
 
     @field_validator("kind", mode="before")
     @classmethod
@@ -157,7 +165,8 @@ def render_questions(questions: list[Question], answers: dict[str, str], title: 
         if q.default_assumption:
             lines += [f"_Assumed for now:_ {q.default_assumption}", ""]
         if q.options:
-            lines += ["_Options:_"] + [f"- {o.label}" + (f" — {o.description}" if o.description else "") for o in q.options] + [""]
+            lines += ["_Options:_"] + [f"- {o.label}" + (f" — {o.description}" if o.description else "")
+                                        + (f" _(impact: {o.impact})_" if o.impact else "") for o in q.options] + [""]
     closed = [(q, answers[q.id], "answered") for q in questions if q.id in answers]
     closed += [(q, accepted[q.id], "default accepted") for q in questions if q.id not in answers and q.id in accepted]
     if closed:

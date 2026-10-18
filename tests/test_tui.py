@@ -830,3 +830,87 @@ def test_mermaid_blocks_are_drawn_as_terminal_art():
         assert [p[0] for p in parts] == ["md", "code", "md"] and parts[1][2] == "mermaid"
         assert "Input interface" in MdCode.renderable(parts[1][1], "mermaid").plain and "-->" not in MdCode.renderable(parts[1][1], "mermaid").plain
     assert MdCode.renderable("graph (((", "mermaid").plain == "graph ((("
+
+
+async def test_pipeline_column_can_be_hidden_and_stays_hidden(app, llm):
+    from q3tui.core.project import Project, read_json
+    from q3tui.tui.app import Q3TUIApp
+
+    async with app.run_test(size=(140, 45)) as pilot:
+        await pilot.pause()
+        right = app.query_one("#right").outer_size.width
+        await pilot.press("p")
+        await pilot.pause()
+        assert not app.query_one("#left").display and not app.query_one("#split-left").display
+        assert app.query_one("#right").outer_size.width > right             # the step views get the width
+        assert read_json(app.layout_file)["pipeline_hidden"] == 1
+        await pilot.press("2")                                              # steps are still selected by number
+        await pilot.pause()
+        assert app.selected_step == app.engine.pipeline_steps[1].name
+
+    again = Q3TUIApp(Project.open(app.project.root))
+    async with again.run_test(size=(140, 45)) as pilot:
+        await pilot.pause()
+        assert not again.query_one("#left").display                        # remembered
+        assert again.query_one("#show-pipeline").display                    # a clickable "▶ pipeline" takes its place
+        await pilot.click("#show-pipeline")
+        await pilot.pause()
+        assert again.query_one("#left").display and "pipeline_hidden" not in read_json(again.layout_file)
+        assert not again.query_one("#show-pipeline").display
+        await pilot.click("#hide-pipeline")                                 # and "◀ hide" hides it again
+        await pilot.pause()
+        assert not again.query_one("#left").display
+
+
+WIDE = "flowchart LR\n" + "\n".join(f"  A{i}[block_number_{i}] --> A{i + 1}[block_number_{i + 1}]" for i in range(12))
+
+
+async def test_wide_diagrams_scroll_and_open_full_screen(app, llm):
+    from q3tui.tui.screens import DiagramScreen
+    from q3tui.tui.views import MdCode
+
+    spec = app.project.spec_dir / "spec.md"
+    spec.write_text("# T\n\nTop module: `t`\n\n## 1. Overview\n\n```mermaid\n" + WIDE + "\n```\n\n*Figure 1-1: a long chain.*\n\n"
+                    "```wavedrom\n{signal: [{name: 'i_clk', wave: 'p.....'}]}\n```\n\n*Figure 1-2: the clock.*\n\n```sv\nmodule m; endmodule\n```\n")
+    async with app.run_test(size=(120, 45)) as pilot:
+        await pilot.pause()
+        panel = app.query_one("#view-spec")
+        panel.show_tab("files")
+        panel.query_one("FileViewer").show(spec)
+        await pilot.pause()
+        await pilot.pause()
+        blocks = list(panel.query_one("FileViewer").query(MdCode))
+        wide, wave, sv = blocks
+        assert wide.is_diagram and wave.is_diagram and not sv.is_diagram
+        assert wide.caption == "Figure 1-1: a long chain." and wide.max_scroll_x > 0     # scrolls sideways in place
+        wide.focus()
+        await pilot.press("right")
+        await pilot.pause()
+        assert wide.scroll_x > 0
+
+        await pilot.press("enter")                                          # full screen, from the focused diagram
+        await pilot.pause()
+        screen = app.screen
+        assert isinstance(screen, DiagramScreen) and len(screen.blocks) == 2 and screen.index == 0
+        assert "Figure 1-1: a long chain." in str(screen.query_one("#dg-title").render())
+        await pilot.press("l")
+        await pilot.pause()
+        assert screen.query_one("#dg-scroll").scroll_x > 0
+        await pilot.press("n")
+        await pilot.pause()
+        assert screen.index == 1 and screen.query_one("#dg-scroll").scroll_x == 0
+        await pilot.press("escape")
+        await pilot.pause()
+        assert not isinstance(app.screen, DiagramScreen)
+
+        app.query_one("#steps").focus()
+        await pilot.press("D")                                              # the app key: the visible view's diagrams
+        await pilot.pause()
+        assert isinstance(app.screen, DiagramScreen) and app.screen.index == 0
+        await pilot.press("q")
+        await pilot.pause()
+
+        sv.focus()
+        await pilot.press("enter")                                          # a code block is not a diagram: nothing opens
+        await pilot.pause()
+        assert not isinstance(app.screen, DiagramScreen)

@@ -27,7 +27,7 @@ class StepLLM(_Strict):
 class StepModels(_Strict):
     """Per-step overrides (llm.steps.<step>)."""
 
-    spec: StepLLM = Field(default_factory=StepLLM)
+    spec: StepLLM = Field(default_factory=lambda: StepLLM(effort="medium"))  # high: one 6-minute think, 400k+ tokens
     parse: StepLLM = Field(default_factory=StepLLM)
     config: StepLLM = Field(default_factory=StepLLM)
     rtl: StepLLM = Field(default_factory=StepLLM)

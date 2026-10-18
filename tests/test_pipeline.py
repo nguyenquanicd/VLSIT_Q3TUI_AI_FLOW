@@ -223,6 +223,33 @@ def test_parallel_multi_agent_role_override_targets_tb_only(engine, llm):
     assert engine._step_role_override.get("tb", "flow") == "flow"
 
 
+def test_flow_session_reviewers_run_fresh(engine, llm, monkeypatch):
+    """session: flow — every task goes to the flow's one session, except reviewers (roles.FLOW_FRESH: spec_review
+    re-reads the whole draft and compacted the flow session at its first step) and the flow file's fresh_steps."""
+    from q3tui.llm import roles
+    from q3tui.llm.runtime import Stage
+    from q3tui.pipeline.base import StepContext
+
+    sent = []
+
+    class Team:
+        async def run(self, stage, role, cfg, emit):
+            sent.append((stage.name, role))
+            return await runtime.run_stage(stage, cfg, emit)
+
+    monkeypatch.setattr(roles, "team", lambda project: Team())
+    engine.project.cfg.pipeline.session = "flow"
+    ctx = StepContext(engine, engine.bus.scoped("spec"))
+    for name in ("spec_write", "spec_review"):
+        anyio.run(ctx.llm, Stage(name=name, system_prompt="", prompt="", cwd=engine.project.root))
+    assert sent == [("spec_write", "flow")]
+    assert [c.name for c in llm.calls] == ["spec_write", "spec_review"]
+
+    engine.flow.fresh_steps = ["spec"]  # the flow file's fresh_steps: every stage of the step runs fresh
+    anyio.run(ctx.llm, Stage(name="spec_update", system_prompt="", prompt="", cwd=engine.project.root))
+    assert sent == [("spec_write", "flow")] and llm.calls[-1].name == "spec_update"
+
+
 def test_yes_approves_and_staleness(engine, llm):
     engine.import_intent("fifo")
     assert run(engine, yes=True) == "complete"

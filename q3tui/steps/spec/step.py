@@ -8,7 +8,7 @@ from q3tui.llm.runtime import Stage
 from q3tui.pipeline.base import StepContext, StepDef, StepFailed
 from q3tui.core.project import read_json, write_json
 from q3tui.steps.common import Question, assign_question_ids, load_answers, render_questions, save_answer
-from q3tui.steps.spec import document, prompts
+from q3tui.steps.spec import diagrams, document, prompts
 from q3tui.core.project import sha256_file
 from q3tui.steps.spec.document import ReviewPatch, SpecDraft, SpecPatch
 from q3tui.steps.spec.template import describe, find_template, load_template
@@ -219,6 +219,7 @@ class SpecStep(StepDef):
             touched.append(ts.id)
             ctx.emit("warning", message=f"required section '{ts.id}' ({ts.title}) was not written; marked TBD")
         self._warn_uncaptioned(ctx, [(t, b) for sid, t, b in document.parse_sections(text) if sid in set(touched)])
+        self._warn_diagrams(ctx, [(t, b) for sid, t, b in document.parse_sections(text) if sid in set(touched)], text)
         if text != original:
             engine.project.backup([spec_path])
             spec_path.write_text(text)
@@ -257,6 +258,16 @@ class SpecStep(StepDef):
             if missing:
                 ctx.emit("warning", message=f"section '{title}': {len(missing)} table/diagram without a caption line "
                                             f"(*Table …* / *Figure …*) — e.g. {missing[0]}")
+
+    @staticmethod
+    def _warn_diagrams(ctx: StepContext, sections: list[tuple[str, str]], spec_text: str) -> None:
+        """Diagram problems left after the writer and the reviewer (diagrams.py checks): warnings, never a failed step."""
+        by_section: dict[str, list[str]] = {}
+        for title, problem in diagrams.check_sections(sections, spec_text):
+            by_section.setdefault(title, []).append(problem)
+        for title, problems in by_section.items():
+            more = f" (+{len(problems) - 2} more)" if len(problems) > 2 else ""
+            ctx.emit("warning", message=f"section '{title}': {'; '.join(problems[:2])}{more}")
 
     async def _write_full(self, ctx: StepContext, template, template_path: Path, answers: dict[str, str]) -> None:
         """First draft, --regenerate, or a spec that is gone / predates the update bookkeeping: write (and review) the whole spec."""
@@ -297,9 +308,13 @@ class SpecStep(StepDef):
             if draft is None:
                 raise StepFailed("the spec writer's reply is not in the expected layout: " + "; ".join(problems))
 
+        rendered = document.render(draft)
+        found = diagrams.check_sections([(sec.title, sec.content) for sec in draft.sections], rendered)
         if ctx.cfg.spec.self_review:
-            ctx.emit("log", message="reviewing specification (returns only the sections it changes)")
-            review_prompt = prompts.review_prompt(intent=intent, template=tdesc, draft=draft, rendered=document.render(draft), answers=answers, questions=previous)
+            ctx.emit("log", message="reviewing specification (returns only the sections it changes)"
+                                    + (f"; {len(found)} diagram problem(s) to fix" if found else ""))
+            review_prompt = prompts.review_prompt(intent=intent, template=tdesc, draft=draft, rendered=rendered, answers=answers,
+                                                  questions=previous, diagram_problems=found)
             review_stage = Stage(name="spec_review", system_prompt=prompts.REVIEWER, prompt=review_prompt, cwd=engine.project.root,
                                  builtin_tools=[], output_model=ReviewPatch)
             review: ReviewPatch = (await ctx.llm(review_stage)).output
@@ -319,6 +334,7 @@ class SpecStep(StepDef):
                 ctx.emit("warning", message=f"still {len(errors)} template problem(s); missing parts are marked TBD")
         draft = document.normalize(draft, template)
         self._warn_uncaptioned(ctx, [(sec.title, sec.content) for sec in draft.sections])
+        self._warn_diagrams(ctx, [(sec.title, sec.content) for sec in draft.sections], document.render(draft))
 
         draft.questions += document.tbd_questions(draft.sections, draft.questions)
         taken = set(answers) | set(engine.state.closed_questions.get(self.name, {}))  # answered ids are never given again

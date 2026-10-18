@@ -95,7 +95,7 @@ Runs only when there is no spec document.
 | | |
 |---|---|
 | Input | `spec/intent.md` (free text, or the skeleton from `q3tui init`) or `q3tui run --intent "..."`; the **spec template** |
-| Stages | L draft (sectioned per template; replied as plain Markdown with section markers and a `- Q:` questions block — not JSON, where one bad escape costs a full rewrite; D parses it, one re-ask if the layout is off; file tools only when `spec/` has reference documents) → L self-review (returns only the sections it changes; `spec.self_review`, `--no-spec-review`, `/specreview off`) → D check against the template → L repair (once) → D normalise + render. Every table and diagram carries a caption line below it (`*Table <section>-<n>: …*` / `*Figure <section>-<n>: …*`; asked of the writer, the reviewer and the updater, and a miss is flagged as a warning, not repaired). A regenerated draft and its review get the user's earlier answers (with their questions) as settled decisions; answered question ids are never reused. `spec_update` patches go through the same normalisation; a required section a patch or hand edit left out is written as a `TBD` placeholder with a warning, and TBD fields become questions |
+| Stages | L draft (sectioned per template; replied as plain Markdown with section markers and a `- Q:` questions block — not JSON, where one bad escape costs a full rewrite; D parses it, one re-ask if the layout is off; file tools only when `spec/` has reference documents) → L self-review (returns only the sections it changes; `spec.self_review`, `--no-spec-review`, `/specreview off`) → D check against the template → L repair (once) → D normalise + render. Every table and diagram carries a caption line below it (`*Table <section>-<n>: …*` / `*Figure <section>-<n>: …*`; asked of the writer, the reviewer and the updater, and a miss is flagged as a warning, not repaired). Diagrams follow conventions that code checks (`steps/spec/diagrams.py`, see "Spec diagrams" below): the problems found in the draft go to the self-review with the sections they are in, and what is left (or found in an update's sections) is a warning, never a failed step. A regenerated draft and its review get the user's earlier answers (with their questions) as settled decisions; answered question ids are never reused. `spec_update` patches go through the same normalisation; a required section a patch or hand edit left out is written as a `TBD` placeholder with a warning, and TBD fields become questions |
 | Output | `spec/spec.md` (the specification), `spec/questions.json` / `questions.md` |
 | Gate | **spec review**: the user edits `spec.md` or answers the questions, then approves |
 
@@ -141,6 +141,24 @@ exactly which sections changed. The full draft + self-review (`spec_write` +
 `spec_update`, which revises only the sections the change affects.
 
 The agent describes observable behaviour and does **not** decide microarchitecture here.
+
+### Spec diagrams
+
+The figures stay in `spec.md` as fenced blocks: the document renders anywhere, and a hand edit stays the source of
+truth (no second copy to keep in sync, nothing regenerated inside `spec.md`). The writer, reviewer and updater are given
+the conventions (`prompts.DIAGRAM_RULES`; the VLSIT template's `instructions` repeat them, so an existing spec is not
+revised for them); code reads the diagrams and checks them:
+
+| Diagram | Form | Checked by code |
+|---|---|---|
+| timing / cycle behaviour | ` ```wavedrom ` (WaveJSON; JSON5 as models write it is accepted) | readable, known wave characters, one data label per data cycle, every signal named elsewhere in the spec |
+| block diagram | Mermaid `flowchart LR` with the module boundary (`subgraph top["<top module>"]` holding the blocks, one `subgraph` per clock domain inside it, every IO a rounded node outside it); an external interface is one node named for it (`APB interface`), every connection labelled with what it carries | a diagram that draws IO has a module boundary and no IO inside it; no node or label lists an interface's signals (two or more port names); no connection without a label (`~~~` excepted); an edge between two domains carries a `CDC: …` / `sync` label or goes through a synchronizer node; every `i_…` / `o_…` name on it is named elsewhere in the spec (not every port has to be drawn) |
+| state machine | Mermaid `stateDiagram-v2` directly below the table of its states; a transition every state takes (abort …) said once in the caption / table, not drawn from each state | an initial `[*] --> S`, every state reachable, every state with a way out (`--> [*]` for a final one), no labelled transition into one state drawn from three or more states, the same states as the table (top level only: a composite state counts as one, `<<choice>>` / `<<fork>>` / `<<join>>` are not states) |
+
+The checks run when the step writes or updates sections; a hand edit of `spec.md` is not checked (the spec step does not
+run for it). Drawn by code: the TUI draws WaveDrom as waveforms, a block diagram with its own schematic layout (`tui/blockdiagram.py`) and other Mermaid with `termaid` (a state machine without its start node: the reset state is drawn as `S (reset)`); the VLSIT `doc` step puts every spec
+figure in its chapter 10 with its caption — WaveDrom as an SVG in `docs/figures/` (`wave_svg`; no Node.js needed),
+Mermaid as its source (no Mermaid renderer is bundled).
 
 ## The other steps
 

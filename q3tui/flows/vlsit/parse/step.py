@@ -18,7 +18,7 @@ from pydantic import BaseModel, Field
 from q3tui.llm.runtime import Stage
 from q3tui.pipeline.base import StepContext, StepFailed
 from q3tui.core.project import sha256_file, sha256_json
-from q3tui.steps.common import Question, assign_question_ids, drop_settled, load_answers, settled_block, spec_block
+from q3tui.steps.common import Question, QuestionOption, assign_question_ids, drop_settled, load_answers, settled_block, spec_block
 from q3tui.steps.vlsit import artifacts
 from q3tui.flows.vlsit.parse import task as parse_prompts
 from q3tui.steps.vlsit.base import VlsitStep
@@ -38,6 +38,9 @@ class ParsedReq(BaseModel):
     ambiguity_issue: str = Field("", description="Why it is ambiguous (only when score > 0.3)")
     ambiguity_question: str = Field("", description="A yes/no or multiple-choice question (only when score > 0.3)")
     default_assumption: str = Field("", description="The reading assumed in `text` meanwhile")
+    ambiguity_options: list[QuestionOption] = Field(
+        default_factory=list, description="2–4 answers to ambiguity_question (only when score > 0.3; the "
+                                          "default_assumption among them), each with its design impact")
     source_section: str = ""
     feature_id: str = ""
     parameters_affected: list[str] = Field(default_factory=list)
@@ -84,6 +87,14 @@ class ParsedSpec(BaseModel):
 
 _NUM = re.compile(r"REQ-(\d+)")
 _DECISION_MARK = "needs your decision"
+DECISION_OPTIONS = [
+    QuestionOption(label="keep", description="the requirement stays as it is written",
+                   impact="no design change; the RTL implements the assumed reading, risk of a wrong guess"),
+    QuestionOption(label="delete", description="the requirement is dropped",
+                   impact="less RTL / fewer tests and assertions; the behaviour is left unspecified"),
+    QuestionOption(label="split", description="split into smaller, unambiguous requirements (say how with Other…)",
+                   impact="no area change; more REQs, test cases and assertions (more verification effort)"),
+]
 
 
 def _norm(text: str) -> str:
@@ -131,7 +142,8 @@ def assemble(parsed: ParsedSpec, previous: dict | None, meta: dict, decided: set
                      "needs_review": needs_review, "needs_human_decision": False, "source_section": r.source_section,
                      "parameters_affected": list(dict.fromkeys(r.parameters_affected)), "feature_id": r.feature_id,
                      "sva_hint": r.sva_hint, "optional": r.optional, "rtl_modules": list(dict.fromkeys(r.rtl_modules)),
-                     "_issue": r.ambiguity_issue, "_question": r.ambiguity_question, "_default": r.default_assumption})
+                     "_issue": r.ambiguity_issue, "_question": r.ambiguity_question, "_default": r.default_assumption,
+                     "_options": r.ambiguity_options})
     meta["max_req"] = counter
 
     names = [m.name for m in parsed.modules]
@@ -357,13 +369,14 @@ class ParseStep(VlsitStep):
                 new.append(Question(id="", question=f"{rid} {_DECISION_MARK}: still ambiguous after {MAX_ROUNDS} questions "
                                                     f"({r['_issue'] or 'see the requirement'}). Keep it as it is (risk of RTL hallucination), "
                                                     "delete it, or split it into smaller requirements? (keep / delete / split)",
-                                    blocking=True, default_assumption="keep", kind=kind))
+                                    blocking=True, default_assumption="keep", kind=kind, options=DECISION_OPTIONS))
             else:
                 rounds[rid] = n + 1
                 q = r["_question"] or f"{r['_issue'] or 'The requirement can be read in more than one way.'} Which reading is intended?"
                 new.append(Question(id="", question=f"{rid} [ambiguity {r['ambiguity_score']:.2f}] (round {n + 1}/{MAX_ROUNDS}): "
                                                     f"{' '.join(r['text'].split())[:160]} — {q}",
-                                    blocking=r["ambiguity_score"] >= BLOCKING_SCORE, default_assumption=r["_default"], kind=kind))
+                                    blocking=r["ambiguity_score"] >= BLOCKING_SCORE, default_assumption=r["_default"], kind=kind,
+                                    options=r["_options"]))
         general, dropped = drop_settled(list(parsed.questions), engine.settled_questions(self.name))
         new += [q.model_copy(update={"kind": kind}) if q.kind == "spec_gap" else q for q in general if q.id not in answers]
         out = assign_question_ids(new, previous, "Q-P", taken)

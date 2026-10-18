@@ -62,3 +62,11 @@ def test_settings_of_the_removed_flows_are_ignored(tmp_path):
     cfg = load_config(cwd=tmp_path)
     assert cfg.rtl.parallel == 2 and cfg.tb.max_turns == 9 and cfg.project.rtl_dir == "hw"
     assert cfg.llm.steps.rtl.effort == "low" and not hasattr(cfg, "units")
+
+
+def test_spec_step_effort_medium_by_default(tmp_path):
+    llm = load_config(cwd=tmp_path).llm
+    assert llm.for_stage("spec", "spec_write").effort == "medium"
+    assert llm.for_stage("parse", "parse_spec").effort == "high"
+    (tmp_path / "q3tui.yaml").write_text("llm: {steps: {spec: {effort: default}}}\n")
+    assert load_config(cwd=tmp_path).llm.for_stage("spec", "spec_write").effort == "high"

@@ -6,7 +6,7 @@ import re
 
 from pydantic import BaseModel, Field
 
-from q3tui.steps.common import Question
+from q3tui.steps.common import Question, QuestionOption
 from q3tui.steps.spec.template import SpecTemplate
 
 TBD = "TBD"
@@ -141,12 +141,13 @@ def normalize(draft: SpecDraft, template: SpecTemplate) -> SpecDraft:
     return draft.model_copy(update={"sections": ordered})
 
 
+DIAGRAM_LANGS = ("mermaid", "mmd", "wavedrom", "wavejson")  # = diagrams.LANGS (kept here: no import on the hot path)
 _CODE_FENCE = re.compile(r"^\s*(?:`{3,}|~{3,})\s*([\w+-]*)")
 _CAPTION = re.compile(r"^\*?\s*(Table|Figure)\b", re.I)
 
 
 def uncaptioned(content: str) -> list[str]:
-    """Tables and Mermaid diagrams of a section body with no `Table …` / `Figure …` line directly below them
+    """Tables and diagrams (Mermaid, WaveDrom) of a section body with no `Table …` / `Figure …` line directly below them
     (blank lines in between are fine): ["table: | a | b |", "diagram: flowchart LR", ...]."""
     lines = content.splitlines()
     found: list[str] = []
@@ -159,7 +160,7 @@ def uncaptioned(content: str) -> list[str]:
             j = i + 1
             while j < len(lines) and not (_CODE_FENCE.match(lines[j]) and not _CODE_FENCE.match(lines[j]).group(1)):
                 j += 1
-            if lang in ("mermaid", "mmd"):
+            if lang in DIAGRAM_LANGS:
                 kind, label = "diagram", (lines[i + 1].strip() if i + 1 < len(lines) else "")
             i = j  # at the closing fence
         elif line.lstrip().startswith("|"):
@@ -357,15 +358,27 @@ def format_questions(questions: list[Question]) -> str:
     for q in questions:
         lines.append(f"- Q: {q.question} | assumed: {q.default_assumption} | blocking: {'yes' if q.blocking else 'no'} | kind: {q.kind}"
                      + (f" | id: {q.id}" if q.id else ""))
+        lines += [f"  - option: {o.label}" + (f" | means: {o.description}" if o.description else "")
+                  + (f" | impact: {o.impact}" if o.impact else "") for o in q.options]
     return "\n".join(lines) + "\n"
 
 
 _Q_ATTR = re.compile(r"\s\|\s(?=(?:assumed|blocking|kind|id)\s*:)", re.I)
 
 
+_OPT_LINE = re.compile(r"^\s+[-*]\s*option:\s*(.+)$", re.I)
+_OPT_ATTR = re.compile(r"\s\|\s(?=(?:means|impact)\s*:)", re.I)
+
+
 def _parse_questions(lines: list[str]) -> list[Question]:
     out = []
     for line in lines:
+        o = _OPT_LINE.match(line)
+        if o and out:  # `  - option: <label> | means: … | impact: …` under its question
+            parts = [p.strip() for p in _OPT_ATTR.split(o.group(1))]
+            attrs = {k.strip().lower(): v.strip() for k, _, v in (p.partition(":") for p in parts[1:])}
+            out[-1].options.append(QuestionOption(label=parts[0], description=attrs.get("means", ""), impact=attrs.get("impact", "")))
+            continue
         m = _Q_LINE.match(line)
         if not m:
             continue
@@ -395,6 +408,17 @@ def _fields_and_content(body: str) -> tuple[list[FieldValue], str]:
     return fields, "\n".join(lines[i:]).strip()
 
 
+def _drop_wrapping_fence(lines: list[str]) -> list[str]:
+    """A fence around the whole document leaves an unmatched bare ``` at its end: dropped. Every other bare ``` closes
+    a code block (a diagram) and stays."""
+    lines = list(lines)
+    while lines and not lines[-1].strip():
+        lines.pop()
+    if lines and re.match(r"^\s*```+\s*$", lines[-1]) and sum(bool(_FENCE.match(ln)) for ln in lines) % 2:
+        lines.pop()
+    return lines
+
+
 def parse_reply(text: str) -> tuple[SpecDraft | None, list[str]]:
     """The writer's Markdown reply → SpecDraft; problems (empty = usable)."""
     lines = text.strip().splitlines()
@@ -402,12 +426,13 @@ def parse_reply(text: str) -> tuple[SpecDraft | None, list[str]]:
     start = next((i for i, ln in enumerate(lines) if ln.startswith("# ")), None)
     if start is None:
         return None, ["no document title line ('# <title>')"]
-    lines = [ln for ln in lines[start:] if not re.match(r"^\s*```+\s*(markdown|md)?\s*$", ln)]
+    lines = _drop_wrapping_fence(lines[start:])
     # the questions block starts at the marker; a model that forgot it still writes the `## Open questions` heading
     q_at = next((i for i, ln in enumerate(lines) if ln.strip() == QUESTIONS_MARK), None)
     if q_at is None:
         q_at = next((i for i, ln in enumerate(lines) if re.match(r"^##\s+open questions\s*$", ln.strip(), re.I)), None)
     doc, q_lines = (lines[:q_at], lines[q_at + 1:]) if q_at is not None else (lines, [])
+    doc = _drop_wrapping_fence(doc)  # a fence closed before the questions block
     title = doc[0][2:].strip()
     top = spec_top_module("\n".join(doc[:8]))
     sections = parse_sections("\n".join(doc))

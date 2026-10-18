@@ -4,6 +4,10 @@ title: VLSIT RTL generator — spec → requirements → config → RTL ‖ TB �
   → documents
 version: 1
 session: flow
+fresh_steps:
+- spec
+- parse
+- config
 tools:
 - lint
 - synth

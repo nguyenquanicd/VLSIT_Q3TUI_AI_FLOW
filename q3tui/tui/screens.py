@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from textual.app import ComposeResult
 from textual.binding import Binding
-from textual.containers import Horizontal, Vertical
+from textual.containers import Horizontal, ScrollableContainer, Vertical
 from textual.screen import ModalScreen
 from textual.widgets import Button, Input, Label, Static
 
@@ -908,6 +908,73 @@ class SkillScreen(ModalScreen[None]):
             self.action_save()
         else:
             self.dismiss(None)
+
+    def action_close(self) -> None:
+        self.dismiss(None)
+
+
+class DiagramScreen(ModalScreen[None]):
+    """Diagrams full screen: the whole terminal, scrolled both ways (arrows / h j k l, shift+←/→ a page sideways,
+    Home / End), n / p for the next / previous diagram of the same view."""
+
+    BINDINGS = [
+        Binding("escape,q", "close", "Close"),
+        Binding("n", "move(1)", "Next"),
+        Binding("p", "move(-1)", "Previous"),
+        Binding("h", "pan(-8, 0)", "Left", show=False),
+        Binding("l", "pan(8, 0)", "Right", show=False),
+        Binding("k", "pan(0, -3)", "Up", show=False),
+        Binding("j", "pan(0, 3)", "Down", show=False),
+        Binding("shift+left", "page(-1)", "Page left", show=False),
+        Binding("shift+right", "page(1)", "Page right", show=False),
+    ]
+    DEFAULT_CSS = """
+    DiagramScreen { align: center middle; }
+    DiagramScreen > #dg-box { width: 100%; height: 100%; border: round $accent; background: $surface; padding: 0 1; }
+    DiagramScreen #dg-title { text-style: bold; height: auto; }
+    DiagramScreen #dg-scroll { height: 1fr; overflow: auto auto; background: $boost; }
+    DiagramScreen #dg-scroll > Static { width: auto; height: auto; padding: 0 1; }
+    DiagramScreen #dg-hint { color: $text-muted; height: 1; }
+    """
+
+    def __init__(self, blocks: list[tuple[str, str, str]], index: int = 0):
+        """`blocks`: (code, lang, caption) of every diagram of the view; `index`: the one to show first."""
+        super().__init__()
+        self.blocks, self.index = blocks, max(0, min(index, len(blocks) - 1))
+
+    def compose(self) -> ComposeResult:
+        with Vertical(id="dg-box"):
+            yield Label("", id="dg-title")
+            with ScrollableContainer(id="dg-scroll"):
+                yield Static("", id="dg-art")
+            yield Static("←/→/↑/↓ or h/l/k/j scroll · shift+←/→ page · Home/End · n/p next/previous diagram · Esc close",
+                         id="dg-hint")
+
+    def on_mount(self) -> None:
+        self._show()
+        self.query_one("#dg-scroll").focus()
+
+    def _show(self) -> None:
+        from q3tui.tui.views import MdCode
+
+        code, lang, caption = self.blocks[self.index]
+        title = f"Diagram {self.index + 1}/{len(self.blocks)}" + (f" — {caption}" if caption else f" ({lang})")
+        self.query_one("#dg-title", Label).update(title)
+        self.query_one("#dg-art", Static).update(MdCode.renderable(code, lang))
+        self.query_one("#dg-scroll").scroll_home(animate=False)
+
+    def action_move(self, step: int) -> None:
+        if len(self.blocks) > 1:
+            self.index = (self.index + step) % len(self.blocks)
+            self._show()
+
+    def action_pan(self, dx: int, dy: int) -> None:
+        sc = self.query_one("#dg-scroll")
+        sc.scroll_to(x=sc.scroll_x + dx, y=sc.scroll_y + dy, animate=False)
+
+    def action_page(self, direction: int) -> None:
+        sc = self.query_one("#dg-scroll")
+        sc.scroll_to(x=sc.scroll_x + direction * max(8, sc.size.width - 8), animate=False)
 
     def action_close(self) -> None:
         self.dismiss(None)

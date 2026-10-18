@@ -437,3 +437,309 @@ def test_missing_captions_are_flagged_after_a_write(tmp_path, llm):
     anyio.run(lambda: engine.run(only="spec"))
     warnings = [getattr(e, "data", {}).get("message", "") if hasattr(e, "data") else str(e) for e in seen]
     assert any("without a caption" in w for w in warnings), warnings[:5]
+
+
+# -- diagrams: timing (WaveDrom), block diagram and state machine (Mermaid), checked and drawn by code ----------------
+
+WAVE = """{signal: [
+  {name: 'i_clk_core', wave: 'p.....'},  // the clock
+  {name: 'i_valid', wave: '01..0.'},
+  {name: 'i_data', wave: 'x345x.', data: ['D0', 'D1', 'D2']},
+  {},
+]}"""
+
+
+def test_wavedrom_is_read_leniently_checked_and_drawn():
+    from q3tui.steps.spec import diagrams
+
+    assert diagrams.loads_json5("{a: 'it\\'s', b: [1, 2,], c: \"x\" /* c */,}") == {"a": "it's", "b": [1, 2], "c": "x"}
+    assert [ln.name for ln in diagrams.wave_lanes(WAVE)] == ["i_clk_core", "i_valid", "i_data"]
+    assert diagrams.check_wave(WAVE, {"i_clk_core", "i_valid", "i_data"}) == []
+    problems = diagrams.check_wave("{signal: [{name: 'o_x', wave: '=.=k', data: 'A'}]}", {"i_clk_core"})
+    assert any("unknown wave characters k" in p for p in problems)
+    assert any("2 data cycle(s) but 1 data label(s)" in p for p in problems)
+    assert any("`o_x` is not named anywhere else" in p for p in problems)
+    assert diagrams.check_wave("{signal: [") [0].startswith("timing diagram is not valid WaveJSON")
+    art = diagrams.wave_text(WAVE)
+    assert art.splitlines()[1].lstrip().startswith("i_clk_core ╱") and "D0" in art and "D2" in art
+    svg = diagrams.wave_svg(WAVE, "Figure 10-1: a <write>")
+    assert svg.startswith("<svg") and ">D1</text>" in svg and "a &lt;write&gt;" in svg
+    assert diagrams.wave_text("not json") is None and diagrams.wave_svg("{x: 1}") is None
+
+
+def test_block_diagram_checks_clock_domain_crossings_and_port_names():
+    from q3tui.steps.spec import diagrams
+
+    src = """flowchart LR
+  subgraph clk_a [i_clk_a domain]
+    A[m_ctrl]
+  end
+  subgraph clk_b [i_clk_b domain]
+    B[m_core]
+    S[m_sync_2ff]
+  end
+  i_req --> A
+  A -->|o_bad| B
+  A --> S --> B
+  A -->|CDC: gray pointer| S
+"""
+    problems = diagrams.check_block(src, "Ports: i_req, i_clk_a, i_clk_b.")
+    assert len([p for p in problems if "crosses clock domains" in p]) == 1   # only the unlabelled direct edge
+    assert any("`o_bad` is not a port or signal" in p for p in problems)
+    assert diagrams.check_block("flowchart LR\n  A -->|data| B\n") == []    # no domain subgraphs: no CDC to check
+    tight = """flowchart LR
+  subgraph core["i_clk_core domain"]
+    A[m_ctrl]
+    B[m_fifo]
+  end
+  subgraph io["i_clk_io domain"]
+    C[m_out]
+  end
+  A & B -->|status| C
+  A -.->|flags| C
+  B -->|CDC: async FIFO| C
+"""
+    found = diagrams.check_block(tight)                                       # one problem per pair, domain names clean
+    assert found == ["block diagram: edge A → C crosses clock domains (core → io) with no synchronizer — label it "
+                     "`CDC: <how>` or route it through the synchronizer block"]
+
+
+def test_block_diagram_names_interfaces_and_labels_every_connection():
+    from q3tui.steps.spec import diagrams
+
+    src = """flowchart LR
+  p_apb["APB ports: i_apb_psel, i_apb_penable, i_apb_paddr"]
+  irq["o_irq_a, o_irq_b"]
+  rx_pin["i_uart_rx"]
+  apb_if([APB interface])
+  p_apb --> apb
+  apb_if -->|APB interface| apb
+  apb -->|i_apb_psel, i_apb_penable| csr
+  rx_pin -->|serial in| sync
+  csr ~~~ irq
+"""
+    problems = diagrams.check_block(src)
+    assert [p.split(" — ")[0] for p in problems] == [
+        "block diagram: node p_apb lists the signals i_apb_psel, i_apb_penable, i_apb_paddr",   # a list of signals: name the interface
+        "block diagram: node irq lists the signals o_irq_a, o_irq_b",
+        "block diagram: no module boundary",                                                   # IO drawn: show the boundary
+        "block diagram: connection(s) without a label: p_apb → apb",                          # (an invisible ~~~ link needs none)
+        "block diagram: connection label(s) list signals instead of naming the interface: apb → csr",
+    ]
+    from q3tui.steps.spec.prompts import DIAGRAM_RULES
+
+    assert "APB interface" in DIAGRAM_RULES
+    assert "connection has a label" in " ".join(DIAGRAM_RULES.split())
+    assert diagrams.check_block("this is not a diagram")[0].startswith("block diagram could not be read")
+
+
+def test_state_machine_is_checked_against_its_table():
+    from q3tui.steps.spec import diagrams
+
+    md = """### 10.1 Modes
+
+| State | Entry | Exit |
+|---|---|---|
+| **IDLE** | reset | start |
+| `BUSY` | start | done |
+| WAIT | stall | resume |
+
+*Table 10-1: the states.*
+
+The machine:
+
+```mermaid
+stateDiagram-v2
+  [*] --> IDLE
+  IDLE --> BUSY : start
+  BUSY --> IDLE : done
+  ERR --> ERR
+  state LOST
+```
+
+*Figure 10-1: the controller.*
+"""
+    figs = diagrams.figures(md)
+    assert [f.kind for f in figs] == ["fsm"] and figs[0].table_above == ["IDLE", "BUSY", "WAIT"]
+    assert figs[0].caption == "Figure 10-1: the controller."
+    problems = diagrams.check_figure(figs[0])
+    assert any("not reachable" in p and "ERR, LOST" in p for p in problems)
+    assert any("no exit" in p and "ERR, LOST" in p for p in problems)
+    assert any("in the table above but not in the diagram: WAIT" in p for p in problems)
+    assert any("in the diagram but not in the table above: ERR, LOST" in p for p in problems)
+    ok = "stateDiagram-v2\n  [*] --> IDLE\n  IDLE --> BUSY\n  BUSY --> IDLE\n"
+    assert diagrams.check_fsm(ok, ["IDLE", "BUSY"]) == []
+    assert diagrams.check_fsm("stateDiagram-v2\n  A --> B\n  B --> A\n")[0].startswith("state diagram has no initial state")
+    composite = """stateDiagram-v2
+  [*] --> IDLE
+  state "Waiting" as WAIT
+  IDLE --> BUSY : start
+  state BUSY {
+    [*] --> S1
+    S1 --> S2
+    S2 --> S1
+  }
+  BUSY --> ch
+  state ch <<choice>>
+  ch --> IDLE : ok
+  ch --> WAIT : stall
+  WAIT --> IDLE
+  note right of IDLE : reset state
+"""
+    assert diagrams.check_fsm(composite, ["IDLE", "BUSY", "WAIT"]) == []  # composite / choice states, notes: as models write
+
+
+def test_diagram_conventions_are_in_every_spec_prompt_and_wavedrom_needs_a_caption():
+    from q3tui.steps.spec.document import uncaptioned
+    from q3tui.steps.spec.prompts import DIAGRAM_RULES, REVIEWER, UPDATER, WRITER
+
+    for prompt in (WRITER, REVIEWER, UPDATER):
+        assert DIAGRAM_RULES in prompt and "```wavedrom" in prompt
+    assert [m.split(":")[0] for m in uncaptioned("```wavedrom\n{signal: []}\n```\n\nText.\n")] == ["diagram"]
+
+
+def test_diagram_problems_go_to_the_reviewer_and_what_is_left_is_a_warning(tmp_path, llm):
+    use_test_flow(tmp_path)          # self_review on
+    engine = Engine(Project.open(tmp_path))
+    engine.import_intent("fifo")
+    secs = SPEC.model_dump()["sections"]
+    secs[0]["content"] = "Timing.\n\n```wavedrom\n{signal: [{name: 'o_ghost', wave: '01'}]}\n```\n\n*Figure 1-1: a ghost.*\n"
+    llm.spec_outputs = [_draft([], sections=secs)]
+    seen = []
+    engine.bus.subscribe(lambda e: seen.append(e))
+    anyio.run(lambda: engine.run(only="spec"))
+    assert [c.name for c in llm.calls] == ["spec_write", "spec_review"]
+    review = llm.calls[1]
+    assert "Diagram problems found by code" in review.prompt and "`o_ghost` is not named anywhere else" in review.prompt
+    warnings = [e.data.get("message", "") for e in seen if e.kind == "warning"]
+    assert any("Overview" in w and "o_ghost" in w for w in warnings)   # the (fake) reviewer left it: reported, not failed
+    assert engine.evaluate(engine.by_name["spec"]).status in ("done", "review")
+    n = len(llm.calls)
+    anyio.run(lambda: engine.run(only="spec"))
+    assert len(llm.calls) == n                          # nothing changed: no LLM on the next run
+
+
+def test_tui_draws_wavedrom_blocks():
+    from q3tui.tui.views import MdCode
+
+    art = MdCode.renderable(WAVE, "wavedrom")
+    assert "i_clk_core ╱" in art.plain
+    assert MdCode.renderable("{broken", "wavedrom").plain == "{broken"   # its source when it cannot be read
+
+
+def test_writer_reply_keeps_the_closing_fences_of_its_code_blocks():
+    body = "Blocks.\n\n```mermaid\nflowchart LR\n  A --> B\n```\n\n*Figure 1-1: blocks.*"
+    reply = f"```markdown\n# T\n\nTop module: `t`\n\n<!-- section: overview -->\n## 1. Overview\n\n{body}\n```\n"
+    draft, problems = document.parse_reply(reply)
+    assert problems == [] and draft.sections[0].content == body     # the wrapping fence goes, the diagram's stays
+    draft, _ = document.parse_reply(reply.replace("```markdown\n", "").rsplit("```", 1)[0])
+    assert draft.sections[0].content == body
+    after = reply.rstrip() + "\n\n<!-- questions -->\n## Open questions\n\n- Q: Depth? | assumed: 4 | blocking: no | kind: spec_gap\n"
+    draft, _ = document.parse_reply(after)                            # fence closed before the questions block
+    assert draft.sections[0].content == body and [q.question for q in draft.questions] == ["Depth?"]
+
+
+def test_changing_only_the_templates_instructions_costs_no_llm_call(tmp_path, llm):
+    """The diagram conventions live in the template's document-wide `instructions`: an existing spec stays as it is."""
+    use_test_flow(tmp_path, "spec: {self_review: false}\n")
+    engine = Engine(Project.open(tmp_path))
+    engine.import_intent("fifo")
+    anyio.run(lambda: engine.run(only="spec"))
+    data = yaml.safe_load(DEFAULT_TEMPLATE.read_text())
+    data["instructions"] = "Timing diagrams are WaveDrom blocks."
+    (tmp_path / "spec" / "template.yaml").write_text(yaml.safe_dump(data))
+    n = len(llm.calls)
+    anyio.run(lambda: engine.run(only="spec"))
+    assert len(llm.calls) == n and engine.evaluate(engine.by_name["spec"]).status == "done"
+
+
+def test_state_machine_is_drawn_from_its_reset_state_and_common_transitions_are_said_once():
+    from q3tui.steps.spec import diagrams
+    from q3tui.tui import mermaid
+
+    src = """stateDiagram-v2
+  [*] --> IDLE
+  IDLE --> START : go
+  START --> DATA : tick
+  DATA --> STOP : done
+  STOP --> IDLE : idle
+  START --> IDLE : abort
+  DATA --> IDLE : abort
+  STOP --> IDLE : abort
+"""
+    shown, notes = diagrams.display_mermaid(src)
+    assert "[*]" not in shown and shown.splitlines()[1] == '  state "IDLE (reset)" as IDLE'   # no start node: the state says it
+    assert "abort" not in shown and notes == ["from any state: abort → IDLE"]   # drawn once, as a note
+    art = mermaid.render(src)
+    assert "IDLE (reset)" in art and "●" not in art and art.endswith("\n\nfrom any state: abort → IDLE")
+    labelled, _ = diagrams.display_mermaid('stateDiagram-v2\n  state "Idle wait" as IDLE\n  [*] --> IDLE : rst_n low\n  IDLE --> A : go\n')
+    assert labelled.splitlines()[1] == '  state "Idle wait (rst_n low)" as IDLE' and labelled.count("as IDLE") == 1
+    composite = "stateDiagram-v2\n  [*] --> BUSY\n  state BUSY {\n    [*] --> S1\n  }"
+    assert diagrams.display_mermaid(composite) == (composite, [])              # a composite reset state keeps its start
+    problems = diagrams.check_fsm(src, ["IDLE", "START", "DATA", "STOP"])
+    assert problems == [p for p in problems if "`abort` → IDLE is drawn from 3 states (DATA, START, STOP)" in p] and problems
+
+
+def test_question_options_carry_their_design_impact():
+    from q3tui.steps.common import Question, QuestionOption, render_questions
+    from q3tui.steps.spec.prompts import REPLY_FORMAT
+
+    reply = ("# T\n\nTop module: `t`\n\n<!-- section: overview -->\n## 1. Overview\n\nText.\n\n<!-- questions -->\n## Open questions\n\n"
+             "- Q: TX FIFO depth? | assumed: 16 | blocking: no | kind: spec_gap\n"
+             "  - option: 16 | means: room for a burst | impact: area +1 16x8 FIFO (~1.2 Kgate); fewer CPU interrupts\n"
+             "  - option: 1 (no FIFO) | means: a holding register | impact: area −1.2 Kgate; CPU must refill every character\n"
+             "- Q: Parity? | assumed: none | blocking: no | kind: design_choice\n")
+    draft, problems = document.parse_reply(reply)
+    assert problems == []
+    q = draft.questions[0]
+    assert [o.label for o in q.options] == ["16", "1 (no FIFO)"] and q.options[0].description == "room for a burst"
+    assert q.options[1].impact == "area −1.2 Kgate; CPU must refill every character" and draft.questions[1].options == []
+    assert document.parse_reply(document.render_reply(draft))[0].questions == draft.questions      # round trip
+    assert "impact:" in REPLY_FORMAT and "area" in QuestionOption.model_json_schema()["properties"]["impact"]["description"]
+    md = render_questions(draft.questions, {}, "Q")
+    assert "- 16 — room for a burst _(impact: area +1 16x8 FIFO (~1.2 Kgate); fewer CPU interrupts)_" in md
+
+
+def test_picker_shows_each_options_impact():
+    from q3tui.tui.picker import ChoiceScreen, choices_from
+
+    choices = choices_from([{"label": "16", "description": "burst room", "impact": "area +1.2 Kgate"}, "plain"], recommended="16")
+    assert choices[0].impact == "area +1.2 Kgate" and choices[1].impact == ""
+    screen = ChoiceScreen("Depth?", choices)
+    text = screen._prompt(0, choices[0]).plain
+    assert "burst room" in text and "⚖ area +1.2 Kgate" in text
+
+
+def test_block_diagram_shows_the_module_boundary_with_io_outside():
+    from q3tui.steps.spec import diagrams
+
+    spec = "Top module: `m_uart`\n\nPorts: i_clk, i_rx, o_tx."
+    good = """flowchart LR
+  apb_if(APB interface)
+  rx(i_rx)
+  tx(o_tx)
+  subgraph top["m_uart"]
+    subgraph dom["i_clk domain"]
+      apb[m_apb]
+      core[m_core]
+    end
+  end
+  apb_if -->|APB requests| apb
+  apb -->|register bus| core
+  rx -->|CDC: 2-flop sync| core
+  core -->|serial out| tx
+"""
+    assert diagrams.check_block(good, spec) == []
+    flat = good.replace('  subgraph top["m_uart"]\n', "").replace("    end\n  end\n", "    end\n")
+    assert diagrams.check_block(flat, spec)[0].startswith('block diagram: no module boundary — put the blocks (and their '
+                                                          'clock-domain subgraphs) in `subgraph top["m_uart"]`')
+    io_in = good.replace("      apb[m_apb]\n", "      apb[m_apb]\n      rx\n")
+    assert any("IO drawn inside the module boundary: rx" in p for p in diagrams.check_block(io_in, spec))
+    assert diagrams.check_block("flowchart LR\n  a[m_a] -->|data| b[m_b]\n", spec) == []   # no IO drawn: no boundary needed
+
+
+def test_io_shapes_are_drawn_as_rounded_boxes():
+    from q3tui.steps.spec import diagrams
+
+    shown, _ = diagrams.display_mermaid("flowchart LR\n  apb([APB interface]) -->|req| a[m_a]\n  f>i_rx] --> a\n  a-->b[m_b]\n")
+    assert "apb(APB interface)" in shown and "f(i_rx)" in shown and "a-->b[m_b]" in shown
