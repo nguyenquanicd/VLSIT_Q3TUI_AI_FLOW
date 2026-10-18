@@ -137,6 +137,9 @@ class SpecStep(StepDef):
         if intent_path.is_file():  # (no intent file: keep what was recorded, so one that comes back is diffed, not a rewrite)
             meta["intent"] = sha256_file(intent_path)
             meta["intent_text"] = intent_path.read_text()  # to diff the next intent change
+        else:  # (still marks the bookkeeping as present: the legacy baseline in run() must not reset the recorded refs)
+            meta.setdefault("intent", None)
+            meta.setdefault("intent_text", None)
         meta["template"] = sha256_file(template_path)
         meta["applied_answers"] = sorted(set(meta.get("applied_answers", [])) | set(applied))
         if template is not None:  # snapshot, so the next run knows exactly which sections changed
