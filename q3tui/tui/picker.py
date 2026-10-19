@@ -29,7 +29,6 @@ class Choice:
     value: str
     label: str
     description: str = ""
-    impact: str = ""  # a question option's effect on the design (area, speed, power, complexity)
     recommended: bool = False
     preview: str | None = None  # shown in the side pane while the option is highlighted
     key: str | None = None  # a letter that picks it at once (a / q / e …)
@@ -57,13 +56,11 @@ def choices_from(options, recommended: str | None = None) -> list[Choice]:
     out: list[Choice] = []
     for o in options or []:
         if isinstance(o, str):
-            label, desc, impact = o, "", ""
+            label, desc = o, ""
         else:
             label, desc = str(o.get("label") or o.get("value") or ""), str(o.get("description") or "")
-            impact = str(o.get("impact") or "")
         if label.strip():
-            out.append(Choice(label, label, desc, recommended=bool(recommended) and label.strip() == recommended.strip(),
-                              impact=impact))
+            out.append(Choice(label, label, desc, recommended=bool(recommended) and label.strip() == recommended.strip()))
     return out
 
 
@@ -125,8 +122,6 @@ class ChoiceScreen(ModalScreen):
             t.append(f"  ({c.key})", "grey50")
         if c.description:
             t.append("\n     " + c.description.replace("\n", "\n     "), "grey62")
-        if c.impact:
-            t.append("\n     ⚖ " + c.impact.replace("\n", "\n       "), "dark_orange")
         return t
 
     def compose(self) -> ComposeResult:

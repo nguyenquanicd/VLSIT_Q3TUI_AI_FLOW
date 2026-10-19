@@ -105,11 +105,7 @@ and the VLSIT rule files (those are `options.rules` of the rtl step: a project p
 session, where team mode may group them by role, docs/spec/team.md) or `flow` (the VLSIT flow's): **one persistent Claude session for the whole flow**, like the original
 VLSIT's single Claude Code conversation. In `flow` mode every stage of every step is a task (`# Task: <stage>`) in that
 session (role `flow`, `llm/roles.py`; kept in `.q3tui/team/roles.json`, notes in `schemas/NOTES.md`, `q3tui team reset`
-starts over), tasks run one at a time, and Claude compacts the session itself when it grows. Reviewers (stages named
-`*review*`, `roles.FLOW_FRESH`, e.g. `spec_review`) still get a fresh session: fresh eyes, and the flow's session does not
-grow by the whole document they read. `fresh_steps: [<step ids>]` in the flow file runs every stage of those steps fresh
-too (vlsit: `spec`, `parse`, `config` — their prompts carry the spec, answers and settled decisions, so the shared session
-only grew: 950k tokens and a compaction by the parse step); `q3tui flow check` reports an unknown id. Each task still carries its own
+starts over), tasks run one at a time, and Claude compacts the session itself when it grows. Each task still carries its own
 file confinement (`deny_dirs` / `write_files`), but the session remembers what it saw — a testbench written in the flow
 session is no longer independent of the RTL (that is the original's behaviour; use `session: fresh` for independence).
 
@@ -167,7 +163,7 @@ Like Claude Code's question picker: a list of numbered options (↑/↓, Enter, 
 multi-select), each with a description, an always-present **Other…** (opens the multi-line text prompt) and an optional
 preview panel. Used for: answering a question (its suggested answers, the default marked *(recommended)*), the gate
 dialog (options follow the gate's state: Approve is hidden while blocking questions are open), reset scope,
-proposals, confirms, and the assistant's `ask_user` tool. A question carries `options: [{label, description?, impact?}]` (`impact`: the option's effect on area, speed, power, complexity)
+proposals, confirms, and the assistant's `ask_user` tool. A question carries `options: [{label, description?}]`
 (optional; the LLM proposes 2–4 when the answer is a choice); without them the picker shows the default assumption and
 Other. The answer still goes through `Ops.answer`.
 

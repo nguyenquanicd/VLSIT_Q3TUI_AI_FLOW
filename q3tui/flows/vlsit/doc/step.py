@@ -1,9 +1,8 @@
 """VLSIT step `doc` (Phase 6, spec_pdf_generator): `docs/specification.md` (+ PDF) from the artifacts and the RTL.
 
 Code assembles everything (docgen.py); the optional `doc_prose` stage (read-only, `options.prose`, default on) writes only
-the introduction and a few notes. The spec's diagrams are chapter 10 (WaveDrom timing diagrams as SVG in docs/figures/).
-PDF: tool role `pdf` of tools.json ({md} {pdf} {docs}); without it the Markdown is the deliverable
-(`options.pdf_builtin: true` uses the bundled Matplotlib converter)."""
+the introduction and a few notes. PDF: tool role `pdf` of tools.json ({md} {pdf} {docs}); without it the Markdown is the
+deliverable (`options.pdf_builtin: true` uses the bundled Matplotlib converter)."""
 
 from __future__ import annotations
 
@@ -56,15 +55,11 @@ class DocStep(VlsitStep):
         rtl = sorted(lay.rtl.glob("*.sv")) if lay.rtl.is_dir() else []
         return [*files, *rtl, *engine.project.spec_documents()]
 
-    def _figures(self, engine) -> list[Path]:
-        d = self._md(engine).parent / "figures"
-        return sorted(d.glob(f"{docgen.FIGURE_PREFIX}*.svg")) if d.is_dir() else []
-
     def outputs(self, engine) -> list[Path]:
-        return [p for p in (self._md(engine), self._pdf(engine)) if p.is_file()] + self._figures(engine)
+        return [p for p in (self._md(engine), self._pdf(engine)) if p.is_file()]
 
     def reset_files(self, engine) -> list[Path]:
-        return [self._md(engine), self._pdf(engine), *self._figures(engine)]
+        return [self._md(engine), self._pdf(engine)]
 
     def missing_input(self, engine) -> str | None:
         if not self.lay(engine).artifact("structured_spec.json").is_file():
@@ -84,7 +79,7 @@ class DocStep(VlsitStep):
             prompt = f"IP `{spec['metadata']['ip_name']}`, top `{spec['metadata']['top_module']}`.\n\nModules:\n{mods}\n\nRequirements:\n{reqs}\n\n{block}"
             prose = (await ctx.llm(Stage(name="doc_prose", system_prompt=SYSTEM, prompt=prompt, cwd=project.spec_dir,
                                          builtin_tools=["Read", "Grep", "Glob"] if needs_tools else [], output_model=DocProse))).output
-        text = docgen.build(engine, prose, figures_dir=self._md(engine).parent / "figures")
+        text = docgen.build(engine, prose)
         md = self._md(engine)
         md.parent.mkdir(parents=True, exist_ok=True)
         if md.is_file():
