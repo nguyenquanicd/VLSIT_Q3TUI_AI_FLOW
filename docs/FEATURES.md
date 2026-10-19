@@ -165,6 +165,8 @@ focus.
 
 ## 10. Known limitations (beta)
 
+- RTL flow: known issues KI-1 (the generated CSR module is an exception to REF-003), KI-2 (RTL in `rtl/`, other flows read `src/rtl/`) and KI-3 (CSR source to move to the workbook), KI-4 (requirement ids), KI-5 (rule policy vs REF-003), KI-6 (smoke vs the spec's test plan), KI-7 (generator limits vs the spec), KI-8 (lint config not in the spec), KI-9 (option impact): docs/spec/rtl-flow.md "Known issues".
+
 - UI-chrome translation (`tui.language`) covers the legend, result banners, and the Questions/Picker
   dialogs; the full keybinding help text and some dialog screens (Settings, Flow/Skill/Prompt editors,
   Stats) are still English-only.

@@ -135,6 +135,40 @@ have in your `tools.json`. In-process MCP tools for the stages: `verible_help`, 
 `rtl_rules_init` (skeleton of `rules/rtl_rules.md`), `csr_tool_install`, `csr_show` (the register map and the generated ports), `style_show` (the rule stack, the flags, the last style and smoke results), `format_now [files]`.
 Settings (Settings dialog → step tabs): `csr.mode`, `csr.tool_dir`, `style_lint.max_rounds`, `smoke.max_rounds`.
 
+## Known issues
+
+- **KI-1: the generated CSR module is an exception to the VLSIT RTL Design Rules (REF-003).** The APB-CSR-Generator's module has its own port names
+  (`i_bus_clk`, `i_bus_rstn`, `i_reg_clk`, not `i_clk_<domain>` / `i_rst_n_<domain>`), untyped `input` / `output` declarations, `localparam PARA_*_OFFSET`
+  and a placeholder CDC synchronizer (`m_vlsi_synch`). It is treated as *provided*: not rule-checked, lint findings are warnings, `format` / `style_lint` skip it.
+  The spec's rule is "no project-local RTL exceptions": this one is accepted for now. Not decided yet: a thin wrapper that renames the ports, or recording
+  it as a decision in section 20 of the spec.
+- **KI-2: the RTL goes to `rtl/`, other flows read `src/rtl/`.** `fpga`, `asic` (the porter) and `sanity` (and the VLSIT `tb` / `verify` steps) look for the RTL in
+  `src/rtl/`, so they cannot use what this flow generates. Kept as is (`rtl/` is the chosen layout); a project-level RTL-folder setting is the likely fix.
+- **KI-3: pending change in the CSR source (decided, not implemented).** The `csr` step still drafts the register map from the spec text with an LLM. The decision
+  is: **one source of truth, the CSR workbook** (the spec holds only a pointer to it, as the VLSIT spec template requires), in the **APB-CSR-Generator's workbook
+  layout**; no register is read from the spec text. The tool makes one module per sheet per run (the example workbook has two sheets, two modules): the spec says which
+  sheets / modules there are and the step only generates (one run per sheet, in its own work folder); the module name of a sheet must match the module map of `parse`
+  (a mismatch is handed back to `parse` as a non-blocking decision whose default is the workbook's name); the requirements of the CSR module come from `parse`'s module map; whoever may read the spec may read the workbook (the smoke writer included).
+  **Where the workbook is, as the VLSIT spec template says** (section 11 of the spec): the fields *CSR workbook file* (name and location of the project copy), *Sheet used for
+  this IP* (the sheet; several sheets = several modules, to be written as a list) and *Workbook revision*; the step reads them through the spec step's section / field parser (no
+  `options` to point at the file, no scanning of `spec/`). A spec that has registers but leaves the file field empty (TBD) stops the step with that message.
+- **KI-4: requirement ids.** The spec numbers requirements `REQ-<AREA>-<NNN>` (`REQ-REG-001`, `REQ-IF-003`, …: the VLSIT spec template), and that scheme is the one to keep.
+  The VLSIT `parse` step renumbers them `REQ-NNN` (`REQ-001`, …) and links them to modules through its module map, losing the area; the pattern `REQ-NNN` is fixed in
+  `structured_spec_schema.json`, `rtm_schema.json`, `parse/step.py`, `steps/vlsit/rtm.py` (the `// REQ-xxx` tags), `rules_check.py` and `tui/vlsit_panels.py`. Until `parse` keeps the
+  spec's ids (a change of the VLSIT flow, to agree with its owner), this flow works with `REQ-NNN`, and the requirements of the generated CSR module come from `parse`'s module map.
+- **KI-5: rule policy versus REF-003.** The VLSIT spec template makes the VLSIT RTL Design Rules (REF-003) mandatory ("add no project-local RTL exceptions"). Here the project's
+  `rules/rtl_rules.md` wins over the default rules (same id = override) and `options.naming` can change the naming profile; the `rules` step only warns about an override. Not decided:
+  add-only (an override becomes an error) or keep the override.
+- **KI-6: the smoke test does not use the spec's test plan.** The spec has a requirement-based test plan (section 15.2, `TEST-xxx` with requirements and expected results). The smoke
+  writer invents its own 3–6 behaviours (`S1…S6`) from the spec and the requirements, so they carry no `TEST-xxx` id. Better: pick the smoke subset of that plan and cite its ids.
+- **KI-7: the generator's limits are not checked against the spec.** The APB-CSR-Generator does APB only, 32-bit data, full-strobe writes, `PPROT[1]` only. The spec says what the
+  template cannot express must be recorded as a decision in section 20; the flow does not compare the spec's requirements with these limits (a spec asking for byte-masked writes
+  gets a module that rejects them with SLVERR, silently).
+- **KI-8: the lint configuration is not in the spec.** The spec's RTL contract (section 14.3) lists the lint rule configuration; the Verible flags of this flow live in
+  `rtl/style_lint/` and the spec neither knows nor reads them.
+- **KI-9: questions made by code have no option `impact`.** The new question convention gives every option of a design decision its impact (area, speed, power, complexity); the
+  questions this flow creates itself (format of a hand-edited file, a smoke failure that keeps coming back) have options without it.
+
 ## Not in this flow
 
 Verification (testbench per requirement, SVA, mutation testing, the RTM) is the verification flow's job; the smoke test only says the design does its
