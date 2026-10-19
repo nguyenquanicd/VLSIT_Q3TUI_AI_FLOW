@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from pathlib import Path
 
 from pydantic import BaseModel, Field
 
@@ -16,6 +17,7 @@ class TbCase(BaseModel):
     req_ids: list[str] = Field(default_factory=list, description="REQ ids this test case checks")
     conditional_param: str | None = Field(None, description="A top-level parameter that must be enabled for this test to apply (PR_… / PARA_…), else null")
     conditional_value: str | None = Field(None, description="The value it must have (null: any non-zero value)")
+    source: str = Field("", description="The user's imported test this test case is ported from (its path exactly as listed), else \"\"")
 
 
 class TbPlan(BaseModel):
@@ -34,9 +36,10 @@ def tc_number(tc_id: str) -> int:
     return int(m.group(1)) if m else 0
 
 
-def normalize(cases: list[TbCase], known_reqs: set[str], previous: list[dict] | None = None) -> tuple[list[TbCase], list[str]]:
-    """Ids unique and numbered (new ones continue after the highest), names made file-safe, unknown REQ ids dropped.
-    Returns (cases, warnings)."""
+def normalize(cases: list[TbCase], known_reqs: set[str], previous: list[dict] | None = None,
+              sources: set[str] | None = None) -> tuple[list[TbCase], list[str]]:
+    """Ids unique and numbered (new ones continue after the highest), names made file-safe, unknown REQ ids and unknown
+    imported test paths (`sources`) dropped. Returns (cases, warnings)."""
     warnings: list[str] = []
     prev_by_name = {p["name"]: p["tc_id"] for p in previous or []}
     used: set[str] = set()
@@ -52,7 +55,11 @@ def normalize(cases: list[TbCase], known_reqs: set[str], previous: list[dict] | 
         ok = [r for r in c.req_ids if r in known_reqs]
         if len(ok) != len(c.req_ids):
             warnings.append(f"{tid}: unknown requirement id(s) dropped: {', '.join(sorted(set(c.req_ids) - set(ok)))}")
-        out.append(c.model_copy(update={"tc_id": tid, "name": name, "req_ids": ok}))
+        source = c.source.strip()
+        if source and source not in (sources or set()):
+            warnings.append(f"{tid}: '{source}' is not one of the imported tests: ported from nothing")
+            source = ""
+        out.append(c.model_copy(update={"tc_id": tid, "name": name, "req_ids": ok, "source": source}))
     return out, warnings
 
 
@@ -100,3 +107,90 @@ def coverage(selected: list[TbCase | dict], spec: dict) -> dict:
     uncovered = sorted(set(need) - set(covered))
     return {"total_req_ids": len(need), "covered_req_ids": covered, "uncovered_req_ids": uncovered,
             "coverage_pct": round(100.0 * len(covered) / len(need), 1) if need else 100.0}
+
+
+def unported(cases: list[dict], tests: list[str]) -> list[str]:
+    """Imported tests no test case is ported from."""
+    used = {c.get("source") for c in cases}
+    return [t for t in tests if t not in used]
+
+
+def imported_names(tests: list[str]) -> dict[str, str]:
+    """Test case name of each imported test: its file name without what every one of them shares
+    (`ts.wrap_len2_axi_sram_test.sv` → `wrap_len2`), file-safe."""
+    stems = {t: re.sub(r"[^a-z0-9]+", "_", Path(t).name.split(".sv")[0].lower()).strip("_") for t in tests}
+    tok = {t: s.split("_") for t, s in stems.items()}
+    if len(tok) > 1:
+        lists = list(tok.values())
+        pre = 0
+        while all(len(x) > pre + 1 and x[pre] == lists[0][pre] for x in lists):
+            pre += 1
+        suf = 0
+        while all(len(x) > pre + suf + 1 and x[-1 - suf] == lists[0][-1 - suf] for x in lists):
+            suf += 1
+        tok = {t: x[pre:len(x) - suf] for t, x in tok.items()}
+    out, used = {}, set()
+    for t in tests:
+        name = base = "_".join(tok[t]) or "test"
+        k = 2
+        while name in used:
+            name, k = f"{base}_{k}", k + 1
+        used.add(name)
+        out[t] = name
+    return out
+
+
+def seed_imported(tests: list[str], previous: list[dict] | None = None) -> list[dict]:
+    """The test plan imported from your tests: one test case per test, in file order, with a fixed id (kept from the
+    previous plan when it already had one for that test), name and source; description and REQs come from the LLM."""
+    prev = {c.get("source"): c["tc_id"] for c in previous or [] if c.get("source")}
+    top = max([tc_number(c["tc_id"]) for c in previous or []] + [0])
+    names = imported_names(sorted(tests))
+    seed = []
+    for t in sorted(tests):
+        tid = prev.get(t)
+        if not tid:
+            top += 1
+            tid = f"TC-{top:03d}"
+        seed.append({"tc_id": tid, "name": names[t], "description": "", "req_ids": [], "conditional_param": None,
+                     "conditional_value": None, "source": t})
+    return seed
+
+
+def apply_imported(cases: list[dict], seed: list[dict]) -> tuple[list[dict], list[str]]:
+    """Your tests are the plan: each keeps its id, name and source (the LLM's description / REQs / condition are kept);
+    one the LLM left out is put back; the LLM's other test cases follow, renumbered when they clash."""
+    warnings: list[str] = []
+    by_source: dict[str, dict] = {}
+    for c in cases:
+        if c.get("source"):
+            by_source.setdefault(c["source"], c)
+    by_id = {c["tc_id"]: c for c in cases if not c.get("source")}
+    for s in seed:  # (an update that lost a test's `source` but kept its id)
+        if s["source"] not in by_source and s["tc_id"] in by_id:
+            by_source[s["source"]] = by_id.pop(s["tc_id"])
+    out = []
+    for s in seed:
+        c = by_source.get(s["source"])
+        if c is None:
+            warnings.append(f"{s['tc_id']} {s['name']}: the plan left out {Path(s['source']).name}: kept, mapped to no requirement")
+            out.append(dict(s, description=f"ported from {Path(s['source']).name}"))
+        else:
+            out.append({**c, "tc_id": s["tc_id"], "name": s["name"]})
+    taken_ids = {c["tc_id"] for c in out}
+    taken_names = {c["name"] for c in out}
+    top = max([tc_number(i) for i in taken_ids] + [0])
+    for c in cases:
+        if c.get("source") and by_source.get(c["source"]) is c:
+            continue
+        c = dict(c)
+        if c["tc_id"] in taken_ids:
+            top += 1
+            c["tc_id"] = f"TC-{top:03d}"
+        if c["name"] in taken_names:
+            c["name"] = f"{c['name']}_extra"
+        taken_ids.add(c["tc_id"])
+        taken_names.add(c["name"])
+        top = max(top, tc_number(c["tc_id"]))
+        out.append(c)
+    return out, warnings

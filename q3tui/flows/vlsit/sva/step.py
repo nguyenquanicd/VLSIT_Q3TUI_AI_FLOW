@@ -110,6 +110,13 @@ def render_review(engine) -> Path:
     return path
 
 
+def bind_name(spec: dict) -> str:
+    """The generated bind file's name: from the IP's name, as a file name (the IP's title has spaces: `AXI4 SRAM Controller`, and a
+    filelist line is split at them)."""
+    ip = re.sub(r"[^A-Za-z0-9_]+", "_", str((spec.get("metadata") or {}).get("ip_name") or "")).strip("_").lower() or "design"
+    return f"{ip}_bind.sv"
+
+
 class SvaStep(VlsitStep):
     name = "sva"
     title = "SVA"
@@ -123,8 +130,25 @@ class SvaStep(VlsitStep):
     def inputs(self, engine) -> list[Path]:
         lay = self.lay(engine)
         rtl = sorted(lay.rtl.glob("*.sv")) + [lay.rtl / "filelist.f"] if lay.rtl.is_dir() else []
+        imported = engine.import_record_path("sva")  # (your imported assertions, once there are some)
         return [lay.artifact("structured_spec.json"), lay.artifact("final_config.json"), lay.artifact("selected_testplan.json"),
-                *rtl, self._q_paths(engine)[1]]
+                *rtl, self._q_paths(engine)[1], *([imported] if imported.is_file() else [])]
+
+    # -- imports: your assertions are references the module's SVA file is ported from ---------------------------
+
+    def import_dir(self, engine, kind: str) -> Path | None:
+        return self.lay(engine).sva / "imported" if kind == "sva" else None
+
+    @staticmethod
+    def _imported_for(engine, module: str) -> list[Path]:
+        """Your imported SVA files about `module` (bound to it, or named after it)."""
+        out = []
+        for r in (engine.import_record("sva") or {}).get("files", {}):
+            f = engine.project.root / r
+            if f.is_file() and f.suffix.lower() in (".sv", ".svh", ".v") and (
+                    f.stem.startswith(module) or re.search(rf"\bbind\s+{re.escape(module)}\b", f.read_text(errors="replace"))):
+                out.append(f)
+        return out
 
     def outputs(self, engine) -> list[Path]:
         lay = self.lay(engine)
@@ -187,7 +211,8 @@ class SvaStep(VlsitStep):
             mreqs = [reqs[r] for r in m["req_ids"] if r in reqs]
             mtcs = [t for t in plan if set(t.get("req_ids") or []) & set(m["req_ids"])]
             own = {k: v for k, v in answers.items() if owner.get(k) == name}
-            snap = self._snapshot(engine, m, rtl_file.read_text(errors="replace"), mreqs, mtcs, own)
+            snap = self._snapshot(engine, m, rtl_file.read_text(errors="replace") + "".join(
+                f.read_text(errors="replace") for f in self._imported_for(engine, name)), mreqs, mtcs, own)
             path = lay.sva / f"{name}_sva.sv"
             fb = by_unit.get(name, []) + general
             if ctx.regenerate or fb or not path.is_file() or mods_meta.get(name, {}).get("hash") != snap:
@@ -217,7 +242,9 @@ class SvaStep(VlsitStep):
                               cwd=project.root, builtin_tools=["Read", "Grep", "Glob"], output_model=SvaFile, max_turns=12,
                               prompt=sva_prompts.module_prompt(module=name, rtl=rtl, reqs=req_text, hints=hints, config=cfg_text,
                                                                tcs=tcs, previous=(out.content if out else previous), feedback=fb,
-                                                               settled=settled, problems=problems or None))
+                                                               settled=settled, problems=problems or None,
+                                                               imported={project.rel(f): f.read_text(errors="replace")
+                                                                         for f in self._imported_for(engine, name)}))
                 ctx.emit("log", message=f"{name}: " + ("writing the assertions …" if attempt == 0 else f"fixing {len(problems)} problem(s) …"))
                 out = (await ctx.llm(stage)).output
                 problems = check_content(name, out.content, m["req_ids"])
@@ -277,8 +304,10 @@ class SvaStep(VlsitStep):
 
         engine, project = ctx.engine, ctx.project
         lay = self.lay(engine)
-        ip = (spec.get("metadata") or {}).get("ip_name") or "design"
-        bind = lay.sva / f"{ip}_bind.sv"
+        bind = lay.sva / bind_name(spec)
+        for old in lay.sva.glob("*_bind.sv"):  # (the IP was named differently before: two bind files would bind every module twice)
+            if old != bind:
+                old.unlink()
         body = ["`default_nettype none", "`ifndef SYNTHESIS"]
         body += [f"bind {n} {n}_sva u_{n}_sva (.*);" for n in names if (lay.sva / f"{n}_sva.sv").is_file()]
         body += ["`endif", "`default_nettype wire", ""]

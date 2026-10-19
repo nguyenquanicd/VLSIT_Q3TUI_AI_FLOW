@@ -118,9 +118,9 @@ class SettingsScreen(ModalScreen[dict | None]):
     SettingsScreen #settings-error { color: $error; height: auto; }
     """
 
-    def __init__(self, values: dict, initial_tab: str | None = None, gates: list[tuple[str, str, str]] | None = None):
+    def __init__(self, values: dict, initial_tab: str | None = None, gates: list[tuple[str, str, str]] | None = None, tabs=None):
         super().__init__()
-        self.values, self.initial_tab = values, initial_tab
+        self.values, self.initial_tab, self.tabs = values, initial_tab, tabs
         self.gates = gates or []  # (step, title, mode) of the flow's steps: the Gates tab
 
     def compose(self) -> ComposeResult:
@@ -132,7 +132,7 @@ class SettingsScreen(ModalScreen[dict | None]):
         with Vertical(id="settings-box", classes="modal-box"):
             yield Label("Settings", classes="modal-title")
             with TabbedContent(initial=f"set-tab-{self.initial_tab}" if self.initial_tab else ""):
-                for tab in TABS:
+                for tab in self.tabs or TABS:
                     with TabPane(tab.title, id=f"set-tab-{tab.id}"):
                         with VerticalScroll():
                             for st in tab.settings:
@@ -203,13 +203,18 @@ class SettingsScreen(ModalScreen[dict | None]):
         return Input(value="" if value is None else str(value), type=kind, id=wid,
                      placeholder="empty = none" if st.nullable else "")
 
+    def _by_path(self) -> dict:
+        from q3tui.core.settings import TABS
+
+        return {s.path: s for t in (self.tabs or TABS) for s in t.settings}
+
     def _read(self) -> dict:
         from textual.widgets import Select, SelectionList, Switch
 
-        from q3tui.core.settings import BY_PATH
+        from q3tui.core.settings import TABS
 
         out = {}
-        for path, st in BY_PATH.items():
+        for path, st in self._by_path().items():
             if st.hidden:
                 out[path] = self.values.get(path)
                 continue
@@ -229,11 +234,12 @@ class SettingsScreen(ModalScreen[dict | None]):
     def action_apply(self) -> None:
         from textual.widgets import Checkbox
 
-        from q3tui.core.settings import BY_PATH, coerce
+        from q3tui.core.settings import coerce
 
         raw = self._read()
         try:
-            values = {p: coerce(BY_PATH[p], v) for p, v in raw.items()}
+            by_path = self._by_path()
+            values = {p: coerce(by_path[p], v) for p, v in raw.items()}
         except ValueError as exc:
             self.query_one("#settings-error", Static).update(str(exc))
             return
@@ -346,7 +352,10 @@ class ResetScreen(ChoiceScreen):
 class EditScreen(ModalScreen[dict | None]):
     """Small form: fields are (key, label, value, kind[, options]) with kind line | text | choice.
 
-    ctrl+s saves, Esc cancels. Returns {key: value} for all fields.
+    ctrl+s saves, Esc cancels. Returns {key: value} for all fields. `buttons`: [(id, label, fn(screen))] extra buttons next to Save (a flow's
+    helper that works while the form is open: an estimate, a lookup); `fn` may call `screen.set_status(text)` (also from a worker) to answer in the form.
+    `on_change`: {field key: fn(screen, value)} called when a choice field changes — a field that depends on another (a technology, then its
+    corners) answers with `screen.set_choices(key, options, value)`.
     """
 
     BINDINGS = [Binding("ctrl+s", "save", "Save"), Binding("escape", "cancel", "Cancel")]
@@ -358,9 +367,10 @@ class EditScreen(ModalScreen[dict | None]):
     EditScreen .field-label { color: $text-muted; margin-top: 1; }
     """
 
-    def __init__(self, title: str, fields: list[tuple], hint: str = ""):
+    def __init__(self, title: str, fields: list[tuple], hint: str = "", buttons: list[tuple] | tuple = (), on_change: dict | None = None):
         super().__init__()
-        self.title_text, self.fields, self.hint = title, fields, hint
+        self.title_text, self.fields, self.hint, self.buttons = title, fields, hint, list(buttons)
+        self.on_change = dict(on_change or {})
 
     def compose(self) -> ComposeResult:
         from textual.containers import VerticalScroll
@@ -382,6 +392,10 @@ class EditScreen(ModalScreen[dict | None]):
             with Horizontal(classes="modal-buttons"):
                 yield Button("Save (ctrl+s)", id="save", variant="success")
                 yield Button("Cancel (esc)", id="cancel")
+                for bid, label, _fn in self.buttons:
+                    yield Button(label, id=bid)
+            if self.buttons:
+                yield Static("", id="edit-status", markup=False)
             yield Static(self.hint or "ctrl+s to save · Esc to cancel", classes="modal-hint")
 
     def on_mount(self) -> None:
@@ -398,7 +412,41 @@ class EditScreen(ModalScreen[dict | None]):
             out[key] = w.text if isinstance(w, TextArea) else (w.value if isinstance(w, (Input, Select)) else None)
         return out
 
+    def set_value(self, key: str, value: str) -> None:
+        """Put a text into an Input / TextArea field (a helper button fills the form: a scan names the technology)."""
+        from textual.widgets import TextArea
+
+        w = self.query_one(f"#f-{key}")
+        if isinstance(w, TextArea):
+            w.text = value
+        elif isinstance(w, Input):
+            w.value = value
+
+    def set_choices(self, key: str, options: list[str], value: str | None = None) -> None:
+        """Replace the options of a choice field (and pick `value`, else the first)."""
+        from textual.widgets import Select
+
+        sel = self.query_one(f"#f-{key}", Select)
+        sel.set_options([(o, o) for o in options])
+        sel.value = value if value in options else options[0]
+
+    def on_select_changed(self, event) -> None:
+        fn = self.on_change.get((event.select.id or "")[2:])
+        if fn is not None and event.value is not None and event.value != getattr(event.select, "_last_notified", None):
+            event.select._last_notified = event.value  # (a repopulated field changes too: a callback runs once per value)
+            fn(self, str(event.value))
+
+    def set_status(self, text: str) -> None:
+        """Answer in the form (the status line under the buttons); a no-op once the form is closed."""
+        if self.is_attached:
+            self.query_one("#edit-status", Static).update(text)
+
     def on_button_pressed(self, event: Button.Pressed) -> None:
+        extra = next((fn for bid, _l, fn in self.buttons if bid == event.button.id), None)
+        if extra is not None:
+            event.stop()
+            extra(self)
+            return
         self.dismiss(self._values() if event.button.id == "save" else None)
 
     def action_save(self) -> None:

@@ -21,6 +21,26 @@ from q3tui.steps.spec.template import (
 )
 
 
+def import_summary(report: dict) -> str:
+    """What `Engine.import_path` did, as text: per kind the files taken, what no step takes, what was left out."""
+    lines = [f"imported from {report['source']}:"]
+    where = {"spec": "spec documents (references: the spec step ports them into spec/spec.md with the template's sections)", "rtl": "RTL (the rtl step checks it against the RTL rules and updates what does "
+             "not follow them)", "tb": "testbench / tests (references: the tb step ports them into its test cases)",
+             "sva": "SVA (references: the sva step ports them)"}
+    for kind, label in where.items():
+        if report.get(kind):
+            files = report[kind]
+            lines.append(f"- {len(files)} {label}: " + ", ".join(files[:8]) + (f" (+{len(files) - 8} more)" if len(files) > 8 else ""))
+    for kind, files in report.get("not_taken", {}).items():
+        lines.append(f"- {len(files)} {kind} file(s) not imported: no step of this flow takes {kind}")
+    if report.get("skipped"):
+        sk = report["skipped"]
+        lines.append(f"- left out ({len(sk)}: scripts, filelists, other files): " + ", ".join(sk[:8]) + (" …" if len(sk) > 8 else ""))
+    if len(lines) == 1:
+        lines.append("- nothing to import")
+    return "\n".join(lines)
+
+
 class Ops:
     def __init__(self, engine: Engine):
         self.engine = engine
@@ -33,6 +53,29 @@ class Ops:
     def _not_running(self, what: str) -> None:
         if self.engine.running:
             raise EngineError(f"'{self.engine.running}' is running; stop it before you {what}")
+
+    # -- the flow's own actions (add-ons: q3tui/addons.py) ---------------------------------------------------
+
+    def actions(self) -> dict:
+        """name -> addons.Action of the current flow (empty for a flow without an add-on)."""
+        return self.engine.flow.actions
+
+    def run_action(self, name: str, **params: str) -> str:
+        """Run one of the flow's actions; the TUI's `/act`, `q3tui act` and the assistant all come here."""
+        act = self.actions().get(name)
+        if act is None:
+            raise EngineError(f"this flow has no action '{name}' (actions: {', '.join(self.actions()) or 'none'})")
+        missing = [p for p in act.params if p not in params and p not in act.optional]
+        if missing:
+            raise EngineError(f"action '{name}' needs {', '.join(missing)}")
+        unknown = [p for p in params if p not in act.params]
+        if unknown:
+            raise EngineError(f"action '{name}' has no parameter {', '.join(unknown)} (parameters: {', '.join(act.params) or 'none'})")
+        self._not_running(f"run '{name}'")
+        try:
+            return act.fn(self, **params)
+        except (ValueError, KeyError) as exc:
+            raise EngineError(str(exc)) from exc
 
     # -- spec template ---------------------------------------------------------------------
 
@@ -204,15 +247,20 @@ class Ops:
         return f"reset {step}{' only' if only else ' and downstream'}: removed {len(files)} file(s) (backed up)"
 
     def import_files(self, kind: str, path: str) -> str:
+        """Import a file or a whole folder. kind `all`: sorted by code into spec documents, RTL, testbench / tests and
+        SVA (core/importer.py); spec | rtl | tb | sva: only that kind."""
+        from q3tui.core.importer import KINDS
+
         p = Path(path).expanduser()
         if not p.is_absolute():
             p = self.project.root / p
-        if not p.is_file():
-            raise EngineError(f"no such file: {path}")
-        if kind != "spec":
-            raise EngineError("kind must be spec")
-        self.engine.import_spec([p])
-        return self._log("spec", f"imported spec: {self.project.rel(p)}")
+        if not p.exists():
+            raise EngineError(f"no such file or folder: {path}")
+        if kind not in ("all", *KINDS):
+            raise EngineError(f"kind must be all, {', '.join(KINDS)}")
+        self._not_running("import")
+        report = self.engine.import_path(p, None if kind == "all" else {kind})
+        return self._log(None, import_summary(report))
 
     # -- settings -------------------------------------------------------------------------------
 
@@ -226,7 +274,30 @@ class Ops:
         """Current values of every user-facing setting (see q3tui/core/settings.py)."""
         from q3tui.core import settings
 
-        return settings.current(self.project.cfg)
+        vals = settings.current(self.project.cfg, self.settings_tabs())
+        for path in vals:
+            if settings.is_step_option(path):
+                vals[path] = self._step_option(path)
+        return vals
+
+    def _step_option(self, path: str):
+        """A step option as the live step has it (the flow file's value, q3tui.yaml's on top)."""
+        from q3tui.core import settings
+
+        _, _, step, key = path.rsplit(".", 3)
+        st = self.engine.by_name.get(step)
+        if st is not None:
+            return st.options.get(key)
+        # a step of another flow (a setting both flows share, made from this one): q3tui.yaml's value, else the setting's default
+        mine = (self.project.cfg.pipeline.step_options.get(step) or {}).get(key)
+        found = settings.find(path, self.engine.flow.settings)
+        return mine if mine is not None else (found.default if found else None)
+
+    def settings_tabs(self):
+        """The settings tabs of this flow: its steps' model rows, (vlsit) per-step tabs, the add-on's step options."""
+        from q3tui.core import settings
+
+        return settings.tabs_for([(s.name, s.name) for s in self.engine.pipeline_steps], self.engine.flow.settings)
 
     def apply_settings(self, changes: dict, save: bool = False) -> str:
         """Validate and apply {"llm.effort": "low", ...}; `save` also writes them to q3tui.yaml."""
@@ -238,7 +309,7 @@ class Ops:
         cfg = self.project.cfg
         values: dict = {}
         for path, raw in changes.items():
-            setting = settings.BY_PATH.get(path)
+            setting = settings.find(path, self.engine.flow.settings)
             if setting is None:
                 raise EngineError(f"unknown setting '{path}' (known: {', '.join(settings.BY_PATH)})")
             try:
@@ -247,7 +318,8 @@ class Ops:
                 raise EngineError(str(exc)) from None
         if str(values.get("llm.model", "")).startswith("claude-haiku-4") and "llm.effort" not in changes:
             values["llm.effort"] = None  # Haiku 4.5 has no effort setting
-        values = {p: v for p, v in values.items() if settings.get_value(cfg, p) != v}
+        values = {p: v for p, v in values.items()
+                  if (self._step_option(p) if settings.is_step_option(p) else settings.get_value(cfg, p)) != v}
         if not values:
             return "settings unchanged"
         try:  # validate against the real schema before touching the live config
@@ -259,6 +331,15 @@ class Ops:
                 f"{'.'.join(str(x) for x in e['loc'])}: {e['msg']}" for e in exc.errors())) from None
         for path in values:
             section, leaf = path.rsplit(".", 1)
+            if settings.is_step_option(path):  # the live step, and q3tui.yaml's step_options for the next start
+                step = section.rsplit(".", 1)[1]
+                cfg.pipeline.step_options.setdefault(step, {})[leaf] = values[path]
+                if step in self.engine.by_name:  # (a step of another flow reads q3tui.yaml's value when that flow starts)
+                    self.engine.by_name[step].options[leaf] = values[path]
+                continue
+            if section.startswith("llm.steps.") and not hasattr(cfg.llm.steps, section.rsplit(".", 1)[1]):
+                setattr(cfg.llm.steps, section.rsplit(".", 1)[1], settings.get_value(checked, section))  # another flow's step
+                continue
             setattr(settings.get_value(cfg, section), leaf, settings.get_value(checked, path))
         shown = ", ".join(f"{p} = {'none' if v is None else v}" for p, v in values.items())
         msg = f"settings: {shown}"

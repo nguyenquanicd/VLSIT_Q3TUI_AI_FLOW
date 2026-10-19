@@ -2,7 +2,7 @@
 
 Q3TUI's pipeline is a **flow**: a YAML / JSON file listing the steps (by *kind*), their order and dependencies and
 which review gates stop for a human. The built-in flows are the **VLSIT flow** (`vlsit`, the default;
-docs/spec/vlsit-flow.md) and `example` (a minimal folder flow, spec → parse, to copy); users can write their own. The TUI,
+docs/spec/vlsit-flow.md), the **FPGA flow** (`fpga`, docs/spec/fpga-flow.md), the **ASIC flow** (`asic`, docs/spec/asic-flow.md), the **project settings flow** (`project`, docs/spec/project-flow.md) and `example` (a minimal folder flow, spec → parse, to copy); users can write their own. The TUI,
 `ops`, the assistant, the event bus, staleness, gates, questions and reset are the same for every flow.
 
 ## Flow files
@@ -76,6 +76,36 @@ Notes and pass conditions are part of the step's staleness. `view` / `pass` / `n
 markdown flows (`<name>.md`: `## <step id>` sections with `- key: value` lines, then the notes). To customise a built-in
 flow, copy its folder to `<project>/flows/` (it wins by name). Overrides without touching the flow: `pipeline.step_flow:
 {rtl: {pass: [...], notes: "..."}}` in `q3tui.yaml` or `/step`, through `Ops.set_step_setting`.
+
+Prompts: a step's `<!-- NAME -->` sections can be replaced or extended by `<flow folder>/prompts/<step or stage>.md` (see "Flow editor and prompts").
+
+**What a flow can say in markdown, and what needs code.** Markdown (`FLOW.md`, `skill.md`, single-file flows): everything in the tables
+above, the prompts, notes, `view`, `pass`, `options`, `gate`. Code in the flow folder: the step's `StepDef` hooks in `step.py` and the
+add-on files.
+
+| `StepDef` hook (`<step>/step.py`) | When |
+|---|---|
+| `inputs` / `outputs` / `missing_input` / `run` | what it reads, writes, needs, does (staleness is the hash of the inputs) |
+| `on_approve(engine)` | its gate was approved (a gate that approves itself also calls it) |
+| `follow_up(engine)` | right after a human approval: `{title, detail, action, switch}` — the TUI asks, yes runs the flow's action and moves to flow `switch` (fpga: hand the PPA fixes to vlsit) |
+| `unattended(engine)` (async) | an unattended run (`auto_answer`) passed this step's gate: do what a person would do next; True runs the flow again from its start (bounded by the step's own limits) |
+| `on_reset` / `on_rebase` / `reset_files` / `refresh_reports` | after a reset, when the flow's files moved, what a reset deletes, reports re-derived from outputs |
+| `pending_reviews` / `open_questions` / `default_to_apply` | the step's reviewable items and questions |
+
+## Add-ons
+
+Core (CLI, TUI, assistant, `Ops`, engine) knows no flow by name. A flow *folder* may bring files next to `FLOW.md`
+(`q3tui/addons.py`):
+
+| File | Brings |
+|---|---|
+| `addon.py` | `register(api)`: **actions** (`@api.action(name, help, {param: description}, optional=(…))` on `fn(ops, **params) -> str`; all params strings; a `ValueError` is a user error) step kinds (`api.kind`) and step options for the Settings dialog (`api.setting(step, key, label, kind, help, choices, nullable, default)`: the step's own tab, the assistant's get/set_settings; applied to the live step, saved to `pipeline.step_options.<step>.<key>` in q3tui.yaml; `step` may be another flow's step — a choice both flows share, e.g. the ASIC library from the FPGA flow — and `default` is its value while q3tui.yaml sets none) |
+| `tools.json` | default tool roles (`{"roles": {…}}`) for a role the flow needs and nothing configures — this flow only (`load_tools(cfg, root, flow)`); a project's roles are otherwise exactly its own |
+| `panels.py` | TUI panels of the flow's step kinds (`register_panel`); imported when the TUI opens the flow |
+
+Every action reaches the user three ways, all through `Ops.run_action`: an assistant tool per action, `q3tui act NAME key=value …`
+(no name: list them) and the TUI's `/act NAME key=value …`. A panel calls the same action for its keys. An action of the
+flow must not be needed by core: the FPGA flow's SDC editor (docs/spec/fpga-flow.md) is the example.
 
 ## Skill editor (TUI)
 

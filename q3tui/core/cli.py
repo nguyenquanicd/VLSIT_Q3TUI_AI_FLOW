@@ -203,6 +203,8 @@ def _answer_interactive(engine: Engine, step: str | None = None) -> None:
 @click.option("--intent", help="Describe the block to build (starts at spec).")
 @click.option("--intent-file", type=ExistingFile, help="File with the intent.")
 @click.option("--spec", "specs", multiple=True, type=ExistingFile, help="Your spec document(s) (starts at parse).")
+@click.option("--import", "imports", multiple=True, type=click.Path(exists=True, path_type=Path),
+              help="Your own project folder (or file): spec documents, RTL, testbench / tests, SVA (see `q3tui import`).")
 @click.option("--from", "start", type=STEP, help="First step to run.")
 @click.option("--to", "stop", type=STEP, help="Last step to run.")
 @click.option("--only", type=STEP, help="Run just this step.")
@@ -213,7 +215,7 @@ def _answer_interactive(engine: Engine, step: str | None = None) -> None:
 @click.option("--auto-answer", is_flag=True, help="Unattended: approve every gate, answer every question with its default and "
                                                     "accept proposals (runs start to finish).")
 @pass_ctx
-def run(c: Ctx, intent, intent_file, specs, start, stop, only, regenerate, yes, spec_review, auto_approve,
+def run(c: Ctx, intent, intent_file, specs, imports, start, stop, only, regenerate, yes, spec_review, auto_approve,
         auto_answer) -> None:
     """Run every pending or stale step, stopping at review gates."""
     if spec_review is not None:
@@ -229,6 +231,11 @@ def run(c: Ctx, intent, intent_file, specs, start, stop, only, regenerate, yes, 
         engine.import_intent(intent or intent_file.read_text())
     if specs:
         engine.import_spec(list(specs))
+    if imports:
+        from q3tui.core.ops import import_summary
+
+        for path in imports:
+            click.echo(import_summary(engine.import_path(path)))
 
     interactive = sys.stdin.isatty() and not yes
     while True:
@@ -359,6 +366,20 @@ def approve(c: Ctx, step: str, force: bool) -> None:
     console.print(c.engine().approve(step, force=force))
 
 
+@main.command("import")
+@click.argument("path", type=click.Path(exists=True, path_type=Path))
+@click.option("--kind", type=click.Choice(["all", "spec", "rtl", "tb", "sva"]), default="all", show_default=True,
+              help="Import only this kind.")
+@pass_ctx
+def import_cmd(c: Ctx, path: Path, kind: str) -> None:
+    """Import your own files: a folder (a whole reference project) or a file. Code sorts them into spec documents,
+    RTL (checked against the flow's RTL rules and updated where it does not follow them), testbench / tests and SVA
+    (ported by the tb / sva steps into the flow's format). Nothing runs: `q3tui run` next."""
+    from q3tui.core.ops import Ops
+
+    console.print(escape(Ops(c.engine()).import_files(kind, str(path.resolve()))))
+
+
 @main.command()
 @click.argument("step", type=STEP)
 @click.option("-m", "--message", required=True, help="What should change.")
@@ -411,7 +432,18 @@ def tui(c: Ctx, read_only: bool) -> None:
     """Open the terminal UI (it watches, read-only, while another process runs the pipeline)."""
     from q3tui.tui.app import Q3TUIApp
 
-    Q3TUIApp(c.project, read_only=read_only).run()
+    from q3tui.tui import runner
+
+    try:
+        while True:
+            result = Q3TUIApp(c.project, read_only=read_only, background=True).run()
+            if not (isinstance(result, tuple) and result[0] == "flow"):
+                return
+            # the TUI's flow switch (saved to q3tui.yaml): open the project again on that flow; its background run goes on
+            c.overrides = {**(c.overrides or {}), "pipeline": {**((c.overrides or {}).get("pipeline") or {}), "flow": result[1]}}
+            c._project = None
+    finally:
+        runner.get().shutdown()  # the TUI is over: so is the run it started
 
 
 # -- flows -------------------------------------------------------------------------------------
@@ -420,6 +452,30 @@ def tui(c: Ctx, read_only: bool) -> None:
 @main.group("flow")
 def flow_group() -> None:
     """Flows: which steps run, in which order, with which gates (docs/spec/flows.md)."""
+
+
+@main.command("act")
+@click.argument("name", required=False)
+@click.argument("params", nargs=-1)
+@pass_ctx
+def act(c: Ctx, name: str | None, params: tuple[str, ...]) -> None:
+    """Run an action of the flow's add-on (`q3tui act` lists them): `q3tui act NAME key=value …`."""
+    from q3tui.core.ops import Ops
+
+    ops = Ops(c.engine())
+    if name is None:
+        for a in ops.actions().values():
+            console.print(f"[bold]{a.name}[/bold] {' '.join(k + ('=?' if k in a.optional else '=…') for k in a.params)}\n  {a.help}")
+        if not ops.actions():
+            console.print("[dim]this flow has no actions[/dim]")
+        return
+    kv = {}
+    for p in params:
+        k, sep, v = p.partition("=")
+        if not sep:
+            raise click.UsageError(f"'{p}': parameters are key=value")
+        kv[k] = v
+    console.print(ops.run_action(name, **kv))
 
 
 @flow_group.command("list")
@@ -498,7 +554,7 @@ def tools_check(c: Ctx) -> None:
     root = c.project.root
     flow = flows.load_flow(c.project.flow_ref(), root)
     try:
-        ts = T.load_tools(c.project.cfg, root)
+        ts = T.load_tools(c.project.cfg, root, flow)
     except T.ToolUnavailable as exc:
         raise click.ClickException(str(exc))
     bad = 0

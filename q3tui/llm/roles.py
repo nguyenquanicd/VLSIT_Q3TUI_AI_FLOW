@@ -291,6 +291,9 @@ class Team:
                                     f"trying it once in a fresh session")
             if main:
                 self.busy[role] = False
+            if main and runtime.LOST_SESSION in str(exc).lower():  # the session is gone: the next task starts a new one
+                st.session, st.sent, st.totals, st.pending, st.idle_at = None, [], None, [], None
+                st.needs_brief = True
             st.cost_usd += exc.cost_usd
             result = await runtime.run_stage(stage, cfg, emit)
             result.cost_usd += exc.cost_usd

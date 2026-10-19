@@ -32,6 +32,7 @@ from q3tui.tui.splitter import Splitter
 from q3tui.tui.commands import CommandSuggester, hint as command_hint
 from q3tui.tui.picker import Choice, ChoiceScreen, choices_from
 from q3tui.tui.screens import EFFORTS, MODELS, ConfirmScreen, ResetScreen, SettingsScreen, StatsScreen, GateScreen, HistoryInput, ModelScreen, TextPromptScreen
+from q3tui import addons
 from q3tui.tui.panels import StepLines, make_panel, safe_id
 from q3tui.tui.views import fence_diagrams, SectionsPanel, SpecPanel, StepPanel
 
@@ -59,7 +60,7 @@ HELP = (
     "/model [id] [--save] · /effort <level> [--save] · /specreview on|off · /autoapprove on|off · /autoanswer on|off · "
     "/autoconfirm on|off · "
     "/parallel on|off [--multi-agent|--shared] [--save] · /settings [tab] · /stats [reset] · "
-    "/reset <step> [--only] · /status · /open <file> · /cost [reset] · /newchat · /help · /quit. Anything else goes to the assistant."
+    "/import <path> [kind] · /reset <step> [--only] · /status · /open <file> · /cost [reset] · /newchat · /help · /quit. Anything else goes to the assistant."
 )
 
 
@@ -96,7 +97,7 @@ class Q3TUIApp(App):
         Binding("f", "show_tab('files')", "Files", show=False),
         Binding("m", "pick_model", "Model"),
         Binding("comma", "settings", "Settings"),
-        Binding("F", "flow_editor", "Flow"),
+        Binding("F", "switch_flow", "Flow"),
         Binding("K", "skill_editor", "Skills"),
         Binding("P", "prompt_editor", "Prompts"),
         Binding("s", "stats", "Stats"),
@@ -116,8 +117,14 @@ class Q3TUIApp(App):
         *[Binding(str(i + 1), f"select_step({i})", show=False) for i in range(9)],
     ]
 
-    def __init__(self, project: Project, read_only: bool = False):
+    def __init__(self, project: Project, read_only: bool = False, background: bool = False, runner=None):
         super().__init__()
+        from q3tui.tui import runner as runner_mod
+
+        # background: a run is a process of its own (tui/runner.py): it goes on while you switch flows, `q3tui tui` stops it at the end
+        self.background = background
+        self.runner = runner or runner_mod.get()
+        self._bg_alive = False
         self.project = project
         self.bus = EventBus()
         self.engine = Engine(project, self.bus)
@@ -165,6 +172,7 @@ class Q3TUIApp(App):
                     yield PaneToggle("▶ pipeline (p)", id="show-pipeline")
                     yield Label("", classes="panel-title", id="view-title")
                 with ContentSwitcher(id="views", initial=f"view-{safe_id(self.engine.pipeline_steps[0].name)}"):
+                    addons.load_panels(self.engine.flow)  # the flow's own panels (panels.py of its folder), if it has any
                     for step in self.engine.steps:
                         yield make_panel(step)
                 yield Splitter(vertical=False, id="split-activity", min_size=3)
@@ -250,8 +258,8 @@ class Q3TUIApp(App):
                     f" · {elapsed // 60}:{elapsed % 60:02d}{tok}[/]")
         self._w("#header").update(
             f"[b]Q3TUI[/b] · [b]{top}[/b] · [grey50]flow {self.engine.flow.name} · {self.project.root}[/]{live}"
-            + (f"   [black on cyan] WATCHING a run in another process (pid {self._watching['pid']}) [/]"
-               if getattr(self, "_watching", None) else "")
+            + (f"   [black on cyan] {'RUNNING in the background' if self._watching['pid'] == self.runner.pid else 'WATCHING a run in another process'}"
+               f" (pid {self._watching['pid']}) [/]" if getattr(self, "_watching", None) else "")
             + ("   [black on cyan] READ-ONLY [/]" if self.engine.read_only else "")
             + ("   [black on red] AUTO-ANSWER [/]" if self.project.cfg.pipeline.auto_answer else
                "   [black on yellow] AUTO-APPROVE [/]" if self.project.cfg.pipeline.auto_approve else "")
@@ -263,6 +271,15 @@ class Q3TUIApp(App):
         if self._live:
             self._spin += 1
             self._render_header()
+        if self._bg_alive and not self.runner.alive():  # the background run is over: where things stand now
+            self._bg_alive = False
+            self._watching = None
+            self.engine.reload()
+            self._follow_run()
+            self.refresh_all()
+            self.notify(f"background run ended (exit code {self.runner.child.returncode})")
+            self._log_summary()
+            return
         # watching a run another process makes: follow its state every 2 s (this TUI saves nothing meanwhile)
         self._watch_tick = getattr(self, "_watch_tick", 0) + 1
         if self._watch_tick % 2 == 0 and not self._live:
@@ -486,6 +503,18 @@ class Q3TUIApp(App):
         if self._pipeline_worker and self._pipeline_worker.is_running:
             return "a run is already in progress"
         self._gate_shown = None
+        if self.background:
+            other = self.engine.other_run()
+            if self.runner.alive() or other:
+                return f"a run is already going on in the background (pid {self.runner.pid or other['pid']}); x stops it"
+            if self.engine.read_only:
+                return "read-only: this TUI only looks (start it without --read-only to run)"
+            self.engine.save()  # what this TUI holds is on disk; the run reads it
+            pid = self.runner.start(self.project, self.engine.flow.name, start=start, stop=stop, only=only, regenerate=regenerate or ())
+            self._bg_alive = True
+            self._watch_tick = 1  # (follow it at the next tick)
+            return (f"run started in the background (pid {pid}, {self.engine.flow.name} flow): it goes on while you switch flows; "
+                    "x stops it; quitting the TUI ends it")
 
         async def go() -> None:
             outcome = await self.engine.run(start=start, stop=stop, only=only, regenerate=regenerate)
@@ -507,6 +536,17 @@ class Q3TUIApp(App):
                            regenerate: set[str] | None = None) -> str:
         """Start a run and wait for it to stop (used by the assistant to chain actions in one turn)."""
         msg = self.start_run(start, stop, only, regenerate)
+        if self.background and self.runner.alive() and msg.startswith("run started"):
+            import asyncio
+
+            while self.runner.alive():
+                await asyncio.sleep(1)
+            self.engine.reload()
+            self.refresh_all()
+            views = {v.name: v for v in self.engine.status()}
+            return "run finished (exit code %s); " % self.runner.child.returncode + ", ".join(
+                f"{n} {v.status}" + (" (review open)" if v.gate == "open" and v.status in ("done", "user") else "")
+                for n, v in views.items() if v.status != "unavailable")
         worker = self._pipeline_worker
         if worker is None or msg.startswith("a run is already"):
             return msg
@@ -522,6 +562,9 @@ class Q3TUIApp(App):
         return f"run finished: {self._last_outcome or 'stopped'}; {summary}"
 
     def stop_run(self) -> str:
+        if self.background and self.runner.alive():
+            self.runner.stop()
+            return "stopping the background run (Ctrl-C sent to it)"
         if self._pipeline_worker and self._pipeline_worker.is_running:
             self._pipeline_worker.cancel()
             return "stopping"
@@ -538,7 +581,7 @@ class Q3TUIApp(App):
 
     def stop_any(self) -> str:
         """x and /stop: the pipeline run if one is running, else the assistant's reply."""
-        if self._pipeline_worker and self._pipeline_worker.is_running:
+        if (self._pipeline_worker and self._pipeline_worker.is_running) or (self.background and self.runner.alive()):
             return self.stop_run()
         return self.stop_chat() if self._assistant_worker and self._assistant_worker.is_running else "nothing is running"
 
@@ -593,7 +636,11 @@ class Q3TUIApp(App):
                 self._gate_shown = None
                 return
             self.refresh_all()
-            self.start_run()
+            offer = self.engine.by_name[step].follow_up(self.engine)
+            if offer:
+                self._offer_follow_up(offer)
+            else:
+                self.start_run()
         elif choice == "questions":
             self._select_step(step)
             self.action_show_tab("questions")
@@ -629,9 +676,7 @@ class Q3TUIApp(App):
 
     def action_settings(self, tab: str | None = None) -> None:
         """Settings dialog; opens on the selected step's tab when it has one."""
-        from q3tui.core.settings import TABS
-
-        tabs = [t.id for t in TABS] + ["gates"]
+        tabs = [t.id for t in self.ops.settings_tabs()] + ["gates"]
         here = self.selected_step
         tab = tab if tab in tabs else (here if here in tabs else "general")
 
@@ -648,7 +693,45 @@ class Q3TUIApp(App):
             self._render_header()
             self.refresh_all()
 
-        self.push_screen(SettingsScreen(self.ops.settings(), tab, gates=self._gate_rows()), done)
+        self.push_screen(SettingsScreen(self.ops.settings(), tab, gates=self._gate_rows(), tabs=self.ops.settings_tabs()), done)
+
+    def action_switch_flow(self, name: str | None = None) -> None:
+        """F / `/flow [name]`: work on another flow of this project — remembered in q3tui.yaml (pipeline.flow); the TUI restarts on it
+        (each flow keeps its own state in .q3tui/pipeline.json). A running step is cancelled, after you confirm."""
+        from q3tui import flows
+
+        if self.engine.read_only:
+            self.notify("read-only: not switching", severity="warning")
+            return
+        now = self.engine.flow.name
+
+        def switch(target: str) -> None:
+            if target == now:
+                self.notify(f"already on {now}")
+                return
+            try:
+                flows.load_flow(target, self.project.root)
+            except flows.FlowError as exc:
+                self._log_line(Text(str(exc), "red"))
+                return
+
+            def go() -> None:
+                self.project.save_config_values({"pipeline": {"flow": target}})
+                self.exit(result=("flow", target))
+
+            if self._pipeline_worker and self._pipeline_worker.is_running:
+                self.push_screen(ConfirmScreen(f"'{self.engine.running}' is running. Switch to {target} and cancel it?",
+                                               "Its output so far is discarded; run it again later with r."),
+                                 lambda ok: go() if ok else None)
+            else:
+                go()
+
+        if name:
+            switch(name)
+            return
+        from q3tui.tui.flowmap import FlowMapScreen
+
+        self.push_screen(FlowMapScreen(set(flows.list_flows(self.project.root)), now), lambda r: switch(r) if r else None)
 
     def action_flow_editor(self) -> None:
         """F: the flow editor — add / remove / move steps, edit deps, gate, view, pass conditions and notes."""
@@ -724,6 +807,11 @@ class Q3TUIApp(App):
         self.push_screen(ModelScreen(self.project.cfg.llm.model, self.project.cfg.llm.effort), done)
 
     async def action_quit(self) -> None:
+        if self.background and self.runner.alive():
+            self.push_screen(ConfirmScreen("A run is going on in the background. Quit and stop it?",
+                                           "Quitting the TUI ends its background run (the step is cancelled); run it again later with r."),
+                             lambda ok: self.exit() if ok else None)
+            return
         if not (self._pipeline_worker and self._pipeline_worker.is_running):
             self.exit()
             return
@@ -779,6 +867,9 @@ class Q3TUIApp(App):
         """A run is already going: if you are not looking at a step that's running, offer to go back to
         one instead of silently refusing — jumping to another step and pressing r by mistake must not look
         like nothing happened. Returns True when it is fine to start a run now."""
+        if self.background and self.runner.alive():
+            self.notify(f"a run is already going on in the background (pid {self.runner.pid}); x stops it")
+            return False
         if not (self._pipeline_worker and self._pipeline_worker.is_running):
             return True
         running = self.engine.running_steps
@@ -824,6 +915,25 @@ class Q3TUIApp(App):
 
         self.push_screen(ConfirmScreen(f"Approve {', '.join(pending)}?",
                                        "Open non-blocking questions take their default answers; steps with blocking questions are skipped."), done)
+
+    def _offer_follow_up(self, offer: dict) -> None:
+        """A step's offer after its approval (StepDef.follow_up): yes runs its action and, when it names a flow, moves there."""
+        def done(ok: bool | None) -> None:
+            if not ok:
+                self.start_run()
+                return
+            try:
+                if offer.get("action"):
+                    self.log_info(self.ops.run_action(offer["action"]))
+            except EngineError as exc:
+                self._log_line(Text(str(exc), "red"))
+                self.refresh_all()
+                return
+            self.refresh_all()
+            if offer.get("switch"):
+                self.action_switch_flow(offer["switch"])
+
+        self.push_screen(ConfirmScreen(offer["title"], offer.get("detail", "")), done)
 
     def _approve_all(self, force: bool = False) -> None:
         lines = self.engine.approve_all(force=force)
@@ -1103,6 +1213,12 @@ class Q3TUIApp(App):
             return [*steps, "all"]
         if kind == "gate":
             return [*self.engine.gate_modes(), "all"]
+        if kind == "action":
+            return list(self.engine.flow.actions)
+        if kind == "flow":
+            from q3tui import flows
+
+            return list(flows.list_flows(self.project.root))
         if kind == "gate_mode":
             return ["human", "auto", "auto_answer", "none"]
         if kind == "question":
@@ -1260,12 +1376,24 @@ class Q3TUIApp(App):
             elif cmd == "prompts":
                 self.action_prompt_editor()
             elif cmd == "flow":
+                self.action_switch_flow(args[0] if args else None)
+            elif cmd == "flowedit":
                 self.action_flow_editor()
             elif cmd == "step":
                 if len(args) < 2:
                     raise EngineError("usage: /step <step> view|pass|notes [text] [--session]  (no text: clear; pass conditions split by ;;)")
                 text = " ".join(a for a in args[2:] if a != "--session")
                 self.log_info(self.ops.set_step_setting(args[0], args[1], text, save="--session" not in args))
+                self.refresh_all()
+            elif cmd == "act":
+                if not args:
+                    for a in self.ops.actions().values():
+                        self._log_line(f"{a.name} {' '.join(a.params)} — {a.help}")
+                    if not self.ops.actions():
+                        raise EngineError("this flow has no actions")
+                    return
+                kv = dict(p.partition("=")[::2] for p in args[1:])
+                self.log_info(self.ops.run_action(args[0], **kv))
                 self.refresh_all()
             elif cmd == "gates":
                 for line in self.ops.gates_text().splitlines():
@@ -1313,6 +1441,11 @@ class Q3TUIApp(App):
                     self._render_header()
                 else:
                     self._log_line(f"LLM cost: {self.ops.cost_text()} · /cost reset to clear")
+            elif cmd == "import":
+                if not args:
+                    raise EngineError("usage: /import <path> [all|spec|rtl|tb|sva]  (a folder: everything in it, sorted by code)")
+                self.ops.import_files(args[1] if len(args) > 1 else "all", args[0])  # (the summary goes to the log)
+                self.refresh_all()
             elif cmd == "reset":
                 if not args:
                     raise EngineError("usage: /reset <step>|all [--only]  (R picks interactively; /newchat resets the assistant)")

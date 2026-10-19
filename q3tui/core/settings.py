@@ -31,6 +31,7 @@ class Setting:
     nullable: bool = False  # empty / "none" = null
     none_label: str = "none"  # how null is shown in the dialog (e.g. "default")
     hidden: bool = False  # not in the dialog (the assistant and ops still have it)
+    default: Any = None  # a step option of a step this flow does not have (another flow's): what it is when q3tui.yaml sets nothing
 
 
 @dataclass(frozen=True)
@@ -38,6 +39,15 @@ class Tab:
     id: str
     title: str
     settings: tuple[Setting, ...] = field(default_factory=tuple)
+
+
+def step_model_settings(key: str, label: str) -> tuple[Setting, Setting]:
+    return (Setting(f"llm.steps.{key}.model", f"{label}: model", "choice",
+                    "" if key != "spec" else "Unset = the model of the LLM tab. Each step can use its own model, e.g. Sonnet "
+                    "where precision matters, Haiku for mechanical work.",
+                    tuple(MODELS), nullable=True, none_label="default (LLM tab)"),
+            Setting(f"llm.steps.{key}.effort", f"{label}: effort", "choice", "",
+                    (("default", "default"), ("none", "none (Haiku)"), *((e, e) for e in EFFORTS))))
 
 
 TABS: tuple[Tab, ...] = (
@@ -104,15 +114,45 @@ TABS: tuple[Tab, ...] = (
         Setting("tb.max_turns", "Turns per stage", "int", "Agent turns for one TB stage."),
     )),
     Tab("models", "Models per step", tuple(
-        s for key, label in STEP_LABELS for s in (
-            Setting(f"llm.steps.{key}.model", f"{label}: model", "choice",
-                    "" if key != "spec" else "Unset = the model of the LLM tab. Each step can use its own model, e.g. Sonnet "
-                    "where precision matters, Haiku for mechanical work.",
-                    tuple(MODELS), nullable=True, none_label="default (LLM tab)"),
-            Setting(f"llm.steps.{key}.effort", f"{label}: effort", "choice", "",
-                    (("default", "default"), ("none", "none (Haiku)"), *((e, e) for e in EFFORTS))),
-        ))),
+        s for key, label in STEP_LABELS for s in step_model_settings(key, label))),
 )
+
+_STEP_TABS = ("spec", "rtl", "tb")  # per-step settings tabs (vlsit config sections), shown when the flow has that step
+
+
+STEP_OPTIONS = "pipeline.step_options."  # + <step>.<key>: a step's option, shown by a flow's add-on (addons.AddonAPI.setting)
+
+
+def is_step_option(path: str) -> bool:
+    return path.startswith(STEP_OPTIONS) and path.count(".") == 3
+
+
+def tabs_for(steps: list[tuple[str, str]] | None = None, extra=()) -> tuple[Tab, ...]:
+    """The dialog's tabs for a flow whose steps are `(id, label)`; None = the vlsit steps. `extra`: the flow's step options."""
+    rows = list(steps) if steps is not None else [(k, l) for k, l in STEP_LABELS if k != "assistant"]
+    have = {k for k, _ in rows}
+    keep = [t for t in TABS if t.id != "models" and (t.id not in _STEP_TABS or t.id in have)]
+    if steps is not None:  # vlsit-only general settings (rtl ‖ tb) only where the flow has those steps
+        keep = [Tab(t.id, t.title, tuple(x for x in t.settings if not x.path.startswith("pipeline.parallel") or {"rtl", "tb"} <= have))
+                if t.id == "general" else t for t in keep]
+    for step in dict.fromkeys(x.path.split(".")[2] for x in extra):  # a flow's step options: the step's own tab
+        keep.append(Tab(step, step, tuple(x for x in extra if x.path.split(".")[2] == step)))
+    models = Tab("models", "Models per step", tuple(x for k, l in [*rows, ("assistant", "Assistant")] for x in step_model_settings(k, l)))
+    return (*keep, models)
+
+
+def find(path: str, extra=()) -> Setting | None:
+    """The setting at `path`; llm.steps.<any step>.model|effort exist for every step of every flow; `extra`: the flow's step options."""
+    if path in BY_PATH:
+        return BY_PATH[path]
+    for x in extra:
+        if x.path == path:
+            return x
+    parts = path.split(".")
+    if len(parts) == 4 and parts[:2] == ["llm", "steps"] and parts[3] in ("model", "effort"):
+        return step_model_settings(parts[2], parts[2])[0 if parts[3] == "model" else 1]
+    return None
+
 
 BY_PATH = {s.path: s for t in TABS for s in t.settings}
 GATE_MODES = (("human", "human — stops for your review"), ("auto", "auto — approves itself (blocking questions still stop it)"),
@@ -122,12 +162,20 @@ GATE_MODES = (("human", "human — stops for your review"), ("auto", "auto — a
 def get_value(cfg, path: str) -> Any:
     obj = cfg
     for part in path.split("."):
+        if isinstance(obj, dict) or obj is None:  # pipeline.step_options.<step>.<key>: absent = the flow file's value (see Ops.settings)
+            obj = None if obj is None else obj.get(part)
+            continue
+        if not hasattr(obj, part) and path.startswith("llm.steps."):  # a step of another flow, no override set yet
+            from q3tui.core.config import StepLLM
+
+            obj = StepLLM()
+            continue
         obj = getattr(obj, part)
     return obj
 
 
-def current(cfg) -> dict[str, Any]:
-    return {path: get_value(cfg, path) for path in BY_PATH}
+def current(cfg, tabs: tuple[Tab, ...] | None = None) -> dict[str, Any]:
+    return {s.path: get_value(cfg, s.path) for t in (tabs or TABS) for s in t.settings}
 
 
 def coerce(setting: Setting, raw: Any) -> Any:
@@ -161,6 +209,10 @@ def coerce(setting: Setting, raw: Any) -> Any:
         if bad:
             raise ValueError(f"{setting.label}: unknown {', '.join(bad)} (allowed: {', '.join(allowed)})")
         return [v for v in allowed if v in items]
+    if setting.kind == "choice" and setting.choices and is_step_option(setting.path):  # (a flow's option has a fixed set; model names are free)
+        allowed = [v for v, _ in setting.choices]
+        if str(raw).strip() not in allowed:
+            raise ValueError(f"{setting.label}: {raw!r} is not one of {', '.join(allowed)}")
     return str(raw).strip()
 
 

@@ -123,6 +123,17 @@ updates, and the run stops again at the next review or blocking question. With
 auto-approve on, it runs through reviews too. (`q3tui approve` on the CLI only
 approves; run `q3tui run` to continue.)
 
+## Background runs and switching flows
+
+`q3tui tui` starts every run (`r`, the gate's approve-and-continue, the assistant's run tool) as a `q3tui run` process of its own
+(`tui/runner.py`; its output in `.q3tui/tui/run.log`), with the live model / effort and the auto-approve / auto-answer switches on its
+command line. The TUI follows it the way it follows any run of another process: `run.lock`, the latest `runs/*/events.jsonl` replayed
+into the activity log, the state re-read every 2 s, a badge `RUNNING in the background (pid N)`. So **a run goes on while you switch
+flows** (`F`, `/flow`: the TUI restarts on the other flow; the run is not cancelled), `x` stops it (Ctrl-C to the process: the step cancels
+and kills its tools), quitting the TUI asks first and then ends it (gently, then its whole process group). One run at a time per project.
+What a background run does not see: settings changed for this session only other than model / effort / the auto switches, and gate modes
+set for this session only. A TUI that is not started by `q3tui tui` (tests, embedding) runs in-process as before.
+
 ## Reset
 
 `R` asks what to reset: **(s)** the selected step and the steps after it, or **(a)** all
@@ -201,7 +212,7 @@ CLI, the assistant can do by prompting.** Both go through the same operations la
 | Gates and asking | `gates`, `set_gate_mode`, `ask_user` (the picker: up to 4 questions with options, answers come back as text) |
 | Flow | `set_step_setting` (view / pass / notes), `get_skill`, `set_skill`, `get_prompt`, `set_prompt` |
 | VLSIT flow | `review_parse_requirement`, `confirm_all_requirements`, `review_config_parameter`, `confirm_all_parameters`, `list_properties`, `review_property`, `confirm_all_properties`, `rtm_status`, `sign_requirement`, `sign_all_ready_requirements` |
-| Pipeline | `run_steps` (start/stop/only/regenerate), `stop_run`, `approve`, `answer_question`, `request_change` (optionally for one section), `reset_step`, `import_file` (a spec) |
+| Pipeline | `run_steps` (start/stop/only/regenerate), `stop_run`, `approve`, `answer_question`, `request_change` (optionally for one section), `reset_step`, `import_file` (a file or a whole folder: spec documents, RTL, testbench / tests, SVA) |
 | Settings | `set_model`, `set_spec_review`, `set_auto_approve`, `set_auto_answer`, `set_auto_confirm_reviews`, `get_settings`, `set_settings`, `show_stats`, `reset_stats`, `reset_cost` |
 | Files | `Read`/`Grep`/`Glob` over the project; `Edit`/`Write` only in `spec/`, `schemas/` and `src/` (like a user in an editor); never `.q3tui/` |
 
@@ -226,7 +237,7 @@ approves when asked. Its conversation is resumed across TUI launches (Agent-SDK 
 id in `.q3tui/tui/session.json`; `/newchat` starts over).
 
 Slash commands complete as you type: the rest of the command or argument shows as grey ghost text (Tab or → accepts it) and a hint line above the input shows the usage and the valid values (steps, open question ids, models, efforts, files). Slash commands, which need no LLM: `/run [from] [to]`, `/stop`, `/approve <gate>|all [--force]`,
-`/change <step> <text>`, `/answer <id> <text>|all`, `/gate <step> [mode] [--session]`, `/gates`, `/flow`, `/skill`, `/prompts`,
+`/change <step> <text>`, `/answer <id> <text>|all`, `/gate <step> [mode] [--session]`, `/gates`, `/flow [name]` (switch flow; key `F`; a running step is cancelled after you confirm), `/flowedit` (the step editor), `/skill`, `/prompts`,
 `/step <step> view|pass|notes [text]`, `/reset <step>|all [--only]`, `/model [id] [--save]` (no id: the settings' LLM tab),
 `/effort <level>`, `/specreview`, `/autoapprove`, `/autoanswer`, `/autoconfirm` (`on|off [--save]`), `/parallel on|off
 [--multi-agent]`, `/settings [tab]`, `/status`, `/open <file>`, `/cost [reset]`, `/stats [reset]`, `/newchat`, `/help`, `/quit`.

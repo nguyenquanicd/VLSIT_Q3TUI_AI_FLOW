@@ -1,0 +1,13 @@
+{
+  "_comment": "Default tool roles of the FPGA flow (docs/spec/fpga-flow.md), by template: Vivado (Xilinx 7-series), Yosys + nextpnr (Lattice ECP5 / iCE40, open source). Used by this flow only, when no tools.json / tools.roles of the project defines the role; define your own role to change the module or the command.",
+  "roles": {
+    "fpga_synth": {"cmd": "vivado -mode batch -nojournal -log {workdir}/vivado.log -source {script}", "parse": "vivado", "modules": ["xilinx/vivado"], "timeout_s": 3600,
+                   "description": "Vivado batch run of the Tcl script Q3TUI writes (read RTL + SDC, synth_design -mode out_of_context, reports)"},
+    "fpga_yosys": {"cmd": "yosys -L {workdir}/yosys.log {script}", "parse": "yosys", "modules": ["oss-cad-suite"], "timeout_s": 3600,
+                   "description": "Yosys on the script Q3TUI writes (read RTL, synth_<family>, JSON netlist, stat)"},
+    "fpga_pnr_ecp5": {"cmd": "nextpnr-ecp5 {args}", "parse": {"error": ["^ERROR:"], "warning": ["^Warning:"]}, "modules": ["oss-cad-suite"], "timeout_s": 3600,
+                      "description": "nextpnr-ecp5 place and route, out of context, against the clock frequencies of the SDC"},
+    "fpga_pnr_ice40": {"cmd": "nextpnr-ice40 {args}", "parse": {"error": ["^ERROR:"], "warning": ["^Warning:"]}, "modules": ["oss-cad-suite"], "timeout_s": 3600,
+                       "description": "nextpnr-ice40 place and route against the clock frequency of the SDC (no out-of-context mode: the IOs are placed automatically)"}
+  }
+}

@@ -44,6 +44,13 @@ class StepContext:
         # a reset or regeneration would otherwise "start from scratch" with the old answer.
         if self.project.state_dir not in stage.deny_dirs:
             stage.deny_dirs.append(self.project.state_dir)
+        # the originals of an import (e.g. ref/<project>/): their RTL / tests are in src/ now, under the independence rules
+        stage.deny_dirs.extend(d for d in self.engine.import_sources() if d not in stage.deny_dirs)
+        # documents a step ports (spec/ref/): only that step reads them; the others read what it made of them
+        for s in self.engine.steps:
+            d = s.import_dir(self.engine, "spec")
+            if d is not None and s.name != self.emit.step and d not in stage.deny_dirs:
+                stage.deny_dirs.append(d)
         # every stage runs at its configured effort (no lowered effort is remembered: it capped rv32im's designer,
         # modeler and debugger at "low" for good after a few long thoughts — Claude Code has no such guard either)
         from q3tui import flows
@@ -154,6 +161,9 @@ class StepDef:
     # bumped when Q3TUI's checks on this step's result change: done results go stale and are re-checked (a
     # result that passes is kept without the LLM; one that fails is repaired, not regenerated)
     checks_version: int = 0
+    # the options that change this step's result (a template, a library, a target): their values are part of the step's staleness, wherever
+    # they come from (the flow file, `pipeline.step_options` of q3tui.yaml, Settings). Others (a round limit, a goal) do not rerun it.
+    hashed_options: tuple[str, ...] = ()
 
     def inputs(self, engine: "Engine") -> list[Path]:
         """Files whose content determines this step's result (for staleness)."""
@@ -192,9 +202,30 @@ class StepDef:
     def on_reset(self, engine: "Engine") -> None:
         """Called after a reset deleted this step's files (a step that moved your documents aside puts them back)."""
 
+    def import_dir(self, engine: "Engine", kind: str) -> Path | None:
+        """Where this step takes imported files of `kind` (rtl | tb | sva; core/importer.py), None: it takes none.
+        Files imported into the step's own output folder are its starting point (it checks them and updates what does
+        not follow its rules); a sub-folder of its own (e.g. src/tb/imported/) holds references it ports from."""
+        return None
+
+    def on_import(self, engine: "Engine", kind: str, files: list[Path]) -> None:
+        """Called after `files` of `kind` were imported into `import_dir` (engine state is saved afterwards)."""
+
     def on_approve(self, engine: "Engine") -> None:
         """Called when this step's review gate was approved (before downstream steps run): a step whose artifact records
         the gate (VLSIT: `gate_status`, `gate_2_approved`, …) writes it here. Its outputs are re-hashed afterwards."""
+
+    def follow_up(self, engine: "Engine") -> dict | None:
+        """What to offer the user right after they approved this step's gate (the TUI asks before it carries on):
+        `{"title", "detail", "action": a flow action to run on yes, "switch": a flow to move to afterwards (optional)}`; None: nothing."""
+        return None
+
+    async def unattended(self, engine: "Engine") -> bool:
+        """An unattended run (`pipeline.auto_answer` or this gate's mode `auto_answer`) finished this step and its gate passed: do the
+        follow-up that a person would do next (fpga: hand the RTL fixes to the owner flow and run its rtl step). True: run the flow
+        again from the start (what changed makes the earlier steps stale); False: carry on. Must be idempotent — it is called on
+        every pass over a finished step."""
+        return False
 
     tool_roles: tuple[str, ...] = ()  # tool roles (tools.json) this kind runs: `q3tui flow check` lists them
 

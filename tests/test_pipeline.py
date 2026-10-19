@@ -130,6 +130,18 @@ def test_intent_change_updates_the_spec_instead_of_rewriting(engine, llm):
     assert "<new_intent>" in llm.calls[n].prompt and "flush input" in llm.calls[n].prompt
 
 
+def test_a_spec_needs_no_intent_once_it_exists(engine, llm):
+    """The intent only seeds the first draft: a copied project without spec/intent.md keeps its spec (no LLM, no 'missing input')."""
+    engine.import_intent("A two-stage FIFO")
+    run(engine, yes=True, stop="spec")
+    (engine.project.spec_dir / "intent.md").unlink()
+    assert {v.name: v.status for v in engine.status()}["spec"] in ("stale", "done")  # not missing_input
+    n = len(llm.calls)
+    run(engine, yes=True, stop="spec")
+    assert len(llm.calls) == n and {v.name: v.status for v in engine.status()}["spec"] == "done"  # nothing to update: no LLM call
+    assert (engine.project.spec_dir / "spec.md").is_file()
+
+
 def test_reworded_repeats_of_settled_questions_are_dropped():
     from q3tui.steps.common import Question, drop_settled
     from tests.apb_questions import ARCH_Q, REQ_Q

@@ -180,6 +180,13 @@ def test_mutation_candidates():
 # -- sva step -----------------------------------------------------------------------------------
 
 
+def test_the_bind_file_name_has_no_spaces():
+    from q3tui.flows.vlsit.sva.step import bind_name
+
+    assert bind_name({"metadata": {"ip_name": "AXI4 SRAM Controller"}}) == "axi4_sram_controller_bind.sv"  # (real run: the simulator opened "…/AXI4")
+    assert bind_name({"metadata": {"ip_name": "toy"}}) == "toy_bind.sv" and bind_name({}) == "design_bind.sv"
+
+
 def test_sva_step_writes_files_review_and_rtm(project, llm):
     eng = engine_of(project)
     run_step(eng, "sva")
@@ -583,3 +590,14 @@ def test_the_same_assertion_label_in_two_modules_is_two_assertions(project, llm)
     review.review_property(eng, "div:a_div_load_busy", "confirmed")
     status = {p["id"]: p["status"] for p in review.load_properties(eng)}
     assert status == {"div:a_div_load_busy": "confirmed", "muldiv:a_div_load_busy": "pending"}  # one review, one assertion
+
+
+def test_mutation_skips_elaboration_checks_and_strings():
+    text = ("module m #(parameter int P = 4) (input a);\n"
+            "  if ((P < 1) || (P & (P - 1)) != 0)\n"
+            "  begin : gen_chk_p\n"
+            '    $error("P must be a power of 2 - 1 or more");\n'
+            "  end\n"
+            "  assign y = a & b;\n"
+            "endmodule\n")
+    assert {n for n, *_ in mutation.candidates(text)} == {6}
