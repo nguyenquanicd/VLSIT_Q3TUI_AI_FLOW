@@ -1,0 +1,10 @@
+
+  -----------------------------------------------------------------------------
+  RDC_ON_CDC_DISABLED  (1 error/0 waived)
+  -----------------------------------------------------------------------------
+  1.  RDC checks on asynchronous paths are disabled by default. It can be enabled by using the configuration "configure_rdc_corrupt -report_rdc_on_cdc true".
+
+  -----------------------------------------------------------------------------
+  SETUP_CLOCK_PROPAGATED  (1 info/0 waived)
+  -----------------------------------------------------------------------------
+  1.  Clock domain 1, consisting of the clock(s) i_clk, has been inferred by the tool. It reaches to 3364 sequential pin(s)

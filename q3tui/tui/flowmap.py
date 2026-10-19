@@ -106,10 +106,10 @@ class FlowMapScreen(ModalScreen[str | None]):
                             yield Box(stage("ASIC port", "RTL"))
                             yield Box(stage("ASIC synthesis", "Spec, RTL"))
                             yield Box(stage("LEC", "RTL"))
-                    with self._g("Sanity", None, classes="col"):
+                    with self._g("Sanity", "sanity", classes="col"):
                         yield Box(stage("CDC", "Spec, RTL") + "  → waivers")
                         yield Box(stage("RDC", "Spec, RTL") + "  → waivers")
-                        yield Box(stage("GCA", "Spec, RTL") + "  → waivers")
+                        yield Box(stage("GCA", "Spec, RTL") + "  → waivers (not yet)")
                 yield Static("▼", classes="arrow")
                 with self._g("Convergence gate", None):
                     yield Box("same RTL tag, all lanes pass")

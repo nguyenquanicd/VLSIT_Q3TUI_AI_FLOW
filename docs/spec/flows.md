@@ -2,7 +2,7 @@
 
 Q3TUI's pipeline is a **flow**: a YAML / JSON file listing the steps (by *kind*), their order and dependencies and
 which review gates stop for a human. The built-in flows are the **VLSIT flow** (`vlsit`, the default;
-docs/spec/vlsit-flow.md), the **FPGA flow** (`fpga`, docs/spec/fpga-flow.md), the **ASIC flow** (`asic`, docs/spec/asic-flow.md), the **project settings flow** (`project`, docs/spec/project-flow.md) and `example` (a minimal folder flow, spec → parse, to copy); users can write their own. The TUI,
+docs/spec/vlsit-flow.md), the **FPGA flow** (`fpga`, docs/spec/fpga-flow.md), the **ASIC flow** (`asic`, docs/spec/asic-flow.md), the **Sanity flow** (`sanity`, docs/spec/sanity-flow.md), the **project settings flow** (`project`, docs/spec/project-flow.md) and `example` (a minimal folder flow, spec → parse, to copy); users can write their own. The TUI,
 `ops`, the assistant, the event bus, staleness, gates, questions and reset are the same for every flow.
 
 ## Flow files
