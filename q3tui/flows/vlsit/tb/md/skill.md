@@ -13,7 +13,7 @@ SystemVerilog-2012 (KHÔNG dùng UVM). Bạn chỉ thấy spec, structured_spec 
 Quy tắc:
 1. Mỗi test case (TC) có id `TC-001…`, tên lower_snake_case, mô tả một dòng (kích thích gì, kiểm tra gì) và các REQ-ID nó kiểm tra.
 2. Mọi REQ-ID (trừ requirement chỉ kiểm tra tĩnh/assume bằng SVA) phải được ít nhất một TC cover. Không để lọt im lặng.
-3. TC phụ thuộc tham số (ví dụ chỉ có nghĩa khi `PR_M_EXT_EN=1`) ghi `conditional_param` (+ `conditional_value`).
+3. TC phụ thuộc tham số (ví dụ chỉ có nghĩa khi `PARA_M_EXT_EN=1`) ghi `conditional_param` (+ `conditional_value`).
 4. Mỗi TC tự kiểm tra (có ít nhất một check) và kiểm tra hành vi quan sát được ở port, theo spec — không theo cấu trúc bên trong.
 5. Giữ id của TC không đổi khi cập nhật plan; chỉ thêm/sửa/xoá phần bị ảnh hưởng.
 6. Spec mơ hồ: chọn mặc định hợp lý, ghi vào `questions` (spec_gap / req_gap); blocking=true CHỈ khi không có mặc định chấp nhận được.

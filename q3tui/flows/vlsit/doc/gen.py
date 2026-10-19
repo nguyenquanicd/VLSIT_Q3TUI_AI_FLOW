@@ -90,7 +90,39 @@ def rtl_design(engine, top: str | None):
         return None, f"RTL not parsed ({type(exc).__name__}: {exc})"
 
 
-def build(engine, prose=None) -> str:
+FIGURE_PREFIX = "spec_fig_"  # docs/figures/<prefix><n>.svg: written (and cleaned) by the doc step
+
+
+def spec_figures(engine, figures_dir: Path | None) -> list[str]:
+    """Chapter 10: the diagrams of the spec documents with their captions. A WaveDrom timing diagram becomes an SVG in
+    `figures_dir` (referenced as an image); a Mermaid diagram stays as its source (no renderer is bundled)."""
+    from q3tui.steps.spec import diagrams
+
+    figs = []
+    for doc in engine.project.spec_documents():
+        if doc.suffix.lower() == ".md":
+            figs += [(doc, f) for f in diagrams.figures(doc.read_text(errors="replace"))]
+    if figures_dir is not None and figures_dir.is_dir():
+        for old in figures_dir.glob(f"{FIGURE_PREFIX}*.svg"):
+            old.unlink()
+    if not figs:
+        return []
+    o = ["## 10 — Diagrams", "", "Figures of the specification, as captioned there.", ""]
+    for n, (doc, fig) in enumerate(figs, 1):
+        caption = fig.caption or f"Figure {n} ({engine.project.rel(doc)})"
+        svg = diagrams.wave_svg(fig.source, caption) if fig.kind == "timing" and figures_dir is not None else None
+        if svg:
+            figures_dir.mkdir(parents=True, exist_ok=True)
+            name = f"{FIGURE_PREFIX}{n}.svg"
+            (figures_dir / name).write_text(svg)
+            o += [f"![{esc(caption).replace(']', chr(92) + ']')}]({figures_dir.name}/{name})", ""]
+        else:
+            o += [f"```{fig.lang}", fig.source, "```", ""]
+        o += [f"*{caption}*", ""]
+    return o
+
+
+def build(engine, prose=None, figures_dir: Path | None = None) -> str:
     p = engine.project
     spec = artifacts.read(p, "structured_spec.json")
     cfg = artifacts.read(p, "final_config.json") or {}
@@ -192,4 +224,5 @@ def build(engine, prose=None) -> str:
                     for r in rtm["requirements"]])
     else:
         o += table(["REQ-ID", "Description", "Category"], [[r["req_id"], esc(r["text"])[:80], r["category"]] for r in spec["requirements"]])
+    o += spec_figures(engine, figures_dir)
     return "\n".join(o).rstrip() + "\n"

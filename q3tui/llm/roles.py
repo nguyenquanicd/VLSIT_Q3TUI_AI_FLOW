@@ -39,6 +39,9 @@ ROLE_BUILTINS = {"architect": ["Read", "Grep", "Glob"], "modeler": ["Read", "Gre
                  "designer": ["Read", "Grep", "Glob", "Write", "Edit"], "verifier": ["Read", "Grep", "Glob"],
                  "reviewer": ["Read", "Grep", "Glob"], "flow": ["Read", "Grep", "Glob", "Write", "Edit"]}
 _FRESH = re.compile(r"review|_section_|^arch_block_|_group_|^triage_(rtl|tb|model)$|_init$")
+# in a `session: flow` run too, reviewers get a fresh session: fresh eyes, and the flow's session does not grow by the
+# whole document they re-read (spec_review compacted the flow session at its first step)
+FLOW_FRESH = re.compile(r"review")
 
 
 # unit-level work (one module's RTL, one block's model, one unit's plan / testbench): its own small session, resumed

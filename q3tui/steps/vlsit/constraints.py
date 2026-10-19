@@ -1,7 +1,7 @@
 """Elaboration constraints as checkable expressions (C1…Cn of the spec), evaluated by code — never by the LLM.
 
-`PR_BOOT_ADDR[1:0] == 2'b00` · `PR_BOOT_ADDR % 4 == 0` · `PR_IRQ_EN == 1 -> PR_CSR_EN == 1` · `PR_W in (8, 16, 32)` ·
-`PR_DEPTH >= 2 && PR_DEPTH <= 1024`. Verilog literals (`32'h8000_0000`, `'d12`, `4'b01x0` → not evaluable), `&&` `||` `!`,
+`PARA_BOOT_ADDR[1:0] == 2'b00` · `PARA_BOOT_ADDR % 4 == 0` · `PARA_IRQ_EN == 1 -> PARA_CSR_EN == 1` · `PARA_W in (8, 16, 32)` ·
+`PARA_DEPTH >= 2 && PARA_DEPTH <= 1024`. Verilog literals (`32'h8000_0000`, `'d12`, `4'b01x0` → not evaluable), `&&` `||` `!`,
 implication (`->`, `→`, `=>`, `implies`), bit slices and `$clog2` are understood. `evaluate` returns (True | False | None, detail):
 None = the expression cannot be evaluated (it is then a question for the user, never silently passed).
 """

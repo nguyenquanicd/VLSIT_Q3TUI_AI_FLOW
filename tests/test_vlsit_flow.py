@@ -327,14 +327,17 @@ def test_flow_check_lists_the_vlsit_flow_and_its_tools(tmp_path):
 
 
 def test_the_whole_flow_is_one_session(tmp_path, llm):
-    """Like the original single Claude Code conversation: every LLM task of the flow goes to the one `flow` session."""
+    """Like the original single Claude Code conversation: every LLM task from rtl on goes to the one `flow` session; the
+    flow file's fresh_steps (spec, parse, config) and reviewers run in sessions of their own."""
     from q3tui.llm import roles
 
     eng = make_engine(tmp_path)
     assert eng.session_mode() == "flow"
     drive(eng)
     tasks = [c for c in llm.calls if c.role]
-    assert tasks and len(tasks) == len(llm.calls)  # nothing ran in a session of its own
+    early = ("spec_", "parse_", "config_")
+    assert tasks and all(c.role is None for c in llm.calls if c.name.startswith(early) or "review" in c.name)
+    assert [c for c in llm.calls if not c.role] == [c for c in llm.calls if c.name.startswith(early) or "review" in c.name]
     assert {c.role for c in tasks} == {"flow"} and all(c.system_prompt == roles.CHARTERS["flow"] for c in tasks)  # one stable charter
     assert "# Project brief" in tasks[0].prompt and tasks[0].resume is None
     assert all(c.prompt.startswith("# Task:") or "# Task:" in c.prompt for c in tasks)

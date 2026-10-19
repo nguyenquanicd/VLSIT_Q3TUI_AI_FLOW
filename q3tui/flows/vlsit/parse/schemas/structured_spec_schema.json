@@ -55,7 +55,7 @@
           "parameters_affected": {
             "type": "array",
             "items": { "type": "string" },
-            "description": "Tên các parameter điều khiển requirement này, ví dụ ['PR_M_EXT_EN']"
+            "description": "Tên các parameter điều khiển requirement này, ví dụ ['PARA_M_EXT_EN']"
           },
           "feature_id": {
             "type": "string",
@@ -72,7 +72,7 @@
         "type": "object",
         "required": ["name", "type", "default", "valid_range", "description"],
         "properties": {
-          "name":          { "type": "string", "description": "Tên parameter, dạng PR_*" },
+          "name":          { "type": "string", "description": "Tên parameter, dạng PARA_*" },
           "type":          { "type": "string", "description": "Kiểu SV, ví dụ 'bit', 'int unsigned', 'logic [31:0]'" },
           "default":       { "type": "string", "description": "Giá trị default dạng string" },
           "valid_range":   { "type": "string", "description": "Mô tả range hợp lệ" },

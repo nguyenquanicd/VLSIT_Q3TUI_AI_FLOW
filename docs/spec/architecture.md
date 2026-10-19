@@ -32,7 +32,7 @@ Implemented in `q3tui.llm.runtime`.
 | Aspect | Rule |
 |---|---|
 | Harness | `claude_agent_sdk.query()` per stage. Sessions: `fresh` (a session per stage; stages communicate only through files) or `flow` (one persistent session for the whole flow), see [flows.md](flows.md) "Sessions"; team mode routes tasks to role sessions ([team.md](team.md)) |
-| Model | `llm.model` (default `claude-opus-5-5`), `llm.effort`; per step `llm.steps` |
+| Model | `llm.model` (default `claude-sonnet-5-5`), `llm.effort`; per step `llm.steps` |
 | Working dir | project root |
 | Tools | explicit allow-list per stage. Read-only stages: `Read`, `Grep`, `Glob`. Code-writing stages add `Write`/`Edit` |
 | Visibility | enforced with a `PreToolUse` hook: `deny_dirs` (e.g. the TB stages are denied `src/rtl`), `write_dirs` / `write_files`; `.q3tui/` is always denied. The hook is the guarantee; the prompt instruction is backup |

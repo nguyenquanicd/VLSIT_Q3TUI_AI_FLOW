@@ -175,13 +175,19 @@ def test_gate_1_force_and_auto_confirm_reviews_bypass_pending_requirements(engin
 def test_ambiguity_becomes_questions_and_ids_stay_stable(engine, llm):
     spec = _spec()
     spec["requirements"][1].update(ambiguity_score=0.7, ambiguity_issue="slice order unclear", ambiguity_question="LSB first? (yes/no)",
-                                   default_assumption="LSB first")
+                                   default_assumption="LSB first",
+                                   ambiguity_options=[{"label": "LSB first", "impact": "no area / timing change"},
+                                                      {"label": "MSB first", "impact": "no area change; +1 mux level"}])
     llm.vf.parsed = [spec]
     assert run(engine, only="parse") == "gate"
     data = parsed(engine)
     assert data["ambiguity_flags"] == ["REQ-002"]
+    assert "_options" not in data["requirements"][1]
     qs = [q for q in engine.questions() if q["step"] == "parse"]
     assert len(qs) == 1 and qs[0]["blocking"] is True and qs[0]["question"].startswith("REQ-002 [ambiguity 0.70] (round 1/3)")
+    # each suggested answer says how it changes the design, as the spec step's questions do
+    assert [(o["label"], o["impact"]) for o in qs[0]["options"]] == [("LSB first", "no area / timing change"),
+                                                                     ("MSB first", "no area change; +1 mux level")]
     # (a spec you wrote yourself is never edited: the answer stays in parse)
     assert qs[0]["kind"] == "design_choice" and qs[0]["default_assumption"] == "LSB first"
     with pytest.raises(Exception, match="blocking"):
@@ -230,6 +236,7 @@ def test_still_ambiguous_after_three_rounds_needs_a_decision(engine, llm):
         run(engine, only="parse")
     q = next(q for q in engine.questions() if q["step"] == "parse" and q["status"] == "open")
     assert "needs your decision" in q["question"] and q["blocking"]
+    assert [o["label"] for o in q["options"]] == ["keep", "delete", "split"] and all(o["impact"] for o in q["options"])
     assert next(r for r in parsed(engine)["requirements"] if r["req_id"] == "REQ-002")["needs_human_decision"] is True
     engine.answer(q["id"], "keep")
     llm.vf.parsed = [ambiguous()]
@@ -465,7 +472,7 @@ def test_spec_template_option(engine):
     from q3tui.steps.spec.template import load_template
 
     t, path = load_template(engine.project.spec_dir, "vlsit")
-    assert path.name == "vlsit_template.yaml" and [s.id for s in t.sections][:3] == ["overview", "features", "parameters"]
+    assert path.name == "vlsit_template.yaml" and [s.id for s in t.sections][:3] == ["purpose_scope", "references", "requirements"]
     spec_step = engine.step("spec")
     assert spec_step.options == {"template": "vlsit"}
     assert spec_step.inputs(engine)[-1].name == "vlsit_template.yaml"
@@ -473,3 +480,21 @@ def test_spec_template_option(engine):
     assert spec_step.inputs(engine)[-1].name == "template.yaml"  # the project's own template still wins
     with pytest.raises(ValueError):
         load_template(engine.project.spec_dir.parent, "nope")
+
+
+def test_doc_has_the_specs_diagrams_with_timing_as_svg(engine, llm):
+    _through_parse(engine)
+    spec = engine.project.spec_dir / "spec.md"
+    spec.write_text(spec.read_text() + "\n### Timing\n\n```wavedrom\n{signal: [{name: 'i_clk_core', wave: 'p..'}]}\n```\n\n"
+                    "*Figure 10-1: one transfer.*\n\n```mermaid\nflowchart LR\n  A --> B\n```\n\n*Figure 5-1: blocks.*\n")
+    engine.step("doc").options["prose"] = False
+    anyio.run(lambda: engine.run_step(engine.step("doc")))
+    text = (engine.project.docs_dir / "specification.md").read_text()
+    figs = engine.project.docs_dir / "figures"
+    assert "## 10 — Diagrams" in text and "![Figure 10-1: one transfer.](figures/spec_fig_1.svg)" in text
+    assert (figs / "spec_fig_1.svg").read_text().startswith("<svg")
+    assert "```mermaid\nflowchart LR" in text and "*Figure 5-1: blocks.*" in text   # Mermaid stays as its source
+    assert figs / "spec_fig_1.svg" in engine.step("doc").outputs(engine)
+    spec.write_text(spec.read_text().split("### Timing")[0])                         # diagrams removed: figures cleaned up
+    anyio.run(lambda: engine.run_step(engine.step("doc")))
+    assert not list(figs.glob("spec_fig_*.svg")) and "## 10 — Diagrams" not in (engine.project.docs_dir / "specification.md").read_text()

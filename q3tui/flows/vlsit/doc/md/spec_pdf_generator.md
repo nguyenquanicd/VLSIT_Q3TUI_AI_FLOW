@@ -179,7 +179,7 @@ status: "Released"
 | Port | Direction | Width | Description |
 |------|-----------|-------|-------------|
 
-### Trace / Debug (nếu PR_TRACE_EN=1)
+### Trace / Debug (nếu PARA_TRACE_EN=1)
 | Port | Direction | Width | Description |
 |------|-----------|-------|-------------|
 ```
@@ -202,7 +202,7 @@ status: "Released"
 - Reset deassert: <mô tả behavior sau reset — boot addr, pipeline clear>
 
 ### Boot Address
-- `PR_BOOT_ADDR = <value>` — PC reset value
+- `PARA_BOOT_ADDR = <value>` — PC reset value
 ```
 
 ---
@@ -229,7 +229,7 @@ status: "Released"
 
 ---
 
-### 05 — CSR / Register Map *(chỉ sinh nếu PR_CSR_EN=1)*
+### 05 — CSR / Register Map *(chỉ sinh nếu PARA_CSR_EN=1)*
 
 ```markdown
 ## 05 — CSR / Register Map
@@ -239,7 +239,7 @@ status: "Released"
 |---------|-----------|--------|-------|-------------|
 | 0x300   | mstatus   | RW     | 0x0   | Machine status |
 | 0x304   | mie       | RW     | 0x0   | Machine interrupt enable |
-| 0x305   | mtvec     | RW     | PR_MTVEC_RESET | Trap vector |
+| 0x305   | mtvec     | RW     | PARA_MTVEC_RESET | Trap vector |
 | 0x341   | mepc      | RW     | 0x0   | Exception PC |
 | 0x342   | mcause    | RW     | 0x0   | Trap cause |
 | 0x343   | mtval     | RW     | 0x0   | Trap value |
@@ -273,7 +273,7 @@ status: "Released"
 ### 6.6 Hazard Control
 <Mô tả: load-use stall, forwarding path, flush on branch>
 
-### 6.7 Trap & Interrupt Handling *(nếu PR_IRQ_EN=1)*
+### 6.7 Trap & Interrupt Handling *(nếu PARA_IRQ_EN=1)*
 <Mô tả: trap entry, mepc save, mtvec jump, MRET>
 ```
 

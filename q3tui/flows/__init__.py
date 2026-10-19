@@ -56,6 +56,7 @@ class Flow:
     version: int = 1
     path: Path | None = None
     session: str = "fresh"  # "flow": one persistent LLM session for the whole flow; "fresh": a session per stage
+    fresh_steps: list[str] = field(default_factory=list)  # with session "flow": steps whose stages still run fresh
 
     def spec(self, step_id: str) -> StepSpec | None:
         return next((s for s in self.steps if s.id == step_id), None)
@@ -68,7 +69,7 @@ class Flow:
     def to_file_dict(self) -> dict:
         """Everything a flow file holds (what `save_flow` writes; `parse_flow` reads it back)."""
         d: dict = {"name": self.name, "title": self.title, "description": self.description, "version": self.version,
-                   "session": self.session, "tools": self.tools, "sees": self.sees, "gap_targets": self.gap_targets}
+                   "session": self.session, "fresh_steps": self.fresh_steps, "tools": self.tools, "sees": self.sees, "gap_targets": self.gap_targets}
         d = {k: v for k, v in d.items() if v not in ("", [], {}, None)}
         steps = []
         for s in self.steps:
@@ -80,6 +81,7 @@ class Flow:
 
     def to_dict(self) -> dict:
         return {"name": self.name, "title": self.title, "version": self.version, "session": self.session,
+                "fresh_steps": self.fresh_steps,
                 "steps": [{"id": s.id, "kind": s.kind, "deps": s.deps, "gate": s.gate, "options": s.options, "view": s.view,
                            "pass": s.passes, "notes": s.notes} for s in self.steps]}
 
@@ -96,7 +98,7 @@ def _yaml(text: str):
 
 
 def parse_markdown(text: str, path: Path | None = None) -> dict:
-    """A flow as a skill-like markdown file: YAML front matter (name, title, session, tools, sees, gap_targets), free text,
+    """A flow as a skill-like markdown file: YAML front matter (name, title, session, fresh_steps, tools, sees, gap_targets), free text,
     then one `## <step id>` section per step. A section starts with `- key: value` lines (kind, label, title, deps, gate,
     options, view, pass; `view` and `pass` may repeat), the rest of it is the step's notes for the LLM."""
     where = f"{path}: " if path else ""
@@ -159,7 +161,7 @@ def skill_sections(path: Path) -> dict[str, str]:
 
 
 def parse_folder(path: Path) -> dict:
-    """A flow as a folder: `FLOW.md` (front matter: name, title, session, tools, sees, gap_targets, `steps: [ids in order]`;
+    """A flow as a folder: `FLOW.md` (front matter: name, title, session, fresh_steps, tools, sees, gap_targets, `steps: [ids in order]`;
     body: the description) and one folder per step: `<id>/md/skill.md` (front matter: kind, label, title, deps, gate, options,
     view, pass; body: the step's skill — named `<!-- NAME -->` sections are its stage system prompts, the rest is notes handed
     to every LLM task of the step), optional `<id>/step.py` (a class `Step(StepDef)`: the step's own
@@ -278,6 +280,10 @@ def parse_flow(data: dict, path: Path | None = None) -> Flow:
     flow.session = str(data.get("session") or "fresh")
     if flow.session not in ("fresh", "flow"):
         raise FlowError(f"{where}`session` must be 'flow' or 'fresh'")
+    fresh = data.get("fresh_steps") or []
+    if not (isinstance(fresh, list) and all(isinstance(x, str) for x in fresh)):
+        raise FlowError(f"{where}`fresh_steps` must be a list of step ids")
+    flow.fresh_steps = list(fresh)
     return flow
 
 
@@ -427,6 +433,9 @@ def validate(flow: Flow, known_kinds: set[str] | None = None) -> list[str]:
     for k, target in flow.gap_targets.items():
         if target not in ids:
             problems.append(f"gap_targets.{k}: unknown step '{target}'")
+    for sid in flow.fresh_steps:
+        if sid not in ids:
+            problems.append(f"fresh_steps: unknown step '{sid}'")
     if not problems and len(_order(flow.steps, lambda s: s.deps or [])) != len(flow.steps):
         problems.append("the dependencies form a cycle")
     return problems

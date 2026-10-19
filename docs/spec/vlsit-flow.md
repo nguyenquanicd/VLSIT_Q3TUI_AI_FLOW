@@ -23,8 +23,9 @@ not configured makes its steps wait (`missing_input`) with a message naming the 
 The flow starts at `spec`, which is Q3TUI's spec step with the VLSIT layout (`options: {template: vlsit}`; the original
 `/spec_writer` / `/autoflow --describe`):
 - **an intent** (`spec/intent.md`, `q3tui run --intent "…"` / `--intent-file FILE`): `spec` writes `spec/spec.md` section by
-  section (Overview, Key Features F01…, Parameters PR_*, Interface, Functional Description, Microarchitecture, Timing and Constraints,
-  Registers, Error Handling, Notes), reviews it, and asks what the intent leaves open (questions; the spec gate is human by default).
+  section (the 21 sections of the VLSIT ASIC IP Design Specification template: Purpose and Scope … Requirements REQ-<AREA>-<NNN>,
+  Features FEAT-NNN, Parameters PARA_* / LPARA_* with constraints C1…, Interfaces, Architecture, Functional Behavior, Register pointer to
+  the CSR workbook, RTL contract, Verification, Traceability, Assumptions …), reviews it, and asks what the intent leaves open (questions; the spec gate is human by default).
   What you answer is written into the spec, and `parse` follows the changed sections only.
 - **a spec** (`--spec FILE`, or a file in `spec/`): `spec` counts as done (user-provided, never rewritten) and the flow starts at `parse`.
 A model that puts a table into an invented field of the template gets it moved into the section body (the Parameters table).
@@ -36,6 +37,9 @@ A model that puts a table into an invented field of the template gets it moved i
 (docs/spec/flows.md "Sessions"): the RTL author remembers its choices when it writes the assertions, the spec is read once.
 Consequences: tasks run one at a time (no per-module parallelism); the testbench is not independent of the RTL any more
 (the stage still cannot *read* `src/rtl`, but the session has seen it); a session that grows is compacted by Claude.
+`fresh_steps: [spec, parse, config]`: those steps (and `spec_review`, a reviewer) run in fresh sessions — their prompts
+carry everything they need, and in the shared session they had grown it to 950k tokens and a compaction before rtl. The
+flow session starts at rtl, where remembering design choices (rtl → sva → fixes) pays.
 `pipeline.session: fresh` (or `session: fresh` in a copy of the flow file) gives every stage its own session again.
 
 ### rtl ‖ tb in parallel
@@ -65,7 +69,7 @@ schemas/verification_report.json        verify
 schemas/sva_reviews.json                your per-assertion reviews (kept on reset)
 schemas/questions/<step>.{json,answers.json,md}
 src/rtl/*.sv filelist.f                 rtl        src/tb/*.sv filelist.f (+ run script)        src/sva/*.sv bind + GATE3_REVIEW.md
-docs/specification.md (.pdf)            doc
+docs/specification.md (.pdf), figures/   doc
 .q3tui/…                            internal (sim logs, mutation work dirs, backups)
 ```
 
@@ -74,13 +78,13 @@ docs/specification.md (.pdf)            doc
 | id | kind | LLM stages (read-only unless said) | Code | Tool roles | Gate |
 |---|---|---|---|---|---|
 | spec | `spec` (option `template: vlsit`) | as Q3TUI's | | | human |
-| parse | `vlsit_parse` | `parse_spec`: REQs (`REQ-NNN`, category, `ambiguity_score`, `sva_hint`, feature / parameters affected), parameters, module mapping, ambiguity questions | assemble + validate `structured_spec.json`; `needs_review` when score > 0.3; ambiguous REQs become questions (`spec_gap`; blocking when score ≥ 0.6 after answers cannot settle it); stable ids across updates | | 1 human |
+| parse | `vlsit_parse` | `parse_spec`: REQs (`REQ-NNN`, category, `ambiguity_score`, `sva_hint`, feature / parameters affected), parameters, module mapping, ambiguity questions | assemble + validate `structured_spec.json`; `needs_review` when score > 0.3; ambiguous REQs become questions (`spec_gap`; blocking when score ≥ 0.6 after answers cannot settle it), with 2–4 suggested answers each giving its design impact (area / speed / power / complexity), like the spec's; keep / delete / split after 3 rounds; stable ids across updates | | 1 human |
 | config | `vlsit_config` | `config_overrides` (only when the spec / feedback asks for non-default values) | parameters locked (defaults unless overridden), constraints C1–C5 evaluated by code, `final_config.json` | | 2 auto (only when all constraints pass) |
 | rtl | `vlsit_rtl` | `rtl_<module>` per module (Write only its own file), `rtl_fix_<module>` (fresh small session with the problems and the current file) | module plan from `parse` mapping (LLM `rtl_plan` when absent), rule checker (naming prefixes, reset/clock rules, forbidden constructs via pyslang; rule files = `options.rules`), `filelist.f`, `// REQ-xxx` tag tracing, lint 0 warnings, Yosys synthesis → `synth_report.json` | lint, synth | none |
 | tb | `vlsit_tb` | `tb_plan` (TC ↔ REQ), `tb_<tc group>` (Write tb files) — sees spec, parse, config only | REQ coverage warnings (uncovered REQ: warn before Gate 4, never silently), framework, compile check against the RTL, `selected_testplan.json` | sim | 4 auto when compile passes |
 | sva | `vlsit_sva` | `sva_<module>` per module: assertions each preceded by `// NL:` | bind + `filelist_sva.f`, compile check, vacuity (cover / smoke) result, `GATE3_REVIEW.md`, RTM rows (`sva_traced` only for assertions you confirmed) | sim (`supports: [sva]`) | 3b human |
 | verify | `vlsit_verify` | `verify_triage` (single-shot, no tools): classify failures → rtl / tb / sva, dispatched as scoped change requests; a test case it is unsure about goes to `verify_investigate` (Read / Grep / Glob over the full log, the test, tb_top, RTL and SVA; logs are copied to `sim/vlsit_verify/` because stages never read `.q3tui/`); bounded fix loop (`options.max_fix_rounds`, 8 in `flows/vlsit/`; else `pipeline.max_fix_iterations`) | per-TC simulation, SVA violations, mutation testing (`mutate` role or the built-in mutator + `sim` / `run`), the six RTM conditions, `verification_report.json` | sim, run, (mutate) | 5 human |
-| doc | `vlsit_doc` | optional prose stage | `docs/specification.md` from the artifacts + RTL, PDF when a tool is configured (`pdf` role) | (pdf) | none |
+| doc | `vlsit_doc` | optional prose stage | `docs/specification.md` from the artifacts + RTL, chapter 10 = the spec's diagrams with their captions (WaveDrom timing diagrams as SVG in `docs/figures/`, Mermaid as source; [pipeline.md](pipeline.md) "Spec diagrams"), PDF when a tool is configured (`pdf` role; the bundled converter, `options.pdf_builtin`, draws the SVGs through `rsvg-convert`) | (pdf) | none |
 
 ### The RTM's six conditions per REQ
 (1) RTL traced (a `// REQ-xxx` tag) · (2) SVA traced (an assertion **you confirmed** at Gate 3b) · (3) TC traced (selected at
