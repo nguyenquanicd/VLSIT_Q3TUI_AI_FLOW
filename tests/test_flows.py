@@ -61,7 +61,7 @@ def run(engine, **kw):
 
 
 def test_builtin_flows_are_valid():
-    assert set(flows.list_flows()) == {"vlsit", "example", "fpga", "asic", "project", "rtl"}
+    assert set(flows.list_flows()) == {"vlsit", "example", "fpga", "asic", "project", "rtl", "sanity"}
     example = flows.load_flow("example")
     assert flows.validate(example) == [] and [s.id for s in example.steps] == ["spec", "parse"]
 
@@ -195,6 +195,15 @@ def test_gap_targets_and_sees_come_from_the_flow(tmp_path):
     eng = engine_for(tmp_path)
     assert eng.gap_target("c", {"kind": "spec_gap"}) == "a"
     assert eng.gap_target("a", {"kind": "spec_gap"}) is None  # never a later or the same step
+
+
+def test_fresh_steps(tmp_path):
+    f = flows.parse_flow({"name": "x", "session": "flow", "fresh_steps": ["a", "zz"], "steps": [{"id": "a", "kind": "spec"}]})
+    assert f.fresh_steps == ["a", "zz"] and f.to_file_dict()["fresh_steps"] == ["a", "zz"]
+    assert flows.validate(f) == ["fresh_steps: unknown step 'zz'"]
+    with pytest.raises(flows.FlowError, match="fresh_steps"):
+        flows.parse_flow({"name": "x", "fresh_steps": "a", "steps": [{"id": "a", "kind": "spec"}]})
+    assert flows.load_flow("vlsit").fresh_steps == ["spec", "parse", "config"]
 
 
 def test_cli_flow_commands(tmp_path):

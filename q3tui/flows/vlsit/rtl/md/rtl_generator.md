@@ -90,13 +90,13 @@ Template bắt buộc cho mọi file:
 module <module_name>
   import rv32im_pkg::*;
 #(
-  // PR_* parameters theo spec §2.2 — chỉ list những cái module này dùng
+  // PARA_* parameters theo spec §2.2 — chỉ list những cái module này dùng
 ) (
   // ---- Clock & Reset ----
   // ---- <nhóm port> ---- // REQ-xxx
   ...
 );
-  // localparam LP_*
+  // localparam LPARA_*
   // khai báo reg_* rồi w_*
   // always_comb (với default assignment đầu tiên)
   // always_ff
@@ -113,7 +113,7 @@ endmodule
 - Cuối mỗi `always_comb` / `always_ff` block liên quan đến một requirement: `// REQ-xxx`
 - Port group: `// ---- <tên nhóm> ---- // REQ-xxx` nếu port trực tiếp implement requirement đó
 
-**Parameter substitution:** Lấy giá trị từ `final_config.json`. Ví dụ nếu `PR_M_EXT_EN = 0` thì trong `rv32im_decoder`, nhánh RV32M decode ra `o_illegal = 1`.
+**Parameter substitution:** Lấy giá trị từ `final_config.json`. Ví dụ nếu `PARA_M_EXT_EN = 0` thì trong `rv32im_decoder`, nhánh RV32M decode ra `o_illegal = 1`.
 
 **2c. Chạy lint ngay sau khi sinh:**
 ```bash

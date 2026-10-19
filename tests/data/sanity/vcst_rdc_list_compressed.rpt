@@ -1,0 +1,23 @@
+
+  -----------------------------------------------------------------------------
+  RDC_CORRUPT_OBSERVED  (5 errors/0 waived/6 compressed)
+  -----------------------------------------------------------------------------
+  1.  Asynchronous reset assertion at u_clkmon_ref/reg_win_open/Q due to reset i_rst_n_ref is observed at u_clkmon_sync_2/reg_sync/Q[0] (reset i_rst_n_mon, clock i_clk_mon:1)
+  2.  Asynchronous reset assertion at u_clkmon_csr/reg_cfg_timeout/Q[15:0] due to reset i_prstn is observed at u_clkmon_ref/reg_tmo_lat/Q[15:0] (reset i_rst_n_ref, clock i_clk_ref:2)
+  3.  Asynchronous reset assertion at u_clkmon_mon/reg_done_tog/Q due to reset i_rst_n_mon is observed at u_clkmon_sync_1/reg_sync/Q[0] (reset i_rst_n_ref, clock i_clk_ref:2)
+  4.  Asynchronous reset assertion at u_clkmon_mon/reg_ovf/Q due to reset i_rst_n_mon is observed at u_clkmon_csr/reg_ovf_hold/Q (reset i_prstn, clock i_pclk:3)
+  5.  Asynchronous reset assertion at u_clkmon_ref/reg_rst_ind/Q due to reset i_rst_n_ref is observed at u_clkmon_sync_5/reg_sync/Q[0] (reset i_prstn, clock i_pclk:3)
+
+  -----------------------------------------------------------------------------
+  SETUP_CLOCK_PROPAGATED  (3 infos/0 waived)
+  -----------------------------------------------------------------------------
+  1.  Clock domain 3, consisting of the clock(s) i_pclk, has been inferred by the tool. It reaches to 365 sequential pin(s)
+  2.  Clock domain 2, consisting of the clock(s) i_clk_ref, has been inferred by the tool. It reaches to 87 sequential pin(s)
+  3.  Clock domain 1, consisting of the clock(s) i_clk_mon, has been inferred by the tool. It reaches to 61 sequential pin(s)
+
+  -----------------------------------------------------------------------------
+  SETUP_RESET_PROPAGATED  (3 infos/0 waived)
+  -----------------------------------------------------------------------------
+  1.  Reset i_prstn:Async reaches to set/reset pin of 143 sequential(s)
+  2.  Reset i_rst_n_ref:Async reaches to set/reset pin of 43 sequential(s)
+  3.  Reset i_rst_n_mon:Async reaches to set/reset pin of 30 sequential(s)

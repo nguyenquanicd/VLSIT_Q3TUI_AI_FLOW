@@ -31,21 +31,21 @@ Bảng chuẩn cho `rv32im_core` (tham chiếu `spec_parser.md §2.2`) — dùng
 
 | ID  | Tên                 | Default            | Range  | Tóm tắt                              | Feature       |
 |-----|---------------------|--------------------|--------|--------------------------------------|---------------|
-| P01 | `PR_BOOT_ADDR`      | `32'h8000_0000`    | align4 | PC sau reset                         | F01,F05       |
-| P02 | `PR_MTVEC_RESET`    | `32'h0000_0000`    | align4 | Giá trị `mtvec` sau reset            | F11           |
-| P03 | `PR_HART_ID`        | `32'h0`            | any    | Giá trị `mhartid` (read-only)        | F11           |
-| P04 | `PR_M_EXT_EN`       | `1`                | 0/1    | RV32M bật/tắt                        | **F02**       |
-| P05 | `PR_MULT_IMPL`      | `0`                | 0/1    | `0`=SEQ 33cy · `1`=COMB 1cy         | F17           |
-| P06 | `PR_DIV_IMPL`       | `0`                | 0      | `0`=SEQ 34cy (**khoá Phase 1**)      | F17           |
-| P07 | `PR_CSR_EN`         | `1`                | 0/1    | CSR file + trap bật/tắt              | F03,F11,F15   |
-| P08 | `PR_IRQ_EN`         | `1`                | 0/1    | M-mode interrupts                    | F14           |
-| P09 | `PR_COUNTER_EN`     | `1`                | 0/1    | `mcycle`/`minstret` 64-bit           | **F16** ⬜   |
-| P10 | `PR_MTVEC_VEC_EN`   | `0`                | 0/1    | `mtvec` Vectored mode                | **F19** ⬜   |
-| P11 | `PR_FWD_EN`         | `1`                | 0/1    | Full forwarding EX/MEM→EX            | F06           |
-| P12 | `PR_RF_RESET_EN`    | `1`                | 0/1    | Reset regfile về 0 (sim determinism) | F09           |
-| P13 | `PR_RF_IMPL`        | `0`                | 0/1    | `0`=flop array · `1`=RAM-style FPGA  | F09           |
-| P14 | `PR_TRACE_EN`       | `0`                | 0/1    | Retire trace port                    | **F18** ⬜   |
-| P15 | `PR_BUS_OUTSTANDING`| `1`                | 1      | Outstanding request (**khoá ở 1**)   | F10           |
+| P01 | `PARA_BOOT_ADDR`      | `32'h8000_0000`    | align4 | PC sau reset                         | F01,F05       |
+| P02 | `PARA_MTVEC_RESET`    | `32'h0000_0000`    | align4 | Giá trị `mtvec` sau reset            | F11           |
+| P03 | `PARA_HART_ID`        | `32'h0`            | any    | Giá trị `mhartid` (read-only)        | F11           |
+| P04 | `PARA_M_EXT_EN`       | `1`                | 0/1    | RV32M bật/tắt                        | **F02**       |
+| P05 | `PARA_MULT_IMPL`      | `0`                | 0/1    | `0`=SEQ 33cy · `1`=COMB 1cy         | F17           |
+| P06 | `PARA_DIV_IMPL`       | `0`                | 0      | `0`=SEQ 34cy (**khoá Phase 1**)      | F17           |
+| P07 | `PARA_CSR_EN`         | `1`                | 0/1    | CSR file + trap bật/tắt              | F03,F11,F15   |
+| P08 | `PARA_IRQ_EN`         | `1`                | 0/1    | M-mode interrupts                    | F14           |
+| P09 | `PARA_COUNTER_EN`     | `1`                | 0/1    | `mcycle`/`minstret` 64-bit           | **F16** ⬜   |
+| P10 | `PARA_MTVEC_VEC_EN`   | `0`                | 0/1    | `mtvec` Vectored mode                | **F19** ⬜   |
+| P11 | `PARA_FWD_EN`         | `1`                | 0/1    | Full forwarding EX/MEM→EX            | F06           |
+| P12 | `PARA_RF_RESET_EN`    | `1`                | 0/1    | Reset regfile về 0 (sim determinism) | F09           |
+| P13 | `PARA_RF_IMPL`        | `0`                | 0/1    | `0`=flop array · `1`=RAM-style FPGA  | F09           |
+| P14 | `PARA_TRACE_EN`       | `0`                | 0/1    | Retire trace port                    | **F18** ⬜   |
+| P15 | `PARA_BUS_OUTSTANDING`| `1`                | 1      | Outstanding request (**khoá ở 1**)   | F10           |
 
 ---
 
@@ -53,7 +53,7 @@ Bảng chuẩn cho `rv32im_core` (tham chiếu `spec_parser.md §2.2`) — dùng
 
 Hiển thị bảng tất cả 15 parameter với giá trị hiện tại (ban đầu = default). Chú thích rõ:
 - `⬜ Tuỳ chọn` cho F16, F18, F19 — mặc định tắt (giá trị `0`)
-- `[KHOÁ]` cho P06 (`PR_DIV_IMPL`) và P15 (`PR_BUS_OUTSTANDING`) — không thể thay đổi Phase 1
+- `[KHOÁ]` cho P06 (`PARA_DIV_IMPL`) và P15 (`PARA_BUS_OUTSTANDING`) — không thể thay đổi Phase 1
 - Ghi chú dependency: C3 (P08→P07), C4 (P10→P07), C5 (P09→P07)
 
 Sau khi hiển thị, hỏi người dùng:
@@ -79,11 +79,11 @@ Xử lý tuần tự từng parameter người dùng muốn thay đổi:
 
 | Constraint | Điều kiện | Lỗi nếu vi phạm |
 |---|---|---|
-| C1 | `PR_BOOT_ADDR % 4 == 0` | "Địa chỉ boot phải align 4 byte" |
-| C2 | `PR_MTVEC_RESET % 4 == 0` | "Địa chỉ mtvec reset phải align 4 byte" |
-| C3 | `PR_IRQ_EN=1 → PR_CSR_EN=1` | "IRQ cần CSR. Bật PR_CSR_EN trước." |
-| C4 | `PR_MTVEC_VEC_EN=1 → PR_CSR_EN=1` | "Vectored mode cần CSR. Bật PR_CSR_EN trước." |
-| C5 | `PR_COUNTER_EN=1 → PR_CSR_EN=1` | "Counter cần CSR. Bật PR_CSR_EN trước." |
+| C1 | `PARA_BOOT_ADDR % 4 == 0` | "Địa chỉ boot phải align 4 byte" |
+| C2 | `PARA_MTVEC_RESET % 4 == 0` | "Địa chỉ mtvec reset phải align 4 byte" |
+| C3 | `PARA_IRQ_EN=1 → PARA_CSR_EN=1` | "IRQ cần CSR. Bật PARA_CSR_EN trước." |
+| C4 | `PARA_MTVEC_VEC_EN=1 → PARA_CSR_EN=1` | "Vectored mode cần CSR. Bật PARA_CSR_EN trước." |
+| C5 | `PARA_COUNTER_EN=1 → PARA_CSR_EN=1` | "Counter cần CSR. Bật PARA_CSR_EN trước." |
 | — | P06 và P15 không được thay đổi | "Parameter này khoá trong Phase 1." |
 
 **3.4 Xử lý kết quả:**

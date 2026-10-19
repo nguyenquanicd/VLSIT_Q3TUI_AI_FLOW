@@ -3,7 +3,11 @@
 
 import sys
 import re
+import shutil
+import subprocess
+import tempfile
 import textwrap
+from pathlib import Path
 from matplotlib.backends.backend_pdf import PdfPages
 import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
@@ -17,7 +21,11 @@ TEXT_W = PAGE_W - MARGIN_L - MARGIN_R
 FONT_MONO = "DejaVu Sans Mono"
 FONT_SANS = "DejaVu Sans"
 
+IMAGE = re.compile(r"^!\[([^\]]*)\]\(([^)\s]+)\)\s*$")
+
+
 def classify(line):
+    if IMAGE.match(line.strip()): return ("image", line.strip())
     if line.startswith("# "):    return ("h1", line[2:].strip())
     if line.startswith("## "):   return ("h2", line[3:].strip())
     if line.startswith("### "): return ("h3", line[4:].strip())
@@ -50,7 +58,27 @@ def parse_table(lines):
         rows.append(cols)
     return rows
 
-def render_pages(md_lines):
+def load_image(path):
+    """(pixels, width in inches) of a PNG, or of an SVG via rsvg-convert; None when it cannot be read."""
+    path = Path(path)
+    if not path.is_file():
+        return None
+    try:
+        if path.suffix.lower() == ".svg":
+            if not shutil.which("rsvg-convert"):
+                return None
+            with tempfile.TemporaryDirectory() as tmp:
+                png = Path(tmp) / "fig.png"
+                subprocess.run(["rsvg-convert", "-z", "2", str(path), "-o", str(png)], check=True, capture_output=True)
+                pixels = plt.imread(str(png))
+            return pixels, pixels.shape[1] / 2 / 96
+        pixels = plt.imread(str(path))
+        return pixels, pixels.shape[1] / 96
+    except Exception:  # noqa: BLE001 - a figure is never worth failing the document on
+        return None
+
+
+def render_pages(md_lines, base_dir="."):
     """Convert parsed lines into a list of render commands per page."""
     pages = []
     cur = []   # list of (kind, content) draw commands
@@ -142,6 +170,16 @@ def render_pages(md_lines):
                 add("table_start", rows, 0)
                 for ri, row in enumerate(rows):
                     add("table_row", (ri, rows), H["table_row"])
+        elif kind == "image":
+            alt, src = IMAGE.match(content).groups()
+            img = load_image(Path(base_dir) / src)
+            if img is None:
+                add("text", f"[figure: {src}]", H["text"])
+            else:
+                pixels, w = img
+                w = min(w, TEXT_W)
+                h = w * pixels.shape[0] / pixels.shape[1]
+                add("image", (pixels, w, h), h + 0.08)
         elif kind == "text":
             for wl in wrap(content, 88):
                 add("text", wl, H["text"])
@@ -162,6 +200,7 @@ def draw_page(fig, ax, cmds, page_num, total):
     H = H_DRAW
     ax.set_xlim(0, TEXT_W)
     ax.set_ylim(MARGIN_B, PAGE_H - MARGIN_T + 0.01)
+    ax.set_autoscale_on(False)
     ax.axis("off")
 
     # page footer
@@ -217,6 +256,9 @@ def draw_page(fig, ax, cmds, page_num, total):
             ax.text(x0 + 0.1, yp, data, fontsize=7.2, va="top",
                     fontfamily=FONT_MONO, color="#222",
                     backgroundcolor="#f8f8f8")
+        elif kind == "image":
+            pixels, w, h = data
+            ax.imshow(pixels, extent=(x0, x0 + w, yp - h, yp), aspect="auto", interpolation="antialiased", zorder=1)
         elif kind == "hr":
             ax.axhline(y=yp, xmin=0, xmax=1, color="#ccc", linewidth=0.5)
         elif kind == "table_start":
@@ -249,7 +291,7 @@ def build_pdf(md_path, pdf_path):
     with open(md_path, "r", encoding="utf-8") as f:
         lines = f.readlines()
 
-    pages_cmds = render_pages(lines)
+    pages_cmds = render_pages(lines, Path(md_path).parent)
     total = len(pages_cmds)
 
     with PdfPages(pdf_path) as pdf:

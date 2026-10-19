@@ -13,7 +13,7 @@ sdc ─────────────────────┘
 
 | Step | Kind | Does | Writes |
 |---|---|---|---|
-| `asic_port` | `asic.asic_port` | scans `src/rtl/` for what an ASIC cannot take (code, no LLM) | `schemas/asic_port.json` |
+| `asic_port` | `asic.asic_port` | code scan of `src/rtl/` for what an ASIC cannot take, then the porter (one read-only LLM stage, `rules/asic_port_rules.md`): the porting work the scan cannot do (SRAM wrappers, synchronizer cells, ICGs, …) as work orders for the RTL | `schemas/asic_port.json` |
 | `sdc` | `asic.sdc` | the FPGA flow's SDC step: `sdc/sdc.json` → `sdc/*.tcl` | `sdc/*.tcl` |
 | `asic_synth` | `asic.asic_synth` | Tcl script (code) + tool role `asic_synth` (`dc_shell -f`): compile, netlist, reports, numbers against targets | `asic/synth.tcl`, `asic/netlist/<top>.{v,ddc,sdc,svf}`, `asic/reports/*.rpt`, `schemas/asic_synth.json` |
 | `asic_lec` | `asic.asic_lec` | Tcl script (code) + tool role `asic_lec` (`fm_shell -f`): RTL vs netlist | `asic/lec.tcl`, `asic/reports/lec.rpt`, `schemas/asic_lec.json` |
@@ -23,8 +23,8 @@ fails the step ("not run"), never passes it.
 
 ## ASIC port (`asic_port`)
 
-Deterministic scan (comments and `// synopsys translate_off` regions skipped); each finding has an id (`P1`…), the rule, the module, the
-line, the code and the fix that belongs to it:
+Two parts. **The scan** is deterministic and ground truth (comments and `// synopsys translate_off` regions skipped); each finding has an id
+(`P1`…), the rule, the module, the line, the code, the fix that belongs to it and `source: code`:
 
 | Rule | Severity | Finds |
 |---|---|---|
@@ -37,10 +37,22 @@ line, the code and the fix that belongs to it:
 | `tristate` | warn | `'z` drivers |
 | `gated_clock` | warn | a clock assigned from logic |
 
-The gate is your review. `options.waive: [rule ids]` ignores rules, `options.min_mem_words` sets the memory threshold. **Hand-off**
+**The porter** is one read-only LLM stage (`Read`, `Grep`, `Glob`; the testbench, SVA and models denied) that reads the RTL with the rule
+files of `options.rules` (default `asic_port_rules.md`, in the step's `rules/`; a project path wins) and does the porting the scan cannot do:
+it decides what changes, which wrapper replaces what and with which ports, and writes that as work orders (findings with `source: llm`, a
+`wrapper` module and a `fix` the RTL author can write without asking). The rule file has the wrapper convention (a structure a macro or a library cell implements sits behind one small
+`m_<function>` module with fixed ports), the scan's rules (not reported again) and the port rules: `mem_sram_wrapper` (memories →
+SRAM / register-file / ROM wrappers), `sync_lib_cell` (synchronizers → library cells behind `m_sync_*`), `clock_gate_icg`,
+`clock_mux_divider`, `pll_macro_wrapper`, `pad_wrapper`, `latch_inferred`, `async_reset_style`, `fpga_only_branch`. Code checks the answer:
+an unknown rule id, an unknown module or a waived rule is dropped (and said in `dropped`), and an order at a line the scan already has becomes that finding's port (its `wrapper` and `fix` replace the scan's generic fix, kept as
+`scan_fix`), not a second finding. The porter follows "changes propagate as updates": `asic_port.json` records each file's hash and the rules / options key,
+and only the files whose text changed (or all of them, when a rule file or option changed) go back to the LLM; the others keep their findings.
+`options.port: false` runs the scan only. The step writes no RTL: the RTL is the VLSIT flow's, so the orders go there (`asic_handoff`) and its rtl step writes the ported code.
+
+The gate is your review. `options.waive: [rule ids]` ignores rules (both parts), `options.min_mem_words` sets the memory threshold. **Hand-off**
 (`asic_handoff`, the Findings tab's `h` / `H` — they also move the TUI to that flow, `q3tui act asic_handoff [ids=P1,P2]`, the
 assistant): every finding goes to the flow that owns the RTL (`options.handoff_flow`, default `vlsit`) as a scoped change request of its
-`rtl` step: `[rtl:<module>] ASIC port (<file>:<line>, <rule>): <code> — <fix>`. Run that flow to apply them; this flow's steps are then stale and run again.
+`rtl` step: `[rtl:<module>] ASIC port (<file>:<line>, <rule title>): <code> — <fix>`. Run that flow to apply them; this flow's steps are then stale and run again.
 
 ## Synthesis (`asic_synth`)
 

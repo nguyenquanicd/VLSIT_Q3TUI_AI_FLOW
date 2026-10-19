@@ -121,10 +121,10 @@ a_if_pc_aligned : assert property (
   (o_ifid.valid |-> (o_ifid.pc[1:0] == 2'b00))
 ) else $error("IF: PC misaligned = %h", o_ifid.pc);
 
-// NL: Sau reset, PC bằng PR_BOOT_ADDR  // REQ-Fxx
+// NL: Sau reset, PC bằng PARA_BOOT_ADDR  // REQ-Fxx
 a_if_pc_reset_value : assert property (
   `RV32IM_SVA_CLK(i_clk_core, i_resetn_core)
-  ($rose(i_resetn_core) |=> (reg_pc == PR_BOOT_ADDR))
+  ($rose(i_resetn_core) |=> (reg_pc == PARA_BOOT_ADDR))
 ) else $error("IF: PC reset value wrong");
 
 // NL: I-bus request valid không phụ thuộc combinational vào ready (chống comb loop)  // REQ-Fxx
@@ -173,13 +173,13 @@ a_ex_redirect_aligned : assert property (
   (o_redirect_ex_valid |-> (o_redirect_ex_pc[1:0] == 2'b00))
 ) else $error("EX: Branch target misaligned = %h", o_redirect_ex_pc);
 
-// NL: Khi PR_FWD_EN=0, forward select phải luôn là FWD_NONE  // REQ-Fxx
+// NL: Khi PARA_FWD_EN=0, forward select phải luôn là FWD_NONE  // REQ-Fxx
 generate
-  if (!PR_FWD_EN) begin : g_no_fwd_sva
+  if (!PARA_FWD_EN) begin : g_no_fwd_sva
     a_ex_no_forwarding : assert property (
       `RV32IM_SVA_CLK(i_clk_core, i_resetn_core)
       (i_fwd_a_sel == FWD_NONE && i_fwd_b_sel == FWD_NONE)
-    ) else $error("EX: Forwarding active when PR_FWD_EN=0");
+    ) else $error("EX: Forwarding active when PARA_FWD_EN=0");
   end
 endgenerate
 
@@ -218,9 +218,9 @@ a_csr_mie_stable : assert property (
   ($stable(o_mstatus_mie))
 ) else $error("CSR: mstatus.MIE changed without trap/mret");
 
-// NL: mcycle tăng mỗi clock khi PR_COUNTER_EN=1  // REQ-Fxx
+// NL: mcycle tăng mỗi clock khi PARA_COUNTER_EN=1  // REQ-Fxx
 generate
-  if (PR_COUNTER_EN) begin : g_counter_sva
+  if (PARA_COUNTER_EN) begin : g_counter_sva
     a_csr_mcycle_increment : assert property (
       `RV32IM_SVA_CLK(i_clk_core, i_resetn_core)
       1'b1 |=> ($past(reg_mcycle) + 64'd1 == reg_mcycle)
@@ -270,20 +270,20 @@ a_hz_no_stall_and_flush : assert property (
 // Static elaboration checks (dùng initial $fatal — chạy khi elaborate)
 initial begin
   // NL: C3 — IRQ cần CSR  // REQ-Fxx
-  if (PR_IRQ_EN && !PR_CSR_EN)
-    $fatal(1, "STATIC: PR_IRQ_EN=1 requires PR_CSR_EN=1 (C3)");
+  if (PARA_IRQ_EN && !PARA_CSR_EN)
+    $fatal(1, "STATIC: PARA_IRQ_EN=1 requires PARA_CSR_EN=1 (C3)");
   // NL: C4 — Vectored mode cần CSR  // REQ-Fxx
-  if (PR_MTVEC_VEC_EN && !PR_CSR_EN)
-    $fatal(1, "STATIC: PR_MTVEC_VEC_EN=1 requires PR_CSR_EN=1 (C4)");
+  if (PARA_MTVEC_VEC_EN && !PARA_CSR_EN)
+    $fatal(1, "STATIC: PARA_MTVEC_VEC_EN=1 requires PARA_CSR_EN=1 (C4)");
   // NL: C5 — Counter cần CSR  // REQ-Fxx
-  if (PR_COUNTER_EN && !PR_CSR_EN)
-    $fatal(1, "STATIC: PR_COUNTER_EN=1 requires PR_CSR_EN=1 (C5)");
+  if (PARA_COUNTER_EN && !PARA_CSR_EN)
+    $fatal(1, "STATIC: PARA_COUNTER_EN=1 requires PARA_CSR_EN=1 (C5)");
   // NL: C1 — Boot address align 4  // REQ-Fxx
-  if (PR_BOOT_ADDR[1:0] != 2'b00)
-    $fatal(1, "STATIC: PR_BOOT_ADDR not aligned to 4 (C1)");
+  if (PARA_BOOT_ADDR[1:0] != 2'b00)
+    $fatal(1, "STATIC: PARA_BOOT_ADDR not aligned to 4 (C1)");
   // NL: C2 — mtvec reset align 4  // REQ-Fxx
-  if (PR_MTVEC_RESET[1:0] != 2'b00)
-    $fatal(1, "STATIC: PR_MTVEC_RESET not aligned to 4 (C2)");
+  if (PARA_MTVEC_RESET[1:0] != 2'b00)
+    $fatal(1, "STATIC: PARA_MTVEC_RESET not aligned to 4 (C2)");
 end
 
 // NL: Reset value của toàn bộ pipeline valid = 0 sau reset (không có garbage in-flight)
@@ -319,8 +319,8 @@ Tạo `src/sva/rv32im_top_bind.sv`:
 `ifndef SYNTHESIS
 
 bind rv32im_if_stage rv32im_if_sva #(
-  .PR_BOOT_ADDR (PR_BOOT_ADDR),
-  .PR_XLEN      (32)
+  .PARA_BOOT_ADDR (PARA_BOOT_ADDR),
+  .PARA_XLEN      (32)
 ) u_if_sva (
   .i_clk_core        (i_clk_core),
   .i_resetn_core      (i_resetn_core),
@@ -336,13 +336,13 @@ bind rv32im_if_stage rv32im_if_sva #(
 // rv32im_csr_file, rv32im_trap_ctrl, rv32im_hazard_ctrl
 
 bind rv32im_core rv32im_top_sva #(
-  .PR_BOOT_ADDR     (PR_BOOT_ADDR),
-  .PR_IRQ_EN        (PR_IRQ_EN),
-  .PR_CSR_EN        (PR_CSR_EN),
-  .PR_COUNTER_EN    (PR_COUNTER_EN),
-  .PR_MTVEC_VEC_EN  (PR_MTVEC_VEC_EN),
-  .PR_MTVEC_RESET   (PR_MTVEC_RESET),
-  .PR_FWD_EN        (PR_FWD_EN)
+  .PARA_BOOT_ADDR     (PARA_BOOT_ADDR),
+  .PARA_IRQ_EN        (PARA_IRQ_EN),
+  .PARA_CSR_EN        (PARA_CSR_EN),
+  .PARA_COUNTER_EN    (PARA_COUNTER_EN),
+  .PARA_MTVEC_VEC_EN  (PARA_MTVEC_VEC_EN),
+  .PARA_MTVEC_RESET   (PARA_MTVEC_RESET),
+  .PARA_FWD_EN        (PARA_FWD_EN)
 ) u_top_sva (
   .i_clk_core    (i_clk_core),
   .i_resetn_core  (i_resetn_core)

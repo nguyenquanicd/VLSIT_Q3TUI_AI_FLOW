@@ -54,7 +54,7 @@ def legend_text() -> str:
             f"[grey50]{I('pending')}[/] {t('legend.no_result')}  [grey42]{I('planned')}[/] {t('legend.planned')}\n"
             f"[grey62]{I('edited')}[/] {t('legend.edited')}")
 HELP = (
-    "Keys: r run · x stop · a review · A approve all · g gate mode · , settings · s stats · e edit · C comment on selected text · o questions · f files · m model · R reset (step or all) · z zoom chat · drag the bars or ctrl+arrows to resize panes · 1-9 select step · "
+    "Keys: r run · x stop · a review · A approve all · g gate mode · , settings · s stats · e edit · C comment on selected text · o questions · f files · m model · R reset (step or all) · z zoom chat · p hide/show the pipeline · D diagrams full screen (or Enter / double-click on one) · drag the bars or ctrl+arrows to resize panes · 1-9 select step · "
     "i chat · / command (Tab or → completes) · Esc stops the assistant's reply, else back to the pipeline · ctrl+q quit.\n"
     "Commands: /run [from] [to] · /stop · /approve <step>|all [--force] · /change <step> <text> · /answer <id> <text> · /gate <step> <mode> · /gates · "
     "/model [id] [--save] · /effort <level> [--save] · /specreview on|off · /autoapprove on|off · /autoanswer on|off · "
@@ -72,6 +72,14 @@ def _short_error(text) -> str:
     s = re.sub(r"^(StageError|RuntimeError|EngineError): ", "", s)
     s = re.sub(r" You sent \(first \d+ of \d+ bytes\):.*", " (the JSON was invalid)", s)
     return s if len(s) <= 300 else s[:299] + "…"
+
+
+class PaneToggle(Static):
+    """A one-line clickable label that hides / shows the pipeline column (the `p` key does the same)."""
+
+    def on_click(self, event) -> None:
+        event.stop()
+        self.app.action_toggle_pipeline()  # type: ignore[attr-defined]
 
 
 class Q3TUIApp(App):
@@ -99,6 +107,8 @@ class Q3TUIApp(App):
         Binding("ctrl+down", "resize('split-activity', 2)", "Taller step view", show=False),
         Binding("R", "reset_step", "Reset"),
         Binding("z", "zoom_activity", "Zoom chat"),
+        Binding("p", "toggle_pipeline", "Pipeline", show=False),  # (the footer is full: "◀ hide" / "▶ pipeline" are clickable)
+        Binding("D", "diagrams", "Diagrams", show=False),
         Binding("i", "focus_input", "Chat"),
         Binding("slash", "focus_input('/')", "Command", show=False),
         Binding("ctrl+l", "focus_input", "Chat", show=False),
@@ -150,13 +160,17 @@ class Q3TUIApp(App):
         yield Static(id="header")
         with Horizontal(id="main"):
             with Vertical(id="left"):
-                yield Label("PIPELINE", classes="panel-title")
+                with Horizontal(classes="panel-head"):
+                    yield Label("PIPELINE", classes="panel-title")
+                    yield PaneToggle("◀ hide (p)", id="hide-pipeline")
                 yield ListView(*[ListItem(Static(id=f"step-{safe_id(s.name)}"), id=f"item-{safe_id(s.name)}") for s in self.engine.pipeline_steps],
                                id="steps")
                 yield Static(legend_text(), id="legend")
             yield Splitter(vertical=True, id="split-left", min_size=20)
             with Vertical(id="right"):
-                yield Label("", classes="panel-title", id="view-title")
+                with Horizontal(classes="panel-head"):
+                    yield PaneToggle("▶ pipeline (p)", id="show-pipeline")
+                    yield Label("", classes="panel-title", id="view-title")
                 with ContentSwitcher(id="views", initial=f"view-{safe_id(self.engine.pipeline_steps[0].name)}"):
                     addons.load_panels(self.engine.flow)  # the flow's own panels (panels.py of its folder), if it has any
                     for step in self.engine.steps:
@@ -183,6 +197,8 @@ class Q3TUIApp(App):
         if self._watching:
             self._follow_run()
         self._w("#steps").focus()
+        if "pipeline_hidden" in self.layout_sizes:
+            self.action_toggle_pipeline(show=False)
         # no review popup at startup: it opens when a run reaches a gate; a waiting review is
         # in the summary line above ("next: review X (a)") and in the step's banner
 
@@ -962,6 +978,42 @@ class Q3TUIApp(App):
         current = pane.outer_size.width if sp.vertical else pane.outer_size.height
         sp.set_size(current + delta)
         self.call_after_refresh(lambda: self.remember_layout(splitter, pane.outer_size.width if sp.vertical else pane.outer_size.height))
+
+    def action_toggle_pipeline(self, show: bool | None = None) -> None:
+        """Hide / show the pipeline column (the step views get the width; 1-9 still select a step). Remembered."""
+        left = self._w("#left")
+        show = (not left.display) if show is None else show
+        left.display = show
+        self._w("#split-left").display = show
+        self._w("#show-pipeline").display = not show
+        if not show and self._w("#steps").has_focus:
+            self.screen.focus_next()  # the steps list is gone: the next visible widget
+        if show == ("pipeline_hidden" in self.layout_sizes):  # changed: keep it for next time
+            if show:
+                self.layout_sizes.pop("pipeline_hidden", None)
+            else:
+                self.layout_sizes["pipeline_hidden"] = 1
+            write_json(self.layout_file, self.layout_sizes)
+
+    def open_diagrams(self, start=None) -> None:
+        """Full-screen diagram view: the diagrams of the visible step view (from `start`, else the focused one)."""
+        from q3tui.tui.screens import DiagramScreen
+        from q3tui.tui.views import MdCode
+
+        if start is not None and start.parent is not None:
+            pool = [w for w in start.parent.children if isinstance(w, MdCode) and w.is_diagram]
+        else:
+            views = self._w("#views")
+            panel = views.get_child_by_id(views.current) if views.current else views
+            pool = [w for w in panel.query(MdCode) if w.is_diagram and w.region.width > 0]  # on demand, not a hot path
+            start = self.focused if self.focused in pool else (pool[0] if pool else None)
+        if not pool or start is None:
+            self.notify("No diagram in this view (Files / Sections tab of a step with a spec).", severity="warning")
+            return
+        self.push_screen(DiagramScreen([(w.code, w.lang, w.caption) for w in pool], pool.index(start)))
+
+    def action_diagrams(self) -> None:
+        self.open_diagrams()
 
     def action_zoom_activity(self) -> None:
         """Toggle a full-height activity/chat panel (hides the step view)."""
