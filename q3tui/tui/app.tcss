@@ -67,29 +67,6 @@ Screen {
     color: $accent;
 }
 
-.panel-head {
-    height: 1;
-}
-
-.panel-head > .panel-title {
-    width: 1fr;
-}
-
-PaneToggle {
-    width: auto;
-    padding: 0 1;
-    color: $text-muted;
-}
-
-PaneToggle:hover {
-    color: $accent;
-    text-style: bold;
-}
-
-#show-pipeline {
-    display: none;
-}
-
 .planned {
     padding: 1 2;
     height: auto;

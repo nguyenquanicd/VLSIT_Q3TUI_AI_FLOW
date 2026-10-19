@@ -4,24 +4,6 @@ from __future__ import annotations
 
 from q3tui.steps.common import Question
 
-DIAGRAM_RULES = """\
-Diagrams follow conventions that code checks (and draws in the TUI and the PDF):
-- Timing / cycle-level behaviour: a ```wavedrom block (WaveJSON: `{signal: [{name: "i_clk_core", wave: "p...."}, \
-{name: "i_data", wave: "x=.=x", data: ["D0", "D1"]}]}`), one lane per signal, named exactly like the port or signal \
-in the spec; one data label per `=`/`2`-`9` cycle.
-- Block diagram: a ```mermaid `flowchart LR` showing the module boundary: `subgraph top["<top module>"]` holds the \
-internal blocks, in one `subgraph` per clock domain (named after its clock); every IO is a rounded node OUTSIDE the \
-boundary (inputs left, outputs right) wired to the block that uses it. An external interface is ONE IO node named for \
-it (`apb_if(APB interface)`, `irq(Interrupts)`), never a list of its signals (they are in the port table); a \
-single-signal port (a clock, a reset, a serial pin) may be an IO node with its port name. EVERY \
-connection has a label saying what it carries (`apb_if -->|APB interface| apb`, `txf -->|pop / TX data| tx`, \
-`cg -->|gated clock| tx`), naming a bus or a group, not its signals. Every edge from one domain to another is labelled \
-`CDC: <mechanism>` or goes through the synchronizer / async FIFO block; port names on the diagram are the spec's.
-- State machine: a ```mermaid `stateDiagram-v2` directly below the table of its states, with the same state names, \
-`[*] --> <reset state>` (drawn as that state marked "reset"), every state reachable and every state with a way out \
-(`--> [*]` only for a final state). A transition every state takes the same way (abort, disable, soft reset) is not \
-drawn from each state: say it once in the caption or the table ("from any state: abort → IDLE")."""
-
 WRITER = """\
 You are Q3TUI's specification writer: a senior digital design architect who turns a \
 statement of intent into a precise, testable hardware block specification.
@@ -47,12 +29,7 @@ question with that default_assumption. Mark a question blocking only if no reaso
 default exists. A field you cannot decide at all is "TBD" plus a question.
 - Use "shall" for requirements. Use SystemVerilog-legal snake_case names for the module, \
 ports and parameters.
-- Optional sections: include them only when they apply to this design.
-- Caption every table and every diagram: directly below it, one italic line `*Table <section>-<n>: <what it \
-shows and how to read it>*` or `*Figure <section>-<n>: <what it shows>*` (<section> = the section's number, \
-<n> counts from 1 inside the section; a diagram is a Mermaid or WaveDrom code block). The caption states the purpose and the \
-key point or reading rule, not just a title; a section's text refers to its tables and figures by that label.
-""" + "\n" + DIAGRAM_RULES
+- Optional sections: include them only when they apply to this design."""
 
 REVIEWER = """\
 You are Q3TUI's specification reviewer: a verification lead reading a draft hardware \
@@ -65,21 +42,17 @@ states exactly when a transfer occurs and what is stable during stalls; every co
 states width and overflow behaviour (wrap or saturate); simultaneous events (e.g. \
 read+write when full/empty) are defined; reset behaviour of every output is defined; \
 latencies are given in cycles; parameters have legal ranges; every template field has a \
-value consistent with the rest of the document; every table and diagram has its caption line directly below it \
-(`*Table <section>-<n>: ...*` / `*Figure <section>-<n>: ...*`) saying what it shows; every diagram follows the diagram \
-conventions below (code-found diagram problems, when listed in the request, must be fixed in the sections they name).
+value consistent with the rest of the document.
 
 Edit, do not rewrite: return ONLY the sections you change (each complete, same ids), \
 not the whole document — unchanged sections are kept as drafted. Also return the full \
 list of open questions (keep the ids of questions that are still open; use "" for new \
 ones). Resolve issues in the text with a conventional choice marked "*Assumption:*" \
-whenever possible. Ask as many questions as the design needs (keep the draft's questions that are still open, drop the ones you \
-resolved in the text), only about decisions that change the \
+whenever possible. Ask at most 5 questions, only about decisions that change the \
 design's observable behaviour and have no conventional default; never re-ask something \
 the user already answered. Do not write a narrative review: put everything in the \
 structured output (an unchanged spec is `sections: []`). Keep a Design Structure section \
-(the module tree the intent prescribes) exactly as it is: it is the user's decision.
-""" + "\n" + DIAGRAM_RULES
+(the module tree the intent prescribes) exactly as it is: it is the user's decision."""
 
 UPDATER = """\
 You are Q3TUI's specification editor. The user answered open questions, requested \
@@ -87,13 +60,10 @@ changes, changed the intent, and/or changed the spec template (added sections, o
 guidance/fields). Apply exactly those to the existing specification: write the added \
 sections, revise the sections whose template changed, rewrite only the sections the \
 answers/changes affect, keep everything else verbatim (the user may have edited the spec \
-by hand), and keep terminology and style consistent. Every table or diagram you write or change keeps (or \
-gets) its caption line directly below it (`*Table <section>-<n>: ...*` / `*Figure <section>-<n>: ...*`), and \
-every diagram you write or change follows the diagram conventions below. Remove any "*Assumption:*" an \
+by hand), and keep terminology and style consistent. Remove any "*Assumption:*" an \
 answer replaces. Do not start a new review of the whole document and do not raise new \
 questions; only report a conflict if an answer or change contradicts another part of the \
-spec in a way you cannot resolve.
-""" + "\n" + DIAGRAM_RULES
+spec in a way you cannot resolve."""
 
 
 REPLY_FORMAT = """\
@@ -121,18 +91,13 @@ Top module: `<top_module>`
 ## Open questions
 
 - Q: <question> | assumed: <default assumption> | blocking: no | kind: spec_gap
-  - option: <answer A> | means: <what it means> | impact: <area / speed / power / complexity effect>
-  - option: <answer B> | means: <what it means> | impact: <area / speed / power / complexity effect>
 
 Rules for the layout: one `<!-- section: id -->` line before every section heading, \
 sections in template order with their template ids; the field table only for sections \
 that have template fields, listing every field in template order ("TBD" if it cannot be \
 decided); a `|` inside a value is written `\\|`. The questions block comes last: one \
 `- Q:` line per question (kind: spec_gap or design_choice; append `| id: <id>` to keep \
-an existing question's id), then 2–4 indented `- option:` lines: the possible answers (the assumed one among them), \
-each with what it means and its design impact against the other options — area (gates, flops, memory), speed \
-(fmax, throughput, latency in cycles), power, complexity / verification effort, concrete and short (e.g. "area +1 \
-16x8 FIFO (~1.2 Kgate); latency −1 cycle"); leave the block empty if there are none."""
+an existing question's id); leave the block empty if there are none."""
 
 
 def reformat_prompt(problems: list[str]) -> str:
@@ -159,16 +124,14 @@ def _template_block(template: str) -> str:
     return f"\n<spec_template>\n{template}\n</spec_template>\n"
 
 
-def draft_prompt(*, intent: str, template: str, feedback: list[str], questions: list[Question] | None = None,
-                 answers: dict[str, str] | None = None) -> str:
-    """`answers` (to `questions`): decisions the user already made — a regenerated spec must keep them."""
+def draft_prompt(*, intent: str, template: str, feedback: list[str]) -> str:
     return f"""\
 Write the specification for this block.
 
 <intent>
 {intent.strip()}
 </intent>
-{_template_block(template)}{_answers_block(questions or [], answers or {})}{_feedback_block(feedback)}
+{_template_block(template)}{_feedback_block(feedback)}
 {REPLY_FORMAT}"""
 
 
@@ -195,13 +158,9 @@ Currently open questions:
 {REPLY_FORMAT}"""
 
 
-def review_prompt(*, intent: str, template: str, draft, rendered: str, answers: dict[str, str],
-                  questions: list[Question] | None = None, diagram_problems: list[tuple[str, str]] | None = None) -> str:
-    by_id = {q.id: q.question for q in questions or []}
+def review_prompt(*, intent: str, template: str, draft, rendered: str, answers: dict[str, str]) -> str:
     qs = "\n".join(f"- [{q.id or 'new'}] {q.question} (assumed: {q.default_assumption or '-'})" for q in draft.questions) or "(none)"
-    answered = "\n".join(f"- {k} ({by_id.get(k, 'earlier question')}): {v}" for k, v in answers.items()) or "(none)"
-    diagrams = ("\nDiagram problems found by code (fix each in its section):\n"
-                + "\n".join(f"- {title}: {p}" for title, p in diagram_problems) + "\n") if diagram_problems else ""
+    answered = "\n".join(f"- {k}: {v}" for k, v in answers.items()) or "(none)"
     return f"""\
 Review and improve this draft specification of `{draft.top_module}`.
 
@@ -218,7 +177,7 @@ Draft's open questions:
 
 Already answered by the user (do not ask again):
 {answered}
-{diagrams}
+
 Return only the sections you changed, the full open-question list and a short summary, as structured output."""
 
 

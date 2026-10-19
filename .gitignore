@@ -8,7 +8,3 @@ q3tui_artifacts/
 *.log
 .q3tui/
 .nfs*
-
-# q3tui project files of a run in the repo root
-/spec/
-/schemas/

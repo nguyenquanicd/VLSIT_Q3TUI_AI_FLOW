@@ -6,7 +6,7 @@ import re
 
 from pydantic import BaseModel, Field
 
-from q3tui.steps.common import Question, QuestionOption
+from q3tui.steps.common import Question
 from q3tui.steps.spec.template import SpecTemplate
 
 TBD = "TBD"
@@ -52,9 +52,7 @@ def apply_review(draft: SpecDraft, patch: ReviewPatch) -> SpecDraft:
     by_id = {s.id: s for s in patch.sections}
     merged = [by_id.pop(s.id, s) for s in draft.sections]
     merged += list(by_id.values())  # sections the reviewer added
-    # a review that changed nothing and returned no questions simply left the list out: keep the writer's
-    questions = list(patch.questions) if (patch.questions or patch.sections) else list(draft.questions)
-    return draft.model_copy(update={"sections": merged, "questions": questions})
+    return draft.model_copy(update={"sections": merged, "questions": list(patch.questions)})
 
 
 def _norm(s: str) -> str:
@@ -91,33 +89,6 @@ def check(draft: SpecDraft, template: SpecTemplate) -> list[str]:
     return errors
 
 
-def normalize_section(s: SectionOut, ts) -> SectionOut | None:
-    """One section in the template's shape: template title / field names and order, no duplicate heading, extra
-    long fields moved into the body. None: an optional section with nothing in it."""
-    if not ts.required and not s.content.strip() and all(f.value.strip() in ("", TBD) for f in s.fields):
-        return None
-    values = {_norm(f.name): f.value.strip() for f in s.fields}
-    fields = [FieldValue(name=f.name, value=values.get(_norm(f.name)) or TBD) for f in ts.fields
-              if f.required or values.get(_norm(f.name))]
-    known = {_norm(f.name) for f in ts.fields}
-    content = _strip_heading(s.content, ts.title)
-    for f in s.fields:
-        if _norm(f.name) in known or not f.value.strip():
-            continue
-        if "\n" in f.value or len(f.value) > 160:
-            # a field the template does not have, holding a table / paragraphs (a model puts "the parameter table" in a field
-            # called `table`): it is body text — a field row (`| **table** | \\| a \\| b \\| |`) breaks the Markdown
-            label = "" if _norm(f.name) in ("table", "tables", "content", "text", "body") else f"**{f.name}**\n\n"
-            content = (content + "\n\n" if content.strip() else "") + label + f.value.strip()
-        else:
-            fields.append(f)
-    return SectionOut(id=ts.id, title=ts.title, fields=fields, content=content)
-
-
-def placeholder_section(ts) -> SectionOut:
-    return SectionOut(id=ts.id, title=ts.title, fields=[], content=f"_{TBD} — not decided yet; see open questions._")
-
-
 def normalize(draft: SpecDraft, template: SpecTemplate) -> SpecDraft:
     """Template order, template titles/field names, drop empty optional sections, strip duplicate headings;
     fill required sections/fields that are still missing with TBD."""
@@ -131,52 +102,29 @@ def normalize(draft: SpecDraft, template: SpecTemplate) -> SpecDraft:
         if s is None:
             if not ts.required:
                 continue
-            s = placeholder_section(ts)
-        out = normalize_section(s, ts)
-        if out is not None:
-            ordered.append(out)
+            s = SectionOut(id=ts.id, title=ts.title, fields=[], content=f"_{TBD} — not decided yet; see open questions._")
+        if not ts.required and not s.content.strip() and all(f.value.strip() in ("", TBD) for f in s.fields):
+            continue
+        values = {_norm(f.name): f.value.strip() for f in s.fields}
+        fields = [FieldValue(name=f.name, value=values.get(_norm(f.name)) or TBD) for f in ts.fields
+                  if f.required or values.get(_norm(f.name))]
+        known = {_norm(f.name) for f in ts.fields}
+        content = _strip_heading(s.content, ts.title)
+        for f in s.fields:
+            if _norm(f.name) in known or not f.value.strip():
+                continue
+            if "\n" in f.value or len(f.value) > 160:
+                # a field the template does not have, holding a table / paragraphs (a model puts "the parameter table" in a field
+                # called `table`): it is body text — a field row (`| **table** | \\| a \\| b \\| |`) breaks the Markdown
+                label = "" if _norm(f.name) in ("table", "tables", "content", "text", "body") else f"**{f.name}**\n\n"
+                content = (content + "\n\n" if content.strip() else "") + label + f.value.strip()
+            else:
+                fields.append(f)
+        ordered.append(SectionOut(id=ts.id, title=ts.title, fields=fields, content=content))
     for s in draft.sections:
         if s.id not in tmpl and template.allow_extra_sections and s.content.strip():
             ordered.append(s.model_copy(update={"content": _strip_heading(s.content, s.title)}))
     return draft.model_copy(update={"sections": ordered})
-
-
-DIAGRAM_LANGS = ("mermaid", "mmd", "wavedrom", "wavejson")  # = diagrams.LANGS (kept here: no import on the hot path)
-_CODE_FENCE = re.compile(r"^\s*(?:`{3,}|~{3,})\s*([\w+-]*)")
-_CAPTION = re.compile(r"^\*?\s*(Table|Figure)\b", re.I)
-
-
-def uncaptioned(content: str) -> list[str]:
-    """Tables and diagrams (Mermaid, WaveDrom) of a section body with no `Table …` / `Figure …` line directly below them
-    (blank lines in between are fine): ["table: | a | b |", "diagram: flowchart LR", ...]."""
-    lines = content.splitlines()
-    found: list[str] = []
-    i = 0
-    while i < len(lines):
-        line = lines[i]
-        kind = None
-        if _CODE_FENCE.match(line):
-            lang = _CODE_FENCE.match(line).group(1).lower()
-            j = i + 1
-            while j < len(lines) and not (_CODE_FENCE.match(lines[j]) and not _CODE_FENCE.match(lines[j]).group(1)):
-                j += 1
-            if lang in DIAGRAM_LANGS:
-                kind, label = "diagram", (lines[i + 1].strip() if i + 1 < len(lines) else "")
-            i = j  # at the closing fence
-        elif line.lstrip().startswith("|"):
-            j = i
-            while j + 1 < len(lines) and lines[j + 1].lstrip().startswith("|"):
-                j += 1
-            kind, label = "table", line.strip()
-            i = j
-        if kind:
-            k = i + 1
-            while k < len(lines) and not lines[k].strip():
-                k += 1
-            if k >= len(lines) or not _CAPTION.match(lines[k].strip()):
-                found.append(f"{kind}: {label[:50]}")
-        i += 1
-    return found
 
 
 def _strip_heading(content: str, title: str) -> str:
@@ -207,44 +155,8 @@ def render(draft: SpecDraft) -> str:
     return "\n".join(out).rstrip() + "\n"
 
 
-def tbd_items(sections: list[SectionOut]) -> list[tuple[str, str]]:
-    """(section title, field name) of every field still TBD."""
-    return [(s.title, f.name) for s in sections for f in s.fields if f.value.strip().upper() == TBD]
-
-
 def tbd_fields(draft: SpecDraft) -> list[str]:
-    return [f"{t}: {n}" for t, n in tbd_items(draft.sections)]
-
-
-def tbd_questions(sections: list[SectionOut], existing: list[Question]) -> list[Question]:
-    """A non-blocking "what should it be?" question for each TBD field no existing question already covers."""
-    asked = " ".join(q.question.lower() for q in existing)
-    out = []
-    for title, name in tbd_items(sections):
-        if f"{title}: {name}".lower() in asked or (_word(name, asked) and _word(title, asked)):
-            continue
-        out.append(Question(id="", question=f"{title}: {name} is TBD — what should it be?", blocking=False, default_assumption=""))
-        asked += " " + out[-1].question.lower()
-    return out
-
-
-def _word(word: str, text: str) -> bool:
-    return re.search(rf"(?<![a-z0-9_]){re.escape(word.lower())}(?![a-z0-9_])", text) is not None
-
-
-def missing_required(markdown: str, template: SpecTemplate) -> list:
-    """Template sections that are required and absent from a spec.md."""
-    have = {sid for sid, _, _ in parse_sections(markdown)}
-    return [ts for ts in template.sections if ts.required and ts.id not in have]
-
-
-def section_out(sid: str, title: str, body: str) -> SectionOut:
-    fields, content = _fields_and_content(body)
-    return SectionOut(id=sid, title=title, fields=fields, content=content)
-
-
-def spec_top_module(markdown: str) -> str:
-    return next((m.group(1) for ln in markdown.splitlines()[:12] if (m := re.match(r"^Top module:\s*`?([A-Za-z_]\w*)`?", ln.strip()))), "")
+    return [f"{s.title}: {f.name}" for s in draft.sections for f in s.fields if f.value.strip().upper() == TBD]
 
 
 _MARK = re.compile(r"^<!-- section: ([a-z][a-z0-9_]*) -->\s*$")
@@ -256,7 +168,23 @@ def parse_sections(markdown: str) -> list[tuple[str, str, str]]:
     Uses the `<!-- section: id -->` markers Q3TUI writes; a spec without markers
     (user-written) is split on `## ` headings with ids derived from the titles.
     """
-    _, sections = _split(markdown)
+    lines = markdown.splitlines()
+    marked = any(_MARK.match(l) for l in lines)
+    sections: list[tuple[str, str, list[str]]] = []
+    pending_id: str | None = None
+    for line in lines:
+        m = _MARK.match(line)
+        if m:
+            pending_id = m.group(1)
+            continue
+        if line.startswith("## "):
+            title = re.sub(r"^\d+(\.\d+)*\.?\s+", "", line[3:].strip())
+            sid = pending_id if marked and pending_id else re.sub(r"[^a-z0-9]+", "_", title.lower()).strip("_") or "section"
+            sections.append((sid, title, []))
+            pending_id = None
+            continue
+        if sections:
+            sections[-1][2].append(line)
     return [(sid, title, "\n".join(body).strip()) for sid, title, body in sections]
 
 
@@ -265,26 +193,19 @@ def section_id_for(title: str) -> str:
     return sid if sid[0].isalpha() else f"s_{sid}"
 
 
-_FENCE = re.compile(r"^\s*(```|~~~)")
-
-
 def _split(markdown: str) -> tuple[list[str], list[list]]:
-    """spec.md → (preamble lines, [[id, title, body_lines], ...]). Markers and `## ` lines inside a code fence
-    are text (an SVA `## 2` cycle delay at column 0 is not a heading)."""
+    """spec.md → (preamble lines, [[id, title, body_lines], ...])."""
     lines = markdown.splitlines()
     marked = any(_MARK.match(l) for l in lines)
     preamble: list[str] = []
     sections: list[list] = []
     pending: str | None = None
-    fence = False
     for line in lines:
-        if _FENCE.match(line):
-            fence = not fence
-        m = None if fence else _MARK.match(line)
+        m = _MARK.match(line)
         if m:
             pending = m.group(1)
             continue
-        if not fence and line.startswith("## "):
+        if line.startswith("## "):
             t = re.sub(r"^\d+(\.\d+)*\.?\s+", "", line[3:].strip())
             s_id = pending if marked and pending else re.sub(r"[^a-z0-9]+", "_", t.lower()).strip("_") or "section"
             sections.append([s_id, t, []])
@@ -358,31 +279,16 @@ def format_questions(questions: list[Question]) -> str:
     for q in questions:
         lines.append(f"- Q: {q.question} | assumed: {q.default_assumption} | blocking: {'yes' if q.blocking else 'no'} | kind: {q.kind}"
                      + (f" | id: {q.id}" if q.id else ""))
-        lines += [f"  - option: {o.label}" + (f" | means: {o.description}" if o.description else "")
-                  + (f" | impact: {o.impact}" if o.impact else "") for o in q.options]
     return "\n".join(lines) + "\n"
-
-
-_Q_ATTR = re.compile(r"\s\|\s(?=(?:assumed|blocking|kind|id)\s*:)", re.I)
-
-
-_OPT_LINE = re.compile(r"^\s+[-*]\s*option:\s*(.+)$", re.I)
-_OPT_ATTR = re.compile(r"\s\|\s(?=(?:means|impact)\s*:)", re.I)
 
 
 def _parse_questions(lines: list[str]) -> list[Question]:
     out = []
     for line in lines:
-        o = _OPT_LINE.match(line)
-        if o and out:  # `  - option: <label> | means: … | impact: …` under its question
-            parts = [p.strip() for p in _OPT_ATTR.split(o.group(1))]
-            attrs = {k.strip().lower(): v.strip() for k, _, v in (p.partition(":") for p in parts[1:])}
-            out[-1].options.append(QuestionOption(label=parts[0], description=attrs.get("means", ""), impact=attrs.get("impact", "")))
-            continue
         m = _Q_LINE.match(line)
         if not m:
             continue
-        parts = [p.strip() for p in _Q_ATTR.split(m.group(1))]  # only ` | assumed:` etc. separate: text may contain " | "
+        parts = [p.strip() for p in m.group(1).split(" | ")]
         attrs = {}
         for p in parts[1:]:
             key, _, val = p.partition(":")
@@ -408,17 +314,6 @@ def _fields_and_content(body: str) -> tuple[list[FieldValue], str]:
     return fields, "\n".join(lines[i:]).strip()
 
 
-def _drop_wrapping_fence(lines: list[str]) -> list[str]:
-    """A fence around the whole document leaves an unmatched bare ``` at its end: dropped. Every other bare ``` closes
-    a code block (a diagram) and stays."""
-    lines = list(lines)
-    while lines and not lines[-1].strip():
-        lines.pop()
-    if lines and re.match(r"^\s*```+\s*$", lines[-1]) and sum(bool(_FENCE.match(ln)) for ln in lines) % 2:
-        lines.pop()
-    return lines
-
-
 def parse_reply(text: str) -> tuple[SpecDraft | None, list[str]]:
     """The writer's Markdown reply → SpecDraft; problems (empty = usable)."""
     lines = text.strip().splitlines()
@@ -426,15 +321,11 @@ def parse_reply(text: str) -> tuple[SpecDraft | None, list[str]]:
     start = next((i for i, ln in enumerate(lines) if ln.startswith("# ")), None)
     if start is None:
         return None, ["no document title line ('# <title>')"]
-    lines = _drop_wrapping_fence(lines[start:])
-    # the questions block starts at the marker; a model that forgot it still writes the `## Open questions` heading
+    lines = [ln for ln in lines[start:] if not re.match(r"^\s*```+\s*(markdown|md)?\s*$", ln)]
     q_at = next((i for i, ln in enumerate(lines) if ln.strip() == QUESTIONS_MARK), None)
-    if q_at is None:
-        q_at = next((i for i, ln in enumerate(lines) if re.match(r"^##\s+open questions\s*$", ln.strip(), re.I)), None)
     doc, q_lines = (lines[:q_at], lines[q_at + 1:]) if q_at is not None else (lines, [])
-    doc = _drop_wrapping_fence(doc)  # a fence closed before the questions block
     title = doc[0][2:].strip()
-    top = spec_top_module("\n".join(doc[:8]))
+    top = next((m.group(1) for ln in doc[:8] if (m := re.match(r"^Top module:\s*`?([A-Za-z_]\w*)`?", ln.strip()))), "")
     sections = parse_sections("\n".join(doc))
     problems = []
     if not top:

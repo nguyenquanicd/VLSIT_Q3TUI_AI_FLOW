@@ -8,7 +8,7 @@ from q3tui.llm.runtime import Stage
 from q3tui.pipeline.base import StepContext, StepDef, StepFailed
 from q3tui.core.project import read_json, write_json
 from q3tui.steps.common import Question, assign_question_ids, load_answers, render_questions, save_answer
-from q3tui.steps.spec import diagrams, document, prompts
+from q3tui.steps.spec import document, prompts
 from q3tui.core.project import sha256_file
 from q3tui.steps.spec.document import ReviewPatch, SpecDraft, SpecPatch
 from q3tui.steps.spec.template import describe, find_template, load_template
@@ -175,6 +175,7 @@ class SpecStep(StepDef):
         order = [s.id for s in template.sections]
         tmpl = template.by_id()
         text = original = spec_path.read_text()
+        engine.project.backup([spec_path])
 
         if changes["restructure"]:
             text = document.restructure(text, order, {s.id: s.title for s in template.sections}, set(changes["removed"]))
@@ -193,7 +194,6 @@ class SpecStep(StepDef):
                   + (f" Fields: {', '.join(f.name for f in tmpl[sid].fields)}." if tmpl[sid].fields else "")
                   for sid in changes["revised"]]
         patch: SpecPatch | None = None
-        touched: list[str] = []
         if items or ctx.feedback or add or revise or intent_change:
             ctx.emit("log", message=f"updating the affected sections: {len(items)} answer(s), {len(ctx.feedback)} change request(s), "
                                     f"{len(add)} new section(s), {len(revise)} revised section(s)"
@@ -203,37 +203,17 @@ class SpecStep(StepDef):
                                                       add=add, revise=revise, intent_change=intent_change),
                           output_model=SpecPatch)
             patch = (await ctx.llm(stage)).output
-            present = {sid for sid, _, _ in document.parse_sections(text)}
             for sec in patch.sections:
-                sid = sec.id if sec.id in tmpl or sec.id in present else document.section_id_for(sec.title)
-                if sid in tmpl:  # same shape as a freshly written section (template title / field names, no stray heading)
-                    sec = document.normalize_section(sec, tmpl[sid]) or sec
-                    if not sec.content.strip() and not sec.fields:
-                        sec = document.placeholder_section(tmpl[sid])
+                sid = sec.id if sec.id in tmpl or sec.id in text else document.section_id_for(sec.title)
                 title = tmpl[sid].title if sid in tmpl else sec.title
                 text = document.upsert_section(text, sid, title, document.section_body(sec.fields, sec.content), order)
-                touched.append(sid)
-        # a required section the patch left out (or an old spec never had) is a TBD placeholder, never a silent hole
-        for ts in document.missing_required(text, template):
-            text = document.upsert_section(text, ts.id, ts.title, document.section_body([], document.placeholder_section(ts).content), order)
-            touched.append(ts.id)
-            ctx.emit("warning", message=f"required section '{ts.id}' ({ts.title}) was not written; marked TBD")
-        self._warn_uncaptioned(ctx, [(t, b) for sid, t, b in document.parse_sections(text) if sid in set(touched)])
-        self._warn_diagrams(ctx, [(t, b) for sid, t, b in document.parse_sections(text) if sid in set(touched)], text)
-        if text != original:
-            engine.project.backup([spec_path])
-            spec_path.write_text(text)
+        spec_path.write_text(text)
 
         answers = load_answers(answers_path)
         conflicts = list(patch.conflicts) if patch else []
         ctx.unchanged = text == original and not conflicts
         questions = [q for q in previous if q.id not in answers]
-        # fields the update left TBD ask like a first draft does
-        done = {sid for sid in touched}
-        touched_sections = [document.section_out(sid, t, b) for sid, t, b in document.parse_sections(text) if sid in done]
-        conflicts += document.tbd_questions(touched_sections, questions + conflicts)
-        taken = set(answers) | set(engine.state.closed_questions.get(self.name, {}))
-        questions = assign_question_ids(questions + conflicts, previous, "Q-S", taken)
+        questions = assign_question_ids(questions + conflicts, previous, "Q-S")
         write_json(qjson, [q.model_dump() for q in questions])
         title = next((l[2:].strip() for l in text.splitlines() if l.startswith("# ")), "spec")
         qmd.write_text(render_questions(questions, answers, f"Open questions — {title}", engine.state.accepted_defaults.get(self.name, {})))
@@ -241,7 +221,6 @@ class SpecStep(StepDef):
         from q3tui.steps.spec.sections import record_generated
 
         record_generated(engine)
-        engine.state.top = document.spec_top_module(text) or engine.state.top
         ctx.emit("questions", count=len(questions), blocking=sum(q.blocking for q in questions))
         if patch is None:
             ctx.emit("log", message="spec updated without the LLM (template structure only)")
@@ -250,27 +229,8 @@ class SpecStep(StepDef):
             conflict = f"; {len(conflicts)} conflict(s) raised" if conflicts else ""
             ctx.emit("log", message=f"updated {changed}{conflict}. {patch.summary}")
 
-    @staticmethod
-    def _warn_uncaptioned(ctx: StepContext, sections: list[tuple[str, str]]) -> None:
-        """Every table and diagram has a caption line below it (the writer is told so; a miss is flagged, not repaired)."""
-        for title, content in sections:
-            missing = document.uncaptioned(content)
-            if missing:
-                ctx.emit("warning", message=f"section '{title}': {len(missing)} table/diagram without a caption line "
-                                            f"(*Table …* / *Figure …*) — e.g. {missing[0]}")
-
-    @staticmethod
-    def _warn_diagrams(ctx: StepContext, sections: list[tuple[str, str]], spec_text: str) -> None:
-        """Diagram problems left after the writer and the reviewer (diagrams.py checks): warnings, never a failed step."""
-        by_section: dict[str, list[str]] = {}
-        for title, problem in diagrams.check_sections(sections, spec_text):
-            by_section.setdefault(title, []).append(problem)
-        for title, problems in by_section.items():
-            more = f" (+{len(problems) - 2} more)" if len(problems) > 2 else ""
-            ctx.emit("warning", message=f"section '{title}': {'; '.join(problems[:2])}{more}")
-
     async def _write_full(self, ctx: StepContext, template, template_path: Path, answers: dict[str, str]) -> None:
-        """First draft, --regenerate, or a spec that is gone / predates the update bookkeeping: write (and review) the whole spec."""
+        """First draft, intent change, or --regenerate: write (and review) the whole spec."""
         engine = ctx.engine
         intent_path, spec_path, qjson, qmd, answers_path = self._paths(engine)
         intent = intent_path.read_text()
@@ -290,7 +250,7 @@ class SpecStep(StepDef):
 
         if existing is None:
             ctx.emit("log", message="drafting specification from intent")
-            prompt = prompts.draft_prompt(intent=intent, template=tdesc, feedback=ctx.feedback, questions=previous, answers=answers)
+            prompt = prompts.draft_prompt(intent=intent, template=tdesc, feedback=ctx.feedback)
         else:
             ctx.emit("log", message="revising the specification (the intent changed)")
             prompt = prompts.revise_prompt(intent=intent, template=tdesc, spec=existing, questions=previous, answers=answers, feedback=ctx.feedback)
@@ -308,13 +268,9 @@ class SpecStep(StepDef):
             if draft is None:
                 raise StepFailed("the spec writer's reply is not in the expected layout: " + "; ".join(problems))
 
-        rendered = document.render(draft)
-        found = diagrams.check_sections([(sec.title, sec.content) for sec in draft.sections], rendered)
         if ctx.cfg.spec.self_review:
-            ctx.emit("log", message="reviewing specification (returns only the sections it changes)"
-                                    + (f"; {len(found)} diagram problem(s) to fix" if found else ""))
-            review_prompt = prompts.review_prompt(intent=intent, template=tdesc, draft=draft, rendered=rendered, answers=answers,
-                                                  questions=previous, diagram_problems=found)
+            ctx.emit("log", message="reviewing specification (returns only the sections it changes)")
+            review_prompt = prompts.review_prompt(intent=intent, template=tdesc, draft=draft, rendered=document.render(draft), answers=answers)
             review_stage = Stage(name="spec_review", system_prompt=prompts.REVIEWER, prompt=review_prompt, cwd=engine.project.root,
                                  builtin_tools=[], output_model=ReviewPatch)
             review: ReviewPatch = (await ctx.llm(review_stage)).output
@@ -328,25 +284,24 @@ class SpecStep(StepDef):
         if errors:
             ctx.emit("warning", message=f"spec does not follow the template: {'; '.join(errors[:5])}")
             fixed = (await ctx.llm(stage("spec_repair", prompts.repair_prompt(template=tdesc, draft=draft, errors=errors), prompts.WRITER))).output
-            draft = fixed
-            errors = document.check(draft, template)
+            draft, errors = fixed, document.check(fixed, template)
             if errors:
                 ctx.emit("warning", message=f"still {len(errors)} template problem(s); missing parts are marked TBD")
         draft = document.normalize(draft, template)
-        self._warn_uncaptioned(ctx, [(sec.title, sec.content) for sec in draft.sections])
-        self._warn_diagrams(ctx, [(sec.title, sec.content) for sec in draft.sections], document.render(draft))
 
-        draft.questions += document.tbd_questions(draft.sections, draft.questions)
-        taken = set(answers) | set(engine.state.closed_questions.get(self.name, {}))  # answered ids are never given again
-        questions = assign_question_ids(draft.questions, previous, "Q-S", taken)
+        asked = " ".join(q.question.lower() for q in draft.questions)
+        for item in document.tbd_fields(draft):
+            if item.split(": ", 1)[1].lower() not in asked:
+                draft.questions.append(Question(id="", question=f"{item} is TBD — what should it be?", blocking=False, default_assumption=""))
+        questions = assign_question_ids(draft.questions, previous, "Q-S")
         questions = [q for q in questions if q.id not in answers]  # answered ones are resolved in the text
         text = document.render(draft)
         engine.project.backup([spec_path])
         spec_path.parent.mkdir(parents=True, exist_ok=True)
         spec_path.write_text(text)
         write_json(qjson, [q.model_dump() for q in questions])
-        qmd.write_text(render_questions(questions, answers, f"Open questions — {draft.title}", engine.state.accepted_defaults.get(self.name, {})))
-        engine.state.top = draft.top_module
+        qmd.write_text(render_questions(questions, answers, f"Open questions — {draft.title}"))
+        engine.state.top = engine.state.top or draft.top_module
         self._record_meta(engine, template_path, list(answers), template)
         from q3tui.steps.spec.sections import record_generated
 
