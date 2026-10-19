@@ -69,7 +69,7 @@ class ConfigOverrides(BaseModel):
 
 def validate_final_config(data: dict) -> list[str]:
     """Schema problems of a final_config.json. The original schema pins the rules of each constraint to one design's
-    (`"const": "PR_BOOT_ADDR[1:0] == 2'b00"`); here a constraint's rule is the spec's own, so the pin is dropped."""
+    (`"const": "PARA_BOOT_ADDR[1:0] == 2'b00"`); here a constraint's rule is the spec's own, so the pin is dropped."""
     import jsonschema
 
     schema = copy.deepcopy(artifacts.schema_for("final_config.json"))
@@ -299,7 +299,7 @@ class ConfigStep(VlsitStep):
                                                    QuestionOption(label="no — it does not hold", description="then use Other… to say what to change")]))
             elif not verdict:
                 questions.append(Question(id="", question=f"Constraint {c['id']} `{c['rule']}` is violated: {detail}. "
-                                                          "Which parameter value should change (e.g. \"PR_CSR_EN = 1\")?",
+                                                          "Which parameter value should change (e.g. \"PARA_CSR_EN = 1\")?",
                                           blocking=True, default_assumption="", kind="design_choice"))
         for f in followups:  # questions the model asked after reading an answer: they stay until answered
             questions.append(Question(id="", question=f["question"], blocking=True, default_assumption="", kind="design_choice",

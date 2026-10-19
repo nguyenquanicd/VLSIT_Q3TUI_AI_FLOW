@@ -149,8 +149,8 @@ Sau mỗi thao tác: chấm lại ambiguity, cập nhật sva_hint nếu cần.
 
 Đọc bảng §2.2 (Parameter) và §1.1 (Feature list), xây dựng:
 ```
-PR_M_EXT_EN   → [REQ-002, REQ-017]
-PR_CSR_EN     → [REQ-003, REQ-011, REQ-015]
+PARA_M_EXT_EN   → [REQ-002, REQ-017]
+PARA_CSR_EN     → [REQ-003, REQ-011, REQ-015]
 ...
 ```
 Ghi vào trường `parameters_affected` của mỗi requirement.

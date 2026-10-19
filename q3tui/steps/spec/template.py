@@ -43,6 +43,7 @@ class TemplateSection(BaseModel):
 class SpecTemplate(BaseModel):
     model_config = ConfigDict(extra="forbid")
     allow_extra_sections: bool = True
+    instructions: str = ""  # rules for the whole document (requirement ids, naming, N/A / TBD policy), shown to the writer first
     sections: list[TemplateSection]
 
     @field_validator("sections")
@@ -94,6 +95,8 @@ def load_template(spec_dir: Path, builtin: str | None = None) -> tuple[SpecTempl
 def describe(template: SpecTemplate) -> str:
     """Template as prompt text."""
     lines = []
+    if template.instructions.strip():
+        lines += ["Document rules: " + " ".join(template.instructions.split()), ""]
     for i, s in enumerate(template.sections, 1):
         req = "required" if s.required else "optional — include only if it applies"
         lines.append(f"{i}. id={s.id} · \"{s.title}\" ({req})")
@@ -116,7 +119,10 @@ def intent_skeleton(template: SpecTemplate) -> str:
         "",
     ]
     for s in template.sections:
-        out += [f"## {s.title}", "", f"<!-- {' '.join(s.guidance.split())} -->"]
+        hint = " ".join(s.guidance.split())
+        if len(hint) > 200:  # the long guidance of a detailed template: the start tells what the section is about
+            hint = hint[:200].rsplit(" ", 1)[0] + " …"
+        out += [f"## {s.title}", "", f"<!-- {hint} -->"]
         out += [f"- {f.name}: " for f in s.fields]
         out.append("")
     return "\n".join(out)
@@ -127,6 +133,8 @@ def save_project_template(spec_dir: Path, template: SpecTemplate) -> Path:
     path = spec_dir / PROJECT_TEMPLATE_NAME
     path.parent.mkdir(parents=True, exist_ok=True)
     data = template.model_dump(exclude_defaults=False)
+    if not data.get("instructions"):
+        data.pop("instructions", None)
     for sec in data["sections"]:
         if not sec["fields"]:
             del sec["fields"]

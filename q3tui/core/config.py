@@ -28,7 +28,7 @@ class StepModels(_Strict):
     """Per-step overrides (llm.steps.<step>); the vlsit steps are listed, any other flow's steps are extra keys."""
 
     model_config = ConfigDict(extra="allow")
-    spec: StepLLM = Field(default_factory=StepLLM)
+    spec: StepLLM = Field(default_factory=lambda: StepLLM(effort="medium"))  # high: one 6-minute think, 400k+ tokens
     parse: StepLLM = Field(default_factory=StepLLM)
     config: StepLLM = Field(default_factory=StepLLM)
     rtl: StepLLM = Field(default_factory=StepLLM)
@@ -54,7 +54,7 @@ def uses_effort(model: str) -> bool:
 
 
 class LLMConfig(_Strict):
-    model: str = "claude-opus-5-5"
+    model: str = "claude-sonnet-5-5"
     fallback_model: str | None = None
     effort: Literal["low", "medium", "high", "xhigh", "max"] | None = "high"  # null for models without effort (Haiku 4.5)
     # models without effort think without limit by default (a 2.5-minute review on Haiku):

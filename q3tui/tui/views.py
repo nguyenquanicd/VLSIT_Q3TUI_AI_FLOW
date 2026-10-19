@@ -15,6 +15,7 @@ from textual.css.query import NoMatches
 from textual.widgets import DataTable, Select, Static, TabbedContent, TabPane, TextArea
 
 from q3tui.core.icons import icon as I
+from q3tui.tui import mermaid
 from q3tui.tui.i18n import t
 from q3tui.tui.splitter import Splitter
 
@@ -140,20 +141,54 @@ def split_fences(text: str) -> list[tuple[str, str, str]]:
     return parts
 
 
+DIAGRAM_LANGS = (*mermaid.LANGS, "wavedrom", "wavejson")
+
+
 class MdCode(ScrollableContainer):
-    """A fenced code block: never wrapped (diagrams, waveforms, SV); scrolls sideways when wide."""
+    """A fenced code block: never wrapped (diagrams, waveforms, SV); scrolls sideways when wide (←/→ when focused,
+    shift+wheel). A diagram opens full screen with Enter or a double-click (DiagramScreen; the app's `D` too)."""
 
     DEFAULT_CSS = """
     MdCode { height: auto; overflow-x: auto; overflow-y: hidden; margin: 0 0 1 0; background: $boost; }
     MdCode > Static { width: auto; padding: 0 1; }
+    MdCode:focus { background-tint: $accent 10%; }
     """
+    BINDINGS = [Binding("enter", "full_screen", "Full screen", show=False)]
 
     def __init__(self, code: str, lang: str):
         super().__init__()
+        self.code, self.lang, self.caption = code, lang, ""
         self._static = Static(self.renderable(code, lang))
+        self._tip()
+
+    @property
+    def is_diagram(self) -> bool:
+        return self.lang.lower() in DIAGRAM_LANGS
+
+    def _tip(self) -> None:
+        self.tooltip = "Enter / double-click: full screen · ←/→ or shift+wheel: scroll" if self.is_diagram else None
+
+    def action_full_screen(self) -> None:
+        if self.is_diagram:
+            self.app.open_diagrams(self)  # type: ignore[attr-defined]
+
+    def on_click(self, event) -> None:
+        if event.chain >= 2 and self.is_diagram:
+            event.stop()
+            self.app.open_diagrams(self)  # type: ignore[attr-defined]
 
     @staticmethod
     def renderable(code: str, lang: str):
+        if lang.lower() in mermaid.LANGS:  # a diagram: drawn as terminal art (its source when it cannot be drawn)
+            art = mermaid.render(code)
+            if art is not None:
+                return Text(art, no_wrap=True, overflow="ignore")
+            return Text(code, no_wrap=True, overflow="ignore")
+        if lang.lower() in ("wavedrom", "wavejson"):  # a timing diagram: drawn as waveforms (its source when it cannot be read)
+            from q3tui.steps.spec.diagrams import wave_text
+
+            art = wave_text(code)
+            return Text(art if art is not None else code, no_wrap=True, overflow="ignore")
         if lang in ("", "text", "txt", "plain"):
             return Text(code, no_wrap=True, overflow="ignore")
         from rich.syntax import Syntax
@@ -164,7 +199,44 @@ class MdCode(ScrollableContainer):
         yield self._static
 
     def set(self, code: str, lang: str) -> None:
+        self.code, self.lang = code, lang
         self._static.update(self.renderable(code, lang))
+        self._tip()
+
+
+_FIELD_HEAD = re.compile(r"^\|\s*\|\s*\|\s*$")
+_FIELD_SEP = re.compile(r"^\|\s*:?-+:?\s*\|\s*:?-+:?\s*\|\s*$")
+_FIELD_ROW = re.compile(r"^\|\s*\*\*(.+?)\*\*\s*\|\s*(.*?)\s*\|\s*$")
+
+
+def _prose_renderables(body: str) -> list:
+    """Rich renderables of a prose run: Markdown, except the spec's field tables (`| | |` header, `| **name** | value |`
+    rows), which Rich would draw with an empty header and a rule above them — drawn as a plain two-column list."""
+    from rich.table import Table
+
+    lines = body.split("\n")
+    parts: list = []
+    buf: list[str] = []
+    i = 0
+    while i < len(lines):
+        if _FIELD_HEAD.match(lines[i]) and i + 2 < len(lines) and _FIELD_SEP.match(lines[i + 1]) and _FIELD_ROW.match(lines[i + 2]):
+            if "\n".join(buf).strip():
+                parts.append(RichMarkdown("\n".join(buf), code_theme="ansi_dark", hyperlinks=False))
+            buf = []
+            table = Table(show_header=False, box=None, pad_edge=False, padding=(0, 2, 0, 0), expand=False)
+            table.add_column(style="bold", no_wrap=True)
+            table.add_column()
+            i += 2
+            while i < len(lines) and (m := _FIELD_ROW.match(lines[i])):
+                table.add_row(m.group(1).strip(), RichMarkdown(m.group(2).replace("\\|", "|")))
+                i += 1
+            parts.append(table)
+            continue
+        buf.append(lines[i])
+        i += 1
+    if "\n".join(buf).strip() or not parts:
+        parts.append(RichMarkdown("\n".join(buf), code_theme="ansi_dark", hyperlinks=False))
+    return parts
 
 
 class MdProse(Static):
@@ -194,8 +266,11 @@ class MdProse(Static):
 
         self._width = width
         console = Console(width=width, file=StringIO(), force_terminal=True, color_system="truecolor")
-        lines = console.render_lines(RichMarkdown(self.body, code_theme="ansi_dark", hyperlinks=False),
-                                     console.options.update(width=width), pad=False)
+        lines = []
+        for part in _prose_renderables(self.body):
+            if lines:
+                lines.append([])  # a blank line between a field table and the prose around it
+            lines += console.render_lines(part, console.options.update(width=width), pad=False)
         out = Text()
         for i, line in enumerate(lines):
             if i:
@@ -232,6 +307,7 @@ class Markdown(Vertical):
         parts = split_fences(self.source)
         self._kinds = [p[0] for p in parts]
         self._parts = [self._make(p) for p in parts]
+        _set_captions(self._parts, parts)
         yield from self._parts
 
     def update_md(self, text: str) -> None:
@@ -248,12 +324,27 @@ class Markdown(Vertical):
                     widget.set(body, lang)
                 else:
                     widget.set(body)
+            _set_captions(self._parts, parts)
             return
         self._kinds = kinds
         self.remove_children()
         self._parts = [self._make(p) for p in parts]
+        _set_captions(self._parts, parts)
         if self._parts:
             self.mount_all(self._parts)
+
+
+_CAPTION_LINE = re.compile(r"^\s*\*?\s*(Figure|Table)\b[^\n]*", re.I)
+
+
+def _set_captions(widgets: list, parts: list[tuple[str, str, str]]) -> None:
+    """A code block's caption = the `*Figure …*` line right after it (the title of its full-screen view)."""
+    for i, (kind, _body, _lang) in enumerate(parts):
+        if kind != "code":
+            continue
+        nxt = parts[i + 1][1].lstrip("\n") if i + 1 < len(parts) and parts[i + 1][0] == "md" else ""
+        m = _CAPTION_LINE.match(nxt.split("\n", 1)[0])
+        widgets[i].caption = m.group(0).strip().strip("*_ ") if m else ""
 
 
 def set_markdown(widget: Markdown, text: str) -> None:
@@ -527,21 +618,46 @@ class SectionsPanel(Horizontal):
         Binding("left_square_bracket", "move(-1)", "Move up"),
         Binding("right_square_bracket", "move(1)", "Move down"),
         Binding("v", "review", "Mark reviewed"),
+        Binding("w", "feedback", "Write feedback"),
+        Binding("ctrl+s", "send_feedback", "Send feedback"),
+        Binding("escape", "leave_feedback", "Back to sections", show=False),
         Binding("E", "edit_template", "Edit template"),
     ]
     DEFAULT_CSS = """
-    SectionsPanel > Vertical { width: 72; }
+    SectionsPanel > Vertical#spec-sections-left { width: 72; }
     SectionsPanel DataTable { height: 1fr; }
-    SectionsPanel > VerticalScroll { width: 1fr; padding: 0 1; }
+    SectionsPanel > #spec-section-right { width: 1fr; }
+    SectionsPanel #spec-section-right > VerticalScroll { height: 1fr; padding: 0 1; }
+    SectionsPanel #spec-feedback { height: auto; max-height: 16; border-top: solid $primary; padding: 0 1; }
+    SectionsPanel #spec-feedback-title { text-style: bold; }
+    SectionsPanel #spec-feedback-pending { color: $warning; }
+    SectionsPanel #spec-feedback-text { height: 5; }
+    SectionsPanel #spec-feedback Horizontal { height: auto; }
+    SectionsPanel #spec-feedback Button { margin-right: 1; }
     """
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._fb_sid: str | None = None  # the section the feedback box is about
+        self._drafts: dict[str, str] = {}  # unsent feedback per section: it survives moving to another row
+
     def compose(self) -> ComposeResult:
-        with Vertical():
+        from textual.widgets import Button
+
+        with Vertical(id="spec-sections-left"):
             yield IdTable(cursor_type="row", zebra_stripes=True, id="spec-sections-table")
-            yield Static("Enter edit · v reviewed · C comment · n add · d delete · t required · [ ] move · E template", classes="hint")
+            yield Static("Enter edit · v reviewed · w feedback · C comment · n add · d delete · t required · [ ] move · E template", classes="hint")
         yield Splitter(vertical=True, id="split-sections")
-        with VerticalScroll():
-            yield Markdown(id="spec-section-md")
+        with Vertical(id="spec-section-right"):
+            with VerticalScroll():
+                yield Markdown(id="spec-section-md")
+            with Vertical(id="spec-feedback"):  # feedback for the highlighted section: queued as a change request scoped to it
+                yield Static("", id="spec-feedback-title")
+                yield Static("", id="spec-feedback-pending")
+                yield TextArea("", id="spec-feedback-text", soft_wrap=True, show_line_numbers=False)
+                with Horizontal():
+                    yield Button("Send feedback (ctrl+s)", id="spec-feedback-send", variant="primary")
+                    yield Button("Clear", id="spec-feedback-clear")
 
     def on_mount(self) -> None:
         self.query_one(DataTable).add_columns("#", "Section", "", "Status")
@@ -623,6 +739,60 @@ class SectionsPanel(Horizontal):
         if written:
             parts += [f"## {written[0]}", written[1] or "_(empty)_"]
         set_markdown(self.query_one(Markdown), "\n\n".join(parts))
+        self._show_feedback(sid, written[0] if written else (ts.title if ts else sid))
+
+    # -- feedback per section --
+
+    def _pending_feedback(self, title: str) -> list[str]:
+        """Change requests already queued for this section (ops.request_change prefixes them `In section '<title>':`)."""
+        prefix = f"in section '{title.lower()}':"
+        return [f for f in self.capp.engine.state.feedback.get("spec", []) if f.lower().startswith(prefix)]
+
+    def _show_feedback(self, sid: str, title: str) -> None:
+        box = self.query_one("#spec-feedback-text", TextArea)
+        if self._fb_sid is not None and self._fb_sid != sid:
+            self._drafts[self._fb_sid] = box.text
+        if self._fb_sid != sid:
+            box.load_text(self._drafts.get(sid, ""))
+        self._fb_sid = sid
+        self.query_one("#spec-feedback-title", Static).update(f"Feedback for “{title}”")
+        pending = self._pending_feedback(title)
+        self.query_one("#spec-feedback-pending", Static).update(
+            "\n".join([f"↻ queued ({len(pending)}), applied on the next spec run (r):", *(f"  · {f.split(':', 1)[1].strip()}" for f in pending)])
+            if pending else "")
+
+    def action_feedback(self) -> None:
+        if self._selected():
+            self.query_one("#spec-feedback-text", TextArea).focus()
+
+    def action_leave_feedback(self) -> None:
+        if self.query_one("#spec-feedback-text", TextArea).has_focus:
+            self.query_one(DataTable).focus()
+
+    def action_send_feedback(self) -> None:
+        sid = self._fb_sid
+        box = self.query_one("#spec-feedback-text", TextArea)
+        text = box.text.strip()
+        if not sid or not text:
+            self.capp.notify("write what should change in this section first (w), then ctrl+s", severity="warning")
+            return
+        title, _ = self._spec_sections().get(sid, (None, ""))
+        if title is None:
+            title = next((s.title for s in self.capp.ops.template().sections if s.id == sid), sid)
+        box.load_text("")
+        self._drafts.pop(sid, None)
+        self._do(self.capp.ops.request_change, "spec", text, title)
+        self.query_one(DataTable).focus()
+
+    def on_button_pressed(self, event) -> None:
+        if event.button.id == "spec-feedback-send":
+            event.stop()
+            self.action_send_feedback()
+        elif event.button.id == "spec-feedback-clear":
+            event.stop()
+            self.query_one("#spec-feedback-text", TextArea).load_text("")
+            if self._fb_sid:
+                self._drafts.pop(self._fb_sid, None)
 
     def on_data_table_row_highlighted(self, event: DataTable.RowHighlighted) -> None:
         event.stop()

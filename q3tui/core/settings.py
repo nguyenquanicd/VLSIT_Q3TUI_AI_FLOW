@@ -10,8 +10,8 @@ from dataclasses import dataclass, field
 from typing import Any
 
 MODELS = [
-    ("claude-opus-5-5", "Opus 5.5 — best quality (default)"),
-    ("claude-sonnet-5-5", "Sonnet 5.5 — faster, cheaper"),
+    ("claude-opus-5-5", "Opus 5.5 — best quality"),
+    ("claude-sonnet-5-5", "Sonnet 5.5 — fast, cheaper (default)"),
     ("claude-haiku-4-5", "Haiku 4.5 — cheapest, for trying the flow (no effort setting)"),
     ("claude-fable-5-1", "Fable 5.1 — most capable, most expensive"),
 ]

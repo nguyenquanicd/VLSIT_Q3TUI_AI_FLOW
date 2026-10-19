@@ -121,4 +121,4 @@ Chọn hint dựa trên nature của requirement, không phải theo cảm tính
 - [ ] Bước 6 có tên parameter và module thực tế
 - [ ] Gate 1 yêu cầu `needs_human_decision == 0`
 - [ ] Schema path trỏ đúng (`schemas/structured_spec_schema.json`)
-- [ ] Không có hardcode tên cũ (`rv32im_`, `PR_M_EXT_EN`, v.v.) còn sót
+- [ ] Không có hardcode tên cũ (`rv32im_`, `PARA_M_EXT_EN`, v.v.) còn sót
