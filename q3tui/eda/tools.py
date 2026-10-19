@@ -325,7 +325,7 @@ def parse_generic(text: str, patterns: dict | None = None) -> list[ToolDiagnosti
 
 
 _VERIBLE = re.compile(rf"^(?:\S+\.\w+:\s+)?(?P<file>[^\s:]+\.\w+):(?P<line>\d+):(?P<col>\d+)(?:-\d+)?:\s*(?P<msg>.*?)\s*$")  # (the formatter prefixes `file: `)
-_VERIBLE_TOOL = re.compile(r"^(?:ERROR:|[EF]\d{4} \S+ \d+ \S+\] )\s*(?P<msg>.*)$")
+_VERIBLE_TOOL = re.compile(r"^(?:ERROR:|[EF]\d{4}\s+\S+\s+\d+\s+\S+\]\s)\s*(?P<msg>.*)$")
 _VERIBLE_RULE = re.compile(r"\s*\[(?P<rule>[a-z][a-z0-9]*(?:-[a-z0-9]+)*)\]\s*$")
 
 

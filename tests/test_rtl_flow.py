@@ -61,8 +61,9 @@ def test_parse_verible_real_output():  # (captured from verible v0.0-4296-g0f262
     assert [(x.severity, x.file, x.line) for x in f] == [("error", "s2.sv", 3)]
     # the tool refusing its own flags: an error with no file (exit code 1 for a bad rule, 2 for a value out of range)
     t = T.parse_log("verible", "ERROR: Illegal value '+bogus-rule' specified for flag 'rules'; [ERR] Invalid flag \"bogus-rule\"\n"
-                               "E1019 01:21:19.506875 2024362 verilog-linter.cc:148] Fatal error: line-length length: 20 out of range [40...1000]\n")
-    assert [(x.severity, x.code, x.file) for x in t] == [("error", "TOOL", None), ("error", "TOOL", None)] and "out of range" in t[1].message
+                               "E1019 01:21:19.506875 2024362 verilog-linter.cc:148] Fatal error: line-length length: 20 out of range [40...1000]\n"
+                               "E1019 19:03:47.772217  727747 verilog-linter.cc:148] Fatal error: the pid is padded with two spaces\n")
+    assert [(x.severity, x.code, x.file) for x in t] == [("error", "TOOL", None)] * 3 and "out of range" in t[1].message and "padded" in t[2].message
 
 
 def test_verible_findings_carry_the_source_line(tmp_path):
