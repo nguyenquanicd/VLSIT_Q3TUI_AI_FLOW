@@ -1,0 +1,44 @@
+{
+  "schema_version": 1,
+  "ip_name": "axi4_sram_ctrl",
+  "sources": [
+    {
+      "kind": "design_spec",
+      "path": "spec/spec.md",
+      "sha256": "a219a9b6c887e95175ae38e57dded8c712463a8750a5e789f10ecf40dd29cd08",
+      "revision": "spec_update_3 (VLSIT instance names in section 6); parameters renamed PR_* to PARA_* to match the released RTL (verification owner, 2026-10-19)",
+      "approved": true,
+      "approved_at": "2026-10-08T18:57:39"
+    },
+    {
+      "kind": "structured_spec",
+      "path": "schemas/structured_spec.json",
+      "sha256": "b645b7a6a11e4f483f0d54edbb2aec53ed19215a497944e7665f3272165d500a",
+      "revision": "spec_update_3 (VLSIT instance names in section 6); parameters renamed PR_* to PARA_* to match the released RTL (verification owner, 2026-10-19)",
+      "approved": true,
+      "approved_at": "2026-10-08T18:57:39"
+    },
+    {
+      "kind": "final_config",
+      "path": "schemas/final_config.json",
+      "sha256": "0259273dd842c8868a81c25d1af3c67479366b2ee9cf00ab0f6daf0e517d5645",
+      "revision": "spec_update_3 (VLSIT instance names in section 6); parameters renamed PR_* to PARA_* to match the released RTL (verification owner, 2026-10-19)",
+      "approved": true,
+      "approved_at": "2026-10-08T18:57:39"
+    }
+  ],
+  "excluded": [
+    {
+      "where": "schemas/structured_spec.json: requirements[].rtl_modules",
+      "reason": "names RTL modules that implement the requirement (implementation structure)"
+    },
+    {
+      "where": "schemas/structured_spec.json: modules",
+      "reason": "module hierarchy of the implementation"
+    },
+    {
+      "where": "schemas/structured_spec.json: module_order",
+      "reason": "implementation build order"
+    }
+  ]
+}

@@ -8,3 +8,5 @@ q3tui_artifacts/
 *.log
 .q3tui/
 .nfs*
+!examples/axi4_sram_ctrl/.q3tui/
+!examples/axi4_sram_ctrl/.q3tui/pipeline.json

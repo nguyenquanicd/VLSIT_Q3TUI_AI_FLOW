@@ -1,0 +1,1673 @@
+{
+  "metadata": {
+    "ip_name": "axi4_sram_ctrl",
+    "spec_revision": "spec_update_3 (VLSIT instance names in section 6); parameters renamed PR_* to PARA_* to match the released RTL (verification owner, 2026-10-19)",
+    "phase": 1,
+    "gate_status": "approved",
+    "gate_1_approved": true,
+    "approved_at": "2026-10-08T18:57:39",
+    "top_module": "m_vlsi_axi4_sram",
+    "description": "AXI4 (full) slave controller that bridges one AXI4 master to one or more synchronous SRAM banks with one-cycle read latency, using per-channel FIFOs, two address FSMs and a shared round-robin read/write arbiter, with optional XOR-hashed multi-bank operation."
+  },
+  "requirements": [
+    {
+      "req_id": "REQ-001",
+      "text": "The design shall use a single clock domain i_clk; all sequential state shall change only on the rising edge of i_clk or on assertion of i_rst_n.",
+      "category": "interface",
+      "ambiguity_score": 0.05,
+      "needs_review": false,
+      "needs_human_decision": false,
+      "source_section": "4 Interface / Clock and reset",
+      "parameters_affected": [],
+      "feature_id": "F01",
+      "sva_hint": null,
+      "optional": false,
+      "rtl_modules": [
+        "m_vlsi_axi4_sram",
+        "m_vlsi_axfsm",
+        "m_vlsi_fifo",
+        "m_vlsi_arbiter",
+        "m_vlsi_sram_fanout"
+      ]
+    },
+    {
+      "req_id": "REQ-002",
+      "text": "i_rst_n shall be an active-low reset with asynchronous assertion; its deassertion shall be synchronous to i_clk (synchronizer outside the block).",
+      "category": "interface",
+      "ambiguity_score": 0.2,
+      "needs_review": false,
+      "needs_human_decision": false,
+      "source_section": "4 Interface / Clock and reset",
+      "parameters_affected": [],
+      "feature_id": "F01",
+      "sva_hint": "assume",
+      "optional": false,
+      "rtl_modules": [
+        "m_vlsi_axi4_sram",
+        "m_vlsi_axfsm",
+        "m_vlsi_fifo",
+        "m_vlsi_arbiter",
+        "m_vlsi_sram_fanout"
+      ]
+    },
+    {
+      "req_id": "REQ-003",
+      "text": "The AXI write address channel shall consist of i_awaddr[PARA_ADDR_WD-1:0], i_awvalid, o_awready, i_awburst[1:0], i_awlen[PARA_LEN_WD-1:0], i_awid[PARA_ID_WD-1:0] and i_awsize[2:0].",
+      "category": "interface",
+      "ambiguity_score": 0.05,
+      "needs_review": false,
+      "needs_human_decision": false,
+      "source_section": "4 Interface / AW",
+      "parameters_affected": [
+        "PARA_ADDR_WD",
+        "PARA_LEN_WD",
+        "PARA_ID_WD"
+      ],
+      "feature_id": "F01",
+      "sva_hint": "static",
+      "optional": false,
+      "rtl_modules": [
+        "m_vlsi_axi4_sram"
+      ]
+    },
+    {
+      "req_id": "REQ-004",
+      "text": "The AXI write data channel shall consist of i_wdata[PARA_DATA_WD-1:0], i_wstrb[PARA_DATA_WD/8-1:0], i_wvalid, o_wready and i_wlast.",
+      "category": "interface",
+      "ambiguity_score": 0.05,
+      "needs_review": false,
+      "needs_human_decision": false,
+      "source_section": "4 Interface / W",
+      "parameters_affected": [
+        "PARA_DATA_WD"
+      ],
+      "feature_id": "F01",
+      "sva_hint": "static",
+      "optional": false,
+      "rtl_modules": [
+        "m_vlsi_axi4_sram"
+      ]
+    },
+    {
+      "req_id": "REQ-005",
+      "text": "The AXI write response channel shall consist of o_bid[PARA_ID_WD-1:0], o_bresp[1:0], o_bvalid and i_bready.",
+      "category": "interface",
+      "ambiguity_score": 0.05,
+      "needs_review": false,
+      "needs_human_decision": false,
+      "source_section": "4 Interface / B",
+      "parameters_affected": [
+        "PARA_ID_WD"
+      ],
+      "feature_id": "F01",
+      "sva_hint": "static",
+      "optional": false,
+      "rtl_modules": [
+        "m_vlsi_axi4_sram"
+      ]
+    },
+    {
+      "req_id": "REQ-006",
+      "text": "The AXI read address channel shall consist of i_araddr[PARA_ADDR_WD-1:0], i_arvalid, o_arready, i_arburst[1:0], i_arlen[PARA_LEN_WD-1:0], i_arid[PARA_ID_WD-1:0] and i_arsize[2:0].",
+      "category": "interface",
+      "ambiguity_score": 0.05,
+      "needs_review": false,
+      "needs_human_decision": false,
+      "source_section": "4 Interface / AR",
+      "parameters_affected": [
+        "PARA_ADDR_WD",
+        "PARA_LEN_WD",
+        "PARA_ID_WD"
+      ],
+      "feature_id": "F01",
+      "sva_hint": "static",
+      "optional": false,
+      "rtl_modules": [
+        "m_vlsi_axi4_sram"
+      ]
+    },
+    {
+      "req_id": "REQ-007",
+      "text": "The AXI read data channel shall consist of o_rid[PARA_ID_WD-1:0], o_rdata[PARA_DATA_WD-1:0], o_rresp[1:0], o_rvalid, o_rlast and i_rready; o_rdata shall always carry the full SRAM word.",
+      "category": "interface",
+      "ambiguity_score": 0.05,
+      "needs_review": false,
+      "needs_human_decision": false,
+      "source_section": "4 Interface / R",
+      "parameters_affected": [
+        "PARA_ID_WD",
+        "PARA_DATA_WD"
+      ],
+      "feature_id": "F01",
+      "sva_hint": "static",
+      "optional": false,
+      "rtl_modules": [
+        "m_vlsi_axi4_sram"
+      ]
+    },
+    {
+      "req_id": "REQ-008",
+      "text": "The SRAM interface shall provide per-bank packed arrays o_sram_addr[PARA_NUM_BANKS-1:0][PARA_ADDR_WD-1:0], o_sram_wdata[PARA_NUM_BANKS-1:0][PARA_DATA_WD-1:0], o_sram_wstrb[PARA_NUM_BANKS-1:0][PARA_DATA_WD/8-1:0], o_sram_we[PARA_NUM_BANKS-1:0], o_sram_oe[PARA_NUM_BANKS-1:0] (active high) and input i_sram_rdata[PARA_NUM_BANKS-1:0][PARA_DATA_WD-1:0]; with PARA_NUM_BANKS = 1 it shall be bit-for-bit the single-SRAM interface.",
+      "category": "interface",
+      "ambiguity_score": 0.05,
+      "needs_review": false,
+      "needs_human_decision": false,
+      "source_section": "4 Interface / SRAM interface",
+      "parameters_affected": [
+        "PARA_NUM_BANKS",
+        "PARA_ADDR_WD",
+        "PARA_DATA_WD"
+      ],
+      "feature_id": "F11",
+      "sva_hint": "static",
+      "optional": false,
+      "rtl_modules": [
+        "m_vlsi_axi4_sram",
+        "m_vlsi_sram_fanout"
+      ]
+    },
+    {
+      "req_id": "REQ-009",
+      "text": "o_awready shall be 1 exactly when the write address FSM is in S_IDLE and AWFIFO is not full (current-cycle flag); o_arready likewise for the read FSM and ARFIFO. Neither shall depend combinationally on the corresponding VALID input, and a FIFO pop in the same cycle shall not raise READY.",
+      "category": "interface",
+      "ambiguity_score": 0.05,
+      "needs_review": false,
+      "needs_human_decision": false,
+      "source_section": "4 Interface / B2",
+      "parameters_affected": [
+        "PARA_FIFO_DEPTH"
+      ],
+      "feature_id": "F09",
+      "sva_hint": "property",
+      "optional": false,
+      "rtl_modules": [
+        "m_vlsi_axfsm",
+        "m_vlsi_axi4_sram"
+      ]
+    },
+    {
+      "req_id": "REQ-010",
+      "text": "o_wready shall equal NOT(WFIFO full) on the current-cycle flag and shall not depend on i_wvalid; {i_wstrb, i_wdata} shall be pushed into WFIFO when i_wvalid & o_wready, and W beats may be accepted before their AW burst.",
+      "category": "interface",
+      "ambiguity_score": 0.05,
+      "needs_review": false,
+      "needs_human_decision": false,
+      "source_section": "4 Interface / B3; 5.5",
+      "parameters_affected": [
+        "PARA_FIFO_DEPTH"
+      ],
+      "feature_id": "F09",
+      "sva_hint": "property",
+      "optional": false,
+      "rtl_modules": [
+        "m_vlsi_bank_arb",
+        "m_vlsi_axi_fifopack"
+      ]
+    },
+    {
+      "req_id": "REQ-011",
+      "text": "o_bvalid shall equal NOT(BFIFO empty) and o_bid/o_bresp shall be the BFIFO head entry; once o_bvalid is 1, it and the payload shall stay stable until the cycle where i_bready = 1, when the entry is popped.",
+      "category": "interface",
+      "ambiguity_score": 0.05,
+      "needs_review": false,
+      "needs_human_decision": false,
+      "source_section": "4 Interface / B4; 5.9",
+      "parameters_affected": [],
+      "feature_id": "F09",
+      "sva_hint": "property",
+      "optional": false,
+      "rtl_modules": [
+        "m_vlsi_axi_fifopack",
+        "m_vlsi_bank_arb",
+        "m_vlsi_fifo"
+      ]
+    },
+    {
+      "req_id": "REQ-012",
+      "text": "o_rvalid shall equal NOT(RFIFO empty) and o_rid/o_rdata/o_rresp/o_rlast shall be the RFIFO head entry; they shall stay stable until popped in a cycle where i_rready = 1.",
+      "category": "interface",
+      "ambiguity_score": 0.05,
+      "needs_review": false,
+      "needs_human_decision": false,
+      "source_section": "4 Interface / B5; 5.9",
+      "parameters_affected": [],
+      "feature_id": "F09",
+      "sva_hint": "property",
+      "optional": false,
+      "rtl_modules": [
+        "m_vlsi_axi_fifopack",
+        "m_vlsi_bank_arb",
+        "m_vlsi_fifo"
+      ]
+    },
+    {
+      "req_id": "REQ-013",
+      "text": "Response encodings shall be OKAY = 2'b00 and SLVERR = 2'b10; EXOKAY and DECERR shall never be generated on o_bresp or o_rresp.",
+      "category": "interface",
+      "ambiguity_score": 0.0,
+      "needs_review": false,
+      "needs_human_decision": false,
+      "source_section": "4 Interface / B6",
+      "parameters_affected": [],
+      "feature_id": "F07",
+      "sva_hint": "property",
+      "optional": false,
+      "rtl_modules": [
+        "m_vlsi_axi_fifopack"
+      ]
+    },
+    {
+      "req_id": "REQ-014",
+      "text": "The controller shall return exactly one B response per accepted AW burst, and exactly AxLEN+1 R beats per accepted AR burst with o_rlast = 1 only on the last beat.",
+      "category": "interface",
+      "ambiguity_score": 0.05,
+      "needs_review": false,
+      "needs_human_decision": false,
+      "source_section": "4 Interface / B7",
+      "parameters_affected": [
+        "PARA_LEN_WD"
+      ],
+      "feature_id": "F01",
+      "sva_hint": "sequence",
+      "optional": false,
+      "rtl_modules": [
+        "m_vlsi_axfsm",
+        "m_vlsi_bank_arb",
+        "m_vlsi_axi_fifopack"
+      ]
+    },
+    {
+      "req_id": "REQ-015",
+      "text": "The AXI master shall keep VALID and its payload stable from assertion until the handshake on every AXI input channel (AW, W, AR, and READY-side B/R are not constrained).",
+      "category": "interface",
+      "ambiguity_score": 0.05,
+      "needs_review": false,
+      "needs_human_decision": false,
+      "source_section": "4 Interface / B8",
+      "parameters_affected": [],
+      "feature_id": "F01",
+      "sva_hint": "assume",
+      "optional": false,
+      "rtl_modules": [
+        "m_vlsi_axi4_sram"
+      ]
+    },
+    {
+      "req_id": "REQ-016",
+      "text": "The AXI master shall send exactly AWLEN+1 W beats per AW burst, in AW order without write-data interleaving, shall use WRAP lengths of 2, 4, 8 or 16 beats only, and should not use AxBURST = 2'b11.",
+      "category": "interface",
+      "ambiguity_score": 0.1,
+      "needs_review": false,
+      "needs_human_decision": false,
+      "source_section": "4 Interface / B8",
+      "parameters_affected": [],
+      "feature_id": "F02",
+      "sva_hint": "assume",
+      "optional": false,
+      "rtl_modules": [
+        "m_vlsi_axi4_sram"
+      ]
+    },
+    {
+      "req_id": "REQ-017",
+      "text": "Each SRAM bank k shall write o_sram_wdata[k] into the byte lanes selected by o_sram_wstrb[k] at word o_sram_addr[k][PARA_ADDR_WD-1:BYTE_LSB] at the rising edge ending a cycle with o_sram_we[k] = 1 (unselected bytes unchanged), and shall present the word addressed in a cycle with o_sram_oe[k] = 1 on i_sram_rdata[k] throughout the following cycle (exactly one-cycle read latency); the low BYTE_LSB address bits are ignored and each bank holds the full addressable range.",
+      "category": "interface",
+      "ambiguity_score": 0.15,
+      "needs_review": false,
+      "needs_human_decision": false,
+      "source_section": "4 Interface / B9",
+      "parameters_affected": [
+        "PARA_DATA_WD",
+        "PARA_ADDR_WD",
+        "PARA_NUM_BANKS"
+      ],
+      "feature_id": "F06",
+      "sva_hint": "assume",
+      "optional": false,
+      "rtl_modules": [
+        "m_vlsi_axi4_sram"
+      ]
+    },
+    {
+      "req_id": "REQ-018",
+      "text": "In any cycle, o_sram_we[k] and o_sram_oe[k] shall not both be 1 for the same bank k.",
+      "category": "interface",
+      "ambiguity_score": 0.0,
+      "needs_review": false,
+      "needs_human_decision": false,
+      "source_section": "4 Interface / B10",
+      "parameters_affected": [
+        "PARA_NUM_BANKS"
+      ],
+      "feature_id": "F10",
+      "sva_hint": "property",
+      "optional": false,
+      "rtl_modules": [
+        "m_vlsi_sram_fanout",
+        "m_vlsi_bank_arb"
+      ]
+    },
+    {
+      "req_id": "REQ-019",
+      "text": "The controller shall be an AXI4 slave with independent read and write channels: AW and AR handshakes in the same cycle shall be independent and both accepted when their READYs are 1.",
+      "category": "functional",
+      "ambiguity_score": 0.05,
+      "needs_review": false,
+      "needs_human_decision": false,
+      "source_section": "2 F01; 5.13",
+      "parameters_affected": [],
+      "feature_id": "F01",
+      "sva_hint": "cover",
+      "optional": false,
+      "rtl_modules": [
+        "m_vlsi_axi4_sram",
+        "m_vlsi_axfsm"
+      ]
+    },
+    {
+      "req_id": "REQ-020",
+      "text": "After each pushed beat the address FSM shall keep the next beat address unchanged for FIXED bursts (2'b00) and set it to addr + 2**AxSIZE for INCR bursts (2'b01), using the registered AxSIZE; address arithmetic shall be modulo 2**PARA_ADDR_WD with no 4 KB boundary check.",
+      "category": "functional",
+      "ambiguity_score": 0.15,
+      "needs_review": false,
+      "needs_human_decision": false,
+      "source_section": "5.4",
+      "parameters_affected": [
+        "PARA_ADDR_WD"
+      ],
+      "feature_id": "F02",
+      "sva_hint": "property",
+      "optional": false,
+      "rtl_modules": [
+        "m_vlsi_axfsm"
+      ]
+    },
+    {
+      "req_id": "REQ-021",
+      "text": "For WRAP bursts (2'b10) and reserved AxBURST = 2'b11, the next address shall be addr + size_bytes unless that equals wrap_lower + size_bytes*burst_len, in which case it shall be wrap_lower, where wrap_lower = start_addr & ~(size_bytes*burst_len − 1) and burst_len = AxLEN+1 are computed and latched at the handshake (e.g. 4-beat 32-bit WRAP from 0x88 visits 0x88, 0x8C, 0x80, 0x84). AxBURST = 2'b11 shall not by itself cause SLVERR.",
+      "category": "functional",
+      "ambiguity_score": 0.1,
+      "needs_review": false,
+      "needs_human_decision": false,
+      "source_section": "5.4",
+      "parameters_affected": [
+        "PARA_ADDR_WD"
+      ],
+      "feature_id": "F02",
+      "sva_hint": "property",
+      "optional": false,
+      "rtl_modules": [
+        "m_vlsi_axfsm"
+      ]
+    },
+    {
+      "req_id": "REQ-022",
+      "text": "Bursts of AxLEN = 0 to 2**PARA_LEN_WD − 1 (1 to 256 beats at the default) shall be handled completely: the beat counter shall be PARA_LEN_WD+1 bits wide, load AxLEN+1 at the handshake, decrement only while non-zero and never wrap.",
+      "category": "functional",
+      "ambiguity_score": 0.05,
+      "needs_review": false,
+      "needs_human_decision": false,
+      "source_section": "5.2; 5.13",
+      "parameters_affected": [
+        "PARA_LEN_WD"
+      ],
+      "feature_id": "F03",
+      "sva_hint": "property",
+      "optional": false,
+      "rtl_modules": [
+        "m_vlsi_axfsm"
+      ]
+    },
+    {
+      "req_id": "REQ-023",
+      "text": "Data, address and ID widths shall be configurable through PARA_DATA_WD, PARA_ADDR_WD and PARA_ID_WD; all port, FIFO and internal widths shall be derived from them.",
+      "category": "functional",
+      "ambiguity_score": 0.05,
+      "needs_review": false,
+      "needs_human_decision": false,
+      "source_section": "2 F04; 3",
+      "parameters_affected": [
+        "PARA_DATA_WD",
+        "PARA_ADDR_WD",
+        "PARA_ID_WD"
+      ],
+      "feature_id": "F04",
+      "sva_hint": "static",
+      "optional": false,
+      "rtl_modules": [
+        "m_vlsi_axi4_sram",
+        "m_vlsi_axfsm",
+        "m_vlsi_fifo",
+        "m_vlsi_sram_misc",
+        "m_vlsi_axi_fifopack",
+        "m_vlsi_bank_arb",
+        "m_vlsi_sram_fanout"
+      ]
+    },
+    {
+      "req_id": "REQ-024",
+      "text": "Narrow transfers: AxSIZE shall only change the address stride, the WRAP window and the error check; the SRAM shall always be accessed as a full PARA_DATA_WD word, writes narrowed only by WSTRB and reads returning the full word on o_rdata.",
+      "category": "functional",
+      "ambiguity_score": 0.1,
+      "needs_review": false,
+      "needs_human_decision": false,
+      "source_section": "5.11",
+      "parameters_affected": [
+        "PARA_DATA_WD"
+      ],
+      "feature_id": "F05",
+      "sva_hint": "property",
+      "optional": false,
+      "rtl_modules": [
+        "m_vlsi_axfsm",
+        "m_vlsi_axi_fifopack",
+        "m_vlsi_sram_fanout"
+      ]
+    },
+    {
+      "req_id": "REQ-025",
+      "text": "o_sram_wstrb[k] shall equal the WFIFO-head strobe (i_wstrb pass-through) while o_sram_we[k] = 1 and shall be all-zero whenever o_sram_we[k] = 0, including SLVERR beats, non-selected banks, read-only and idle cycles; the controller shall do no other byte masking.",
+      "category": "functional",
+      "ambiguity_score": 0.05,
+      "needs_review": false,
+      "needs_human_decision": false,
+      "source_section": "2 F06; 5.7",
+      "parameters_affected": [
+        "PARA_DATA_WD",
+        "PARA_NUM_BANKS"
+      ],
+      "feature_id": "F06",
+      "sva_hint": "property",
+      "optional": false,
+      "rtl_modules": [
+        "m_vlsi_sram_fanout"
+      ]
+    },
+    {
+      "req_id": "REQ-026",
+      "text": "At the AW/AR handshake the address FSM shall set err = 1 if i_axsize > MAX_SIZE or (i_axaddr & (2**i_axsize − 1)) != 0, latch it for the whole burst, attach it to every beat, and still generate all AxLEN+1 beats at a 2**AxSIZE stride; there shall be no sticky error state, so later aligned bursts return OKAY.",
+      "category": "functional",
+      "ambiguity_score": 0.05,
+      "needs_review": false,
+      "needs_human_decision": false,
+      "source_section": "5.3; 8",
+      "parameters_affected": [
+        "PARA_DATA_WD"
+      ],
+      "feature_id": "F07",
+      "sva_hint": "property",
+      "optional": false,
+      "rtl_modules": [
+        "m_vlsi_axfsm"
+      ]
+    },
+    {
+      "req_id": "REQ-027",
+      "text": "For a write burst with err = 1, every beat shall pop AWFIFO and WFIFO normally with o_sram_we and o_sram_wstrb held at 0 (SRAM not modified), and exactly one B response with BRESP = SLVERR and the burst's AWID shall be posted.",
+      "category": "functional",
+      "ambiguity_score": 0.05,
+      "needs_review": false,
+      "needs_human_decision": false,
+      "source_section": "5.7; 8",
+      "parameters_affected": [],
+      "feature_id": "F07",
+      "sva_hint": "property",
+      "optional": false,
+      "rtl_modules": [
+        "m_vlsi_sram_fanout",
+        "m_vlsi_bank_arb",
+        "m_vlsi_axi_fifopack"
+      ]
+    },
+    {
+      "req_id": "REQ-028",
+      "text": "For a read burst with err = 1, every beat shall be issued like any other (o_sram_oe asserted), and all AxLEN+1 beats shall be returned with RRESP = SLVERR, the burst's ARID, the SRAM word on o_rdata and o_rlast on the final beat.",
+      "category": "functional",
+      "ambiguity_score": 0.05,
+      "needs_review": false,
+      "needs_human_decision": false,
+      "source_section": "5.8; 8",
+      "parameters_affected": [],
+      "feature_id": "F07",
+      "sva_hint": "property",
+      "optional": false,
+      "rtl_modules": [
+        "m_vlsi_sram_fanout",
+        "m_vlsi_axi_fifopack"
+      ]
+    },
+    {
+      "req_id": "REQ-029",
+      "text": "The AXI ID shall be preserved end to end: AWID captured at the AW handshake shall be carried in every AWFIFO entry and returned on o_bid; ARID shall be carried in every ARFIFO entry and returned on o_rid with each beat. B responses shall come back in AW acceptance order and R beats in AR acceptance order regardless of ID values (ID reuse allowed).",
+      "category": "functional",
+      "ambiguity_score": 0.05,
+      "needs_review": false,
+      "needs_human_decision": false,
+      "source_section": "5.10",
+      "parameters_affected": [
+        "PARA_ID_WD"
+      ],
+      "feature_id": "F08",
+      "sva_hint": "property",
+      "optional": false,
+      "rtl_modules": [
+        "m_vlsi_axfsm",
+        "m_vlsi_fifo",
+        "m_vlsi_axi_fifopack"
+      ]
+    },
+    {
+      "req_id": "REQ-030",
+      "text": "Each AXI channel shall be buffered by its own m_vlsi_fifo instance of depth PARA_FIFO_DEPTH: AWFIFO {last, err, id, addr} (PARA_ADDR_WD+PARA_ID_WD+2 bits), WFIFO {wstrb, wdata} (PARA_DATA_WD+PARA_DATA_WD/8), ARFIFO {last, err, id, addr} (PARA_ADDR_WD+PARA_ID_WD+2), RFIFO {id, rresp, rdata, last} (PARA_DATA_WD+PARA_ID_WD+3) and BFIFO {id, bresp} (PARA_ID_WD+2).",
+      "category": "functional",
+      "ambiguity_score": 0.05,
+      "needs_review": false,
+      "needs_human_decision": false,
+      "source_section": "5.12",
+      "parameters_affected": [
+        "PARA_FIFO_DEPTH",
+        "PARA_ADDR_WD",
+        "PARA_DATA_WD",
+        "PARA_ID_WD"
+      ],
+      "feature_id": "F09",
+      "sva_hint": "static",
+      "optional": false,
+      "rtl_modules": [
+        "m_vlsi_axi4_sram",
+        "m_vlsi_fifo",
+        "m_vlsi_axi_fifopack"
+      ]
+    },
+    {
+      "req_id": "REQ-031",
+      "text": "Each FIFO shall use registered read/write pointers of $clog2(PARA_FIFO_DEPTH)+1 bits wrapping modulo 2*PARA_FIFO_DEPTH; full shall be asserted when the pointer MSBs differ and the lower bits are equal, and empty when the pointers are equal.",
+      "category": "functional",
+      "ambiguity_score": 0.05,
+      "needs_review": false,
+      "needs_human_decision": false,
+      "source_section": "5.12",
+      "parameters_affected": [
+        "PARA_FIFO_DEPTH"
+      ],
+      "feature_id": "F09",
+      "sva_hint": "property",
+      "optional": false,
+      "rtl_modules": [
+        "m_vlsi_fifo"
+      ]
+    },
+    {
+      "req_id": "REQ-032",
+      "text": "A FIFO push while full shall be ignored even if a pop happens in the same cycle; a pop while empty shall be ignored while a simultaneous push is still performed; push and pop together on a FIFO that is neither full nor empty shall both take effect; the head entry shall be output combinationally and a pushed entry shall be visible at the head from the cycle after the push.",
+      "category": "functional",
+      "ambiguity_score": 0.05,
+      "needs_review": false,
+      "needs_human_decision": false,
+      "source_section": "5.12",
+      "parameters_affected": [
+        "PARA_FIFO_DEPTH"
+      ],
+      "feature_id": "F09",
+      "sva_hint": "property",
+      "optional": false,
+      "rtl_modules": [
+        "m_vlsi_fifo"
+      ]
+    },
+    {
+      "req_id": "REQ-033",
+      "text": "The shared arbiter (instance u_vlsi_arbiter of m_vlsi_arbiter) shall grant write when only write requests, read when only read requests, and, when both request, write if arb_toggle = 0 and read if arb_toggle = 1.",
+      "category": "functional",
+      "ambiguity_score": 0.0,
+      "needs_review": false,
+      "needs_human_decision": false,
+      "source_section": "5.6",
+      "parameters_affected": [],
+      "feature_id": "F10",
+      "sva_hint": "property",
+      "optional": false,
+      "rtl_modules": [
+        "m_vlsi_arbiter"
+      ]
+    },
+    {
+      "req_id": "REQ-034",
+      "text": "There shall be one shared arbiter instance (u_vlsi_arbiter) for all bank configurations; its 1-bit arb_toggle shall reset to 0 and invert exactly once at the end of every cycle in which at least one request is granted (write or read), including PARA_NUM_BANKS > 1 cycles where a write and a read issue to different banks.",
+      "category": "functional",
+      "ambiguity_score": 0.05,
+      "needs_review": false,
+      "needs_human_decision": false,
+      "source_section": "5.6; 5.1",
+      "parameters_affected": [
+        "PARA_NUM_BANKS"
+      ],
+      "feature_id": "F10",
+      "sva_hint": "property",
+      "optional": false,
+      "rtl_modules": [
+        "m_vlsi_arbiter",
+        "m_vlsi_bank_arb"
+      ]
+    },
+    {
+      "req_id": "REQ-035",
+      "text": "When PARA_NUM_BANKS > 1, bank_sel_wr and bank_sel_rd shall be computed every cycle on the AWFIFO and ARFIFO head addresses as addr[BYTE_LSB +: BANK_WD] ^ addr[PARA_ADDR_WD-1 -: BANK_WD]; each beat shall be routed individually, and o_sram_addr[k] shall carry the full un-hashed beat address.",
+      "category": "functional",
+      "ambiguity_score": 0.05,
+      "needs_review": false,
+      "needs_human_decision": false,
+      "source_section": "5.6",
+      "parameters_affected": [
+        "PARA_NUM_BANKS",
+        "PARA_ADDR_WD",
+        "PARA_DATA_WD"
+      ],
+      "feature_id": "F11",
+      "sva_hint": "property",
+      "optional": true,
+      "rtl_modules": [
+        "m_vlsi_bank_arb",
+        "m_vlsi_sram_fanout"
+      ]
+    },
+    {
+      "req_id": "REQ-036",
+      "text": "When PARA_NUM_BANKS > 1, w_wr_issue shall be req_write & (bank_conflict ? arbiter write grant : 1) and w_rd_issue shall be req_read & (bank_conflict ? arbiter read grant : 1), with bank_conflict = req_write & req_read & (bank_sel_wr == bank_sel_rd); a write and a read to different banks shall both issue in the same cycle.",
+      "category": "functional",
+      "ambiguity_score": 0.05,
+      "needs_review": false,
+      "needs_human_decision": false,
+      "source_section": "5.6",
+      "parameters_affected": [
+        "PARA_NUM_BANKS"
+      ],
+      "feature_id": "F11",
+      "sva_hint": "property",
+      "optional": true,
+      "rtl_modules": [
+        "m_vlsi_bank_arb"
+      ]
+    },
+    {
+      "req_id": "REQ-037",
+      "text": "When PARA_NUM_BANKS = 1, w_wr_issue shall equal the arbiter write grant and w_rd_issue the arbiter read grant (never both in a cycle), implemented as its own generate branch in m_vlsi_bank_arb that reuses the original grant expressions verbatim.",
+      "category": "functional",
+      "ambiguity_score": 0.05,
+      "needs_review": false,
+      "needs_human_decision": false,
+      "source_section": "5.6; 6",
+      "parameters_affected": [
+        "PARA_NUM_BANKS"
+      ],
+      "feature_id": "F10",
+      "sva_hint": "property",
+      "optional": false,
+      "rtl_modules": [
+        "m_vlsi_bank_arb"
+      ]
+    },
+    {
+      "req_id": "REQ-038",
+      "text": "req_write shall be ~awfifo_empty & ~wfifo_empty & (~awfifo_head.last | ~bfifo_full), so the write of a burst's last beat is not granted while BFIFO is full (a BFIFO pop in the same cycle does not release the hold), while non-last beats continue to issue.",
+      "category": "functional",
+      "ambiguity_score": 0.05,
+      "needs_review": false,
+      "needs_human_decision": false,
+      "source_section": "5.6; 5.13",
+      "parameters_affected": [],
+      "feature_id": "F12",
+      "sva_hint": "property",
+      "optional": false,
+      "rtl_modules": [
+        "m_vlsi_bank_arb"
+      ]
+    },
+    {
+      "req_id": "REQ-039",
+      "text": "req_read shall be ~arfifo_empty & ~rfifo_full & ~reg_rd_pending, so no read issues while RFIFO is full or a read is pending, and at most one SRAM read is in flight system-wide, even with several banks.",
+      "category": "functional",
+      "ambiguity_score": 0.05,
+      "needs_review": false,
+      "needs_human_decision": false,
+      "source_section": "5.6; 5.8",
+      "parameters_affected": [
+        "PARA_NUM_BANKS"
+      ],
+      "feature_id": "F13",
+      "sva_hint": "property",
+      "optional": false,
+      "rtl_modules": [
+        "m_vlsi_bank_arb",
+        "m_vlsi_sram_fanout"
+      ]
+    },
+    {
+      "req_id": "REQ-040",
+      "text": "i_wlast shall be accepted but ignored; the address FSM shall track the last beat of each burst.",
+      "category": "functional",
+      "ambiguity_score": 0.05,
+      "needs_review": false,
+      "needs_human_decision": false,
+      "source_section": "2 F15; 5.5",
+      "parameters_affected": [],
+      "feature_id": "F15",
+      "sva_hint": "property",
+      "optional": false,
+      "rtl_modules": [
+        "m_vlsi_axi4_sram",
+        "m_vlsi_axfsm"
+      ]
+    },
+    {
+      "req_id": "REQ-041",
+      "text": "While i_rst_n = 0 and after reset until the first transaction, both address FSMs shall be in S_IDLE with counter = 0 and latched err = 0, all five FIFOs empty, arb_toggle = 0 and reg_rd_pending = 0; therefore o_awready = o_arready = o_wready = 1 (also during reset), o_bvalid = o_rvalid = 0, and o_sram_we = o_sram_oe = 0, o_sram_addr = 0 and o_sram_wstrb = 0 for every bank.",
+      "category": "functional",
+      "ambiguity_score": 0.1,
+      "needs_review": false,
+      "needs_human_decision": false,
+      "source_section": "5.1",
+      "parameters_affected": [],
+      "feature_id": "",
+      "sva_hint": "property",
+      "optional": false,
+      "rtl_modules": [
+        "m_vlsi_axfsm",
+        "m_vlsi_fifo",
+        "m_vlsi_arbiter",
+        "m_vlsi_sram_fanout",
+        "m_vlsi_axi4_sram"
+      ]
+    },
+    {
+      "req_id": "REQ-042",
+      "text": "After reset, o_bid, o_bresp, o_rid, o_rdata, o_rresp, o_rlast and o_sram_wdata shall read 0 (FIFO storage cleared), and a transaction in progress when reset asserts shall be discarded without producing a response.",
+      "category": "functional",
+      "ambiguity_score": 0.25,
+      "needs_review": false,
+      "needs_human_decision": false,
+      "source_section": "5.1",
+      "parameters_affected": [],
+      "feature_id": "",
+      "sva_hint": "property",
+      "optional": false,
+      "rtl_modules": [
+        "m_vlsi_fifo",
+        "m_vlsi_axi_fifopack",
+        "m_vlsi_sram_fanout"
+      ]
+    },
+    {
+      "req_id": "REQ-043",
+      "text": "In the handshake cycle c0 the address FSM shall capture i_axaddr, i_axlen, i_axburst, i_axid and i_axsize, load the beat counter with i_axlen + 1, compute and latch err and the WRAP window, and move to S_ADDR at the end of c0.",
+      "category": "functional",
+      "ambiguity_score": 0.05,
+      "needs_review": false,
+      "needs_human_decision": false,
+      "source_section": "5.2",
+      "parameters_affected": [
+        "PARA_LEN_WD"
+      ],
+      "feature_id": "F02",
+      "sva_hint": "property",
+      "optional": false,
+      "rtl_modules": [
+        "m_vlsi_axfsm"
+      ]
+    },
+    {
+      "req_id": "REQ-044",
+      "text": "In every S_ADDR cycle with counter ≠ 0 and its FIFO not full (current-cycle flag), the address FSM shall push {last, err, id, addr} with last = 1 exactly when counter == 1, decrement the counter and update the address; when the FIFO is full it shall stall with no push and no counter or address change (a same-cycle pop does not allow a push); in the first S_ADDR cycle with counter == 0 it shall push nothing and return to S_IDLE.",
+      "category": "functional",
+      "ambiguity_score": 0.05,
+      "needs_review": false,
+      "needs_human_decision": false,
+      "source_section": "5.2",
+      "parameters_affected": [
+        "PARA_FIFO_DEPTH"
+      ],
+      "feature_id": "F03",
+      "sva_hint": "property",
+      "optional": false,
+      "rtl_modules": [
+        "m_vlsi_axfsm"
+      ]
+    },
+    {
+      "req_id": "REQ-045",
+      "text": "In a cycle where w_wr_issue = 1, AWFIFO and WFIFO shall both be popped at the end of the cycle, and bank k = bank_sel_wr (0 when single-bank) shall be driven combinationally with o_sram_addr[k] = AWFIFO head address, o_sram_wdata[k] = WFIFO head data and o_sram_we[k] = 1 unless the AWFIFO head err = 1; W beats shall pair with AW beat entries strictly in FIFO order.",
+      "category": "functional",
+      "ambiguity_score": 0.05,
+      "needs_review": false,
+      "needs_human_decision": false,
+      "source_section": "5.7; 5.5",
+      "parameters_affected": [
+        "PARA_NUM_BANKS"
+      ],
+      "feature_id": "F14",
+      "sva_hint": "property",
+      "optional": false,
+      "rtl_modules": [
+        "m_vlsi_sram_fanout",
+        "m_vlsi_bank_arb",
+        "m_vlsi_axi_fifopack"
+      ]
+    },
+    {
+      "req_id": "REQ-046",
+      "text": "When a write issues with AWFIFO head last = 1, {id, err ? SLVERR : OKAY} shall be pushed into BFIFO at the end of that cycle.",
+      "category": "functional",
+      "ambiguity_score": 0.0,
+      "needs_review": false,
+      "needs_human_decision": false,
+      "source_section": "5.7",
+      "parameters_affected": [],
+      "feature_id": "F12",
+      "sva_hint": "property",
+      "optional": false,
+      "rtl_modules": [
+        "m_vlsi_bank_arb",
+        "m_vlsi_axi_fifopack"
+      ]
+    },
+    {
+      "req_id": "REQ-047",
+      "text": "In a cycle t where w_rd_issue = 1, o_sram_oe[k] = 1 and o_sram_addr[k] = ARFIFO head address for k = bank_sel_rd, ARFIFO shall be popped at the end of t, and reg_rd_pending shall be set with the head's id, last, err and the bank index captured.",
+      "category": "functional",
+      "ambiguity_score": 0.0,
+      "needs_review": false,
+      "needs_human_decision": false,
+      "source_section": "5.8",
+      "parameters_affected": [
+        "PARA_NUM_BANKS"
+      ],
+      "feature_id": "F13",
+      "sva_hint": "property",
+      "optional": false,
+      "rtl_modules": [
+        "m_vlsi_sram_fanout",
+        "m_vlsi_bank_arb"
+      ]
+    },
+    {
+      "req_id": "REQ-048",
+      "text": "In cycle t+1 after a read issue, {id, err ? SLVERR : OKAY, i_sram_rdata[reg_rd_bank_d], last} shall be pushed into RFIFO (always succeeding) and reg_rd_pending shall clear at the end of t+1.",
+      "category": "functional",
+      "ambiguity_score": 0.0,
+      "needs_review": false,
+      "needs_human_decision": false,
+      "source_section": "5.8",
+      "parameters_affected": [
+        "PARA_NUM_BANKS"
+      ],
+      "feature_id": "F13",
+      "sva_hint": "property",
+      "optional": false,
+      "rtl_modules": [
+        "m_vlsi_axi_fifopack",
+        "m_vlsi_sram_fanout",
+        "m_vlsi_bank_arb"
+      ]
+    },
+    {
+      "req_id": "REQ-049",
+      "text": "o_sram_addr[k] shall be 0 in any cycle where bank k has neither o_sram_we[k] nor o_sram_oe[k] asserted, and o_sram_wdata[k] is don't-care while o_sram_we[k] = 0.",
+      "category": "functional",
+      "ambiguity_score": 0.25,
+      "needs_review": false,
+      "needs_human_decision": false,
+      "source_section": "4 Interface / SRAM interface",
+      "parameters_affected": [
+        "PARA_NUM_BANKS"
+      ],
+      "feature_id": "F11",
+      "sva_hint": "property",
+      "optional": false,
+      "rtl_modules": [
+        "m_vlsi_sram_fanout"
+      ]
+    },
+    {
+      "req_id": "REQ-050",
+      "text": "FIFO pushes and pops shall never overflow or underflow: address FSMs push only when their FIFO is not full, W is accepted only when WFIFO is not full, the last write beat is held off while BFIFO is full, a read issues only when RFIFO is not full and no read is pending, and B/R pops happen only on handshake.",
+      "category": "functional",
+      "ambiguity_score": 0.0,
+      "needs_review": false,
+      "needs_human_decision": false,
+      "source_section": "8 Overflow protection",
+      "parameters_affected": [
+        "PARA_FIFO_DEPTH"
+      ],
+      "feature_id": "F09",
+      "sva_hint": "property",
+      "optional": false,
+      "rtl_modules": [
+        "m_vlsi_bank_arb",
+        "m_vlsi_axfsm",
+        "m_vlsi_fifo"
+      ]
+    },
+    {
+      "req_id": "REQ-051",
+      "text": "The design hierarchy shall be kept as prescribed, with instance names per the VLSIT rule u_vlsi_<function>[_<index>]: m_vlsi_axi4_sram instantiates u_vlsi_axfsm_0 (AW) and u_vlsi_axfsm_1 (AR) of m_vlsi_axfsm, u_vlsi_fifo_0..4 of m_vlsi_fifo (0 = AWFIFO, 1 = WFIFO, 2 = ARFIFO, 3 = RFIFO, 4 = BFIFO), u_vlsi_arbiter of m_vlsi_arbiter and u_vlsi_sram_misc of m_vlsi_sram_misc, which instantiates u_vlsi_axi_fifopack, u_vlsi_bank_arb and u_vlsi_sram_fanout; the split of m_vlsi_sram_misc shall cause no change in behaviour or timing.",
+      "category": "functional",
+      "ambiguity_score": 0.05,
+      "needs_review": false,
+      "needs_human_decision": false,
+      "source_section": "6 Microarchitecture",
+      "parameters_affected": [],
+      "feature_id": "",
+      "sva_hint": "static",
+      "optional": false,
+      "rtl_modules": [
+        "m_vlsi_axi4_sram",
+        "m_vlsi_sram_misc"
+      ]
+    },
+    {
+      "req_id": "REQ-052",
+      "text": "With no contention and W data already in WFIFO, the first beat of an AW/AR burst handshaken in c0 shall be pushed at the end of c1 and visible at the FIFO head in c2, so the first o_sram_we / o_sram_oe occurs no earlier than c2; a W beat handshaken in cycle n shall be available for issue in n+1.",
+      "category": "timing",
+      "ambiguity_score": 0.05,
+      "needs_review": false,
+      "needs_human_decision": false,
+      "source_section": "7",
+      "parameters_affected": [],
+      "feature_id": "F09",
+      "sva_hint": "property",
+      "optional": false,
+      "rtl_modules": [
+        "m_vlsi_axfsm",
+        "m_vlsi_bank_arb"
+      ]
+    },
+    {
+      "req_id": "REQ-053",
+      "text": "When the last write beat of a burst issues in cycle t, o_bvalid shall be asserted in t+1; for a single-beat write the minimum AW handshake → o_bvalid latency shall be c3.",
+      "category": "timing",
+      "ambiguity_score": 0.05,
+      "needs_review": false,
+      "needs_human_decision": false,
+      "source_section": "7",
+      "parameters_affected": [],
+      "feature_id": "F12",
+      "sva_hint": "property",
+      "optional": false,
+      "rtl_modules": [
+        "m_vlsi_bank_arb",
+        "m_vlsi_fifo"
+      ]
+    },
+    {
+      "req_id": "REQ-054",
+      "text": "For a read issued in cycle t (o_sram_oe in t), the SRAM data shall be sampled and pushed into RFIFO in t+1 and o_rvalid shall be asserted in t+2; the minimum AR handshake → first o_rvalid latency shall be c4.",
+      "category": "timing",
+      "ambiguity_score": 0.05,
+      "needs_review": false,
+      "needs_human_decision": false,
+      "source_section": "7",
+      "parameters_affected": [],
+      "feature_id": "F13",
+      "sva_hint": "property",
+      "optional": false,
+      "rtl_modules": [
+        "m_vlsi_sram_fanout",
+        "m_vlsi_bank_arb"
+      ]
+    },
+    {
+      "req_id": "REQ-055",
+      "text": "Reads shall issue at most once per 2 cycles (0.5 beat/cycle) independent of PARA_NUM_BANKS; with continuous back-to-back reads and RFIFO never full, reads shall issue every 2 cycles.",
+      "category": "timing",
+      "ambiguity_score": 0.05,
+      "needs_review": false,
+      "needs_human_decision": false,
+      "source_section": "7; 5.13",
+      "parameters_affected": [
+        "PARA_NUM_BANKS"
+      ],
+      "feature_id": "F13",
+      "sva_hint": "property",
+      "optional": false,
+      "rtl_modules": [
+        "m_vlsi_bank_arb",
+        "m_vlsi_sram_fanout"
+      ]
+    },
+    {
+      "req_id": "REQ-056",
+      "text": "Writes shall be able to issue at up to 1 beat per cycle.",
+      "category": "timing",
+      "ambiguity_score": 0.05,
+      "needs_review": false,
+      "needs_human_decision": false,
+      "source_section": "7; 2 F14",
+      "parameters_affected": [],
+      "feature_id": "F14",
+      "sva_hint": "cover",
+      "optional": false,
+      "rtl_modules": [
+        "m_vlsi_bank_arb"
+      ]
+    },
+    {
+      "req_id": "REQ-057",
+      "text": "Each address FSM shall generate 1 beat per cycle while its FIFO is not full; for a burst with AxLEN = L and no back-pressure it shall push in c1…c(L+1), hold AxREADY = 0 in c1…c(L+2) and be able to accept the next burst in c(L+3) (minimum interval AxLEN + 3 cycles).",
+      "category": "timing",
+      "ambiguity_score": 0.05,
+      "needs_review": false,
+      "needs_human_decision": false,
+      "source_section": "7; 5.2",
+      "parameters_affected": [
+        "PARA_LEN_WD"
+      ],
+      "feature_id": "F03",
+      "sva_hint": "sequence",
+      "optional": false,
+      "rtl_modules": [
+        "m_vlsi_axfsm"
+      ]
+    },
+    {
+      "req_id": "REQ-058",
+      "text": "C1: PARA_DATA_WD shall be a multiple of 8 with a power-of-two number of byte lanes: PARA_DATA_WD % 8 == 0 && ((PARA_DATA_WD/8) & (PARA_DATA_WD/8 - 1)) == 0.",
+      "category": "constraint",
+      "ambiguity_score": 0.0,
+      "needs_review": false,
+      "needs_human_decision": false,
+      "source_section": "3 Elaboration constraints",
+      "parameters_affected": [
+        "PARA_DATA_WD"
+      ],
+      "feature_id": "F04",
+      "sva_hint": "static",
+      "optional": false,
+      "rtl_modules": [
+        "m_vlsi_axi4_sram"
+      ]
+    },
+    {
+      "req_id": "REQ-059",
+      "text": "C2: PARA_DATA_WD shall be within 8 … 1024: PARA_DATA_WD >= 8 && PARA_DATA_WD <= 1024.",
+      "category": "constraint",
+      "ambiguity_score": 0.2,
+      "needs_review": false,
+      "needs_human_decision": false,
+      "source_section": "3 Elaboration constraints",
+      "parameters_affected": [
+        "PARA_DATA_WD"
+      ],
+      "feature_id": "F04",
+      "sva_hint": "static",
+      "optional": false,
+      "rtl_modules": [
+        "m_vlsi_axi4_sram"
+      ]
+    },
+    {
+      "req_id": "REQ-060",
+      "text": "C3: PARA_FIFO_DEPTH shall be a power of 2 and at least 2: PARA_FIFO_DEPTH >= 2 && (PARA_FIFO_DEPTH & (PARA_FIFO_DEPTH - 1)) == 0.",
+      "category": "constraint",
+      "ambiguity_score": 0.0,
+      "needs_review": false,
+      "needs_human_decision": false,
+      "source_section": "3 Elaboration constraints",
+      "parameters_affected": [
+        "PARA_FIFO_DEPTH"
+      ],
+      "feature_id": "F09",
+      "sva_hint": "static",
+      "optional": false,
+      "rtl_modules": [
+        "m_vlsi_axi4_sram",
+        "m_vlsi_fifo"
+      ]
+    },
+    {
+      "req_id": "REQ-061",
+      "text": "C4: PARA_NUM_BANKS shall be a power of 2 and at least 1: PARA_NUM_BANKS >= 1 && (PARA_NUM_BANKS & (PARA_NUM_BANKS - 1)) == 0.",
+      "category": "constraint",
+      "ambiguity_score": 0.0,
+      "needs_review": false,
+      "needs_human_decision": false,
+      "source_section": "3 Elaboration constraints",
+      "parameters_affected": [
+        "PARA_NUM_BANKS"
+      ],
+      "feature_id": "F11",
+      "sva_hint": "static",
+      "optional": false,
+      "rtl_modules": [
+        "m_vlsi_axi4_sram"
+      ]
+    },
+    {
+      "req_id": "REQ-062",
+      "text": "C5: with multiple banks the address shall be wide enough for the bank hash: PARA_NUM_BANKS > 1 -> PARA_ADDR_WD >= BYTE_LSB + $clog2(PARA_NUM_BANKS).",
+      "category": "constraint",
+      "ambiguity_score": 0.0,
+      "needs_review": false,
+      "needs_human_decision": false,
+      "source_section": "3 Elaboration constraints",
+      "parameters_affected": [
+        "PARA_NUM_BANKS",
+        "PARA_ADDR_WD",
+        "PARA_DATA_WD"
+      ],
+      "feature_id": "F11",
+      "sva_hint": "static",
+      "optional": false,
+      "rtl_modules": [
+        "m_vlsi_axi4_sram"
+      ]
+    },
+    {
+      "req_id": "REQ-063",
+      "text": "C6: PARA_ADDR_WD shall be wider than the byte offset: PARA_ADDR_WD > BYTE_LSB.",
+      "category": "constraint",
+      "ambiguity_score": 0.0,
+      "needs_review": false,
+      "needs_human_decision": false,
+      "source_section": "3 Elaboration constraints",
+      "parameters_affected": [
+        "PARA_ADDR_WD",
+        "PARA_DATA_WD"
+      ],
+      "feature_id": "F04",
+      "sva_hint": "static",
+      "optional": false,
+      "rtl_modules": [
+        "m_vlsi_axi4_sram"
+      ]
+    },
+    {
+      "req_id": "REQ-064",
+      "text": "C7: PARA_ID_WD shall be at least 1: PARA_ID_WD >= 1.",
+      "category": "constraint",
+      "ambiguity_score": 0.0,
+      "needs_review": false,
+      "needs_human_decision": false,
+      "source_section": "3 Elaboration constraints",
+      "parameters_affected": [
+        "PARA_ID_WD"
+      ],
+      "feature_id": "F04",
+      "sva_hint": "static",
+      "optional": false,
+      "rtl_modules": [
+        "m_vlsi_axi4_sram"
+      ]
+    },
+    {
+      "req_id": "REQ-065",
+      "text": "C8: PARA_LEN_WD shall be within 1 … 8: PARA_LEN_WD >= 1 && PARA_LEN_WD <= 8.",
+      "category": "constraint",
+      "ambiguity_score": 0.2,
+      "needs_review": false,
+      "needs_human_decision": false,
+      "source_section": "3 Elaboration constraints",
+      "parameters_affected": [
+        "PARA_LEN_WD"
+      ],
+      "feature_id": "F03",
+      "sva_hint": "static",
+      "optional": false,
+      "rtl_modules": [
+        "m_vlsi_axi4_sram"
+      ]
+    },
+    {
+      "req_id": "REQ-066",
+      "text": "The design shall meet a target i_clk frequency of 100 MHz (10 ns period) at the default parameters, checked in synthesis: the combinational issue path (FIFO head → request generation, bank hash and arbitration → SRAM control/data outputs) and the READY paths shall fit within one cycle without adding pipeline stages or changing the specified cycle behaviour.",
+      "category": "timing",
+      "ambiguity_score": 0.15,
+      "needs_review": false,
+      "needs_human_decision": false,
+      "source_section": "7 Synthesis constraint; 4 Clock",
+      "parameters_affected": [
+        "PARA_DATA_WD",
+        "PARA_ADDR_WD",
+        "PARA_ID_WD",
+        "PARA_LEN_WD",
+        "PARA_FIFO_DEPTH",
+        "PARA_NUM_BANKS"
+      ],
+      "feature_id": "",
+      "sva_hint": null,
+      "optional": false,
+      "rtl_modules": [
+        "m_vlsi_bank_arb",
+        "m_vlsi_sram_fanout",
+        "m_vlsi_arbiter",
+        "m_vlsi_axfsm",
+        "m_vlsi_axi4_sram"
+      ]
+    }
+  ],
+  "parameters": [
+    {
+      "name": "PARA_DATA_WD",
+      "type": "int",
+      "default": "32",
+      "valid_range": "8, 16, 32, …, 1024 (power of 2, multiple of 8)",
+      "description": "AXI and SRAM data width in bits; PARA_DATA_WD/8 byte lanes (width of i_wstrb/o_sram_wstrb).",
+      "locked": false,
+      "req_ids": [
+        "REQ-004",
+        "REQ-007",
+        "REQ-008",
+        "REQ-017",
+        "REQ-023",
+        "REQ-024",
+        "REQ-025",
+        "REQ-026",
+        "REQ-030",
+        "REQ-035",
+        "REQ-058",
+        "REQ-059",
+        "REQ-062",
+        "REQ-063",
+        "REQ-066"
+      ],
+      "feature_ids": [
+        "F04",
+        "F05",
+        "F06",
+        "F07"
+      ],
+      "constraints": [
+        "C1",
+        "C2",
+        "C5",
+        "C6"
+      ]
+    },
+    {
+      "name": "PARA_ADDR_WD",
+      "type": "int",
+      "default": "32",
+      "valid_range": "> BYTE_LSB; >= BYTE_LSB + $clog2(PARA_NUM_BANKS) when PARA_NUM_BANKS > 1; <= 64 (assumption)",
+      "description": "AXI byte-address width and o_sram_addr width.",
+      "locked": false,
+      "req_ids": [
+        "REQ-003",
+        "REQ-006",
+        "REQ-008",
+        "REQ-017",
+        "REQ-020",
+        "REQ-021",
+        "REQ-023",
+        "REQ-030",
+        "REQ-035",
+        "REQ-062",
+        "REQ-063",
+        "REQ-066"
+      ],
+      "feature_ids": [
+        "F04",
+        "F11"
+      ],
+      "constraints": [
+        "C5",
+        "C6"
+      ]
+    },
+    {
+      "name": "PARA_ID_WD",
+      "type": "int",
+      "default": "4",
+      "valid_range": ">= 1",
+      "description": "AXI ID width (AWID/BID/ARID/RID).",
+      "locked": false,
+      "req_ids": [
+        "REQ-003",
+        "REQ-005",
+        "REQ-006",
+        "REQ-007",
+        "REQ-023",
+        "REQ-029",
+        "REQ-030",
+        "REQ-064",
+        "REQ-066"
+      ],
+      "feature_ids": [
+        "F04",
+        "F08"
+      ],
+      "constraints": [
+        "C7"
+      ]
+    },
+    {
+      "name": "PARA_LEN_WD",
+      "type": "int",
+      "default": "8",
+      "valid_range": "1 … 8",
+      "description": "Width of i_awlen/i_arlen; maximum burst 2**PARA_LEN_WD beats.",
+      "locked": false,
+      "req_ids": [
+        "REQ-003",
+        "REQ-006",
+        "REQ-014",
+        "REQ-022",
+        "REQ-043",
+        "REQ-057",
+        "REQ-065",
+        "REQ-066"
+      ],
+      "feature_ids": [
+        "F03"
+      ],
+      "constraints": [
+        "C8"
+      ]
+    },
+    {
+      "name": "PARA_FIFO_DEPTH",
+      "type": "int",
+      "default": "8",
+      "valid_range": "power of 2, >= 2",
+      "description": "Number of entries in each of the five FIFOs.",
+      "locked": false,
+      "req_ids": [
+        "REQ-009",
+        "REQ-010",
+        "REQ-030",
+        "REQ-031",
+        "REQ-032",
+        "REQ-044",
+        "REQ-050",
+        "REQ-060",
+        "REQ-066"
+      ],
+      "feature_ids": [
+        "F09"
+      ],
+      "constraints": [
+        "C3"
+      ]
+    },
+    {
+      "name": "PARA_NUM_BANKS",
+      "type": "int",
+      "default": "1",
+      "valid_range": "power of 2, >= 1",
+      "description": "Number of independent SRAM banks; 1 = single-SRAM behaviour.",
+      "locked": false,
+      "req_ids": [
+        "REQ-008",
+        "REQ-017",
+        "REQ-018",
+        "REQ-025",
+        "REQ-034",
+        "REQ-035",
+        "REQ-036",
+        "REQ-037",
+        "REQ-039",
+        "REQ-045",
+        "REQ-047",
+        "REQ-048",
+        "REQ-049",
+        "REQ-055",
+        "REQ-061",
+        "REQ-062",
+        "REQ-066"
+      ],
+      "feature_ids": [
+        "F11"
+      ],
+      "constraints": [
+        "C4",
+        "C5"
+      ]
+    }
+  ],
+  "constraints": [
+    {
+      "id": "C1",
+      "rule": "PARA_DATA_WD % 8 == 0 && ((PARA_DATA_WD/8) & (PARA_DATA_WD/8 - 1)) == 0",
+      "description": "Data width is a whole number of bytes with a power-of-two lane count."
+    },
+    {
+      "id": "C2",
+      "rule": "PARA_DATA_WD >= 8 && PARA_DATA_WD <= 1024",
+      "description": "AXI4 data-width range (assumption)."
+    },
+    {
+      "id": "C3",
+      "rule": "PARA_FIFO_DEPTH >= 2 && (PARA_FIFO_DEPTH & (PARA_FIFO_DEPTH - 1)) == 0",
+      "description": "FIFO depth is a power of 2, at least 2."
+    },
+    {
+      "id": "C4",
+      "rule": "PARA_NUM_BANKS >= 1 && (PARA_NUM_BANKS & (PARA_NUM_BANKS - 1)) == 0",
+      "description": "Bank count is a power of 2."
+    },
+    {
+      "id": "C5",
+      "rule": "PARA_NUM_BANKS > 1 -> PARA_ADDR_WD >= $clog2(PARA_DATA_WD/8) + $clog2(PARA_NUM_BANKS)",
+      "description": "Address wide enough for the bank hash (BYTE_LSB = $clog2(PARA_DATA_WD/8))."
+    },
+    {
+      "id": "C6",
+      "rule": "PARA_ADDR_WD > $clog2(PARA_DATA_WD/8)",
+      "description": "Address wider than the byte offset (BYTE_LSB)."
+    },
+    {
+      "id": "C7",
+      "rule": "PARA_ID_WD >= 1",
+      "description": "At least one ID bit."
+    },
+    {
+      "id": "C8",
+      "rule": "PARA_LEN_WD >= 1 && PARA_LEN_WD <= 8",
+      "description": "Burst-length field width (assumption)."
+    }
+  ],
+  "modules": [
+    {
+      "name": "m_vlsi_axi4_sram",
+      "description": "Top level: instantiates and wires all sub-modules (u_vlsi_axfsm_0/1, u_vlsi_fifo_0..4, u_vlsi_arbiter, u_vlsi_sram_misc); owns all ports.",
+      "instances": [
+        "m_vlsi_axfsm",
+        "m_vlsi_fifo",
+        "m_vlsi_arbiter",
+        "m_vlsi_sram_misc"
+      ],
+      "req_ids": [
+        "REQ-001",
+        "REQ-002",
+        "REQ-003",
+        "REQ-004",
+        "REQ-005",
+        "REQ-006",
+        "REQ-007",
+        "REQ-008",
+        "REQ-009",
+        "REQ-015",
+        "REQ-016",
+        "REQ-017",
+        "REQ-019",
+        "REQ-023",
+        "REQ-030",
+        "REQ-040",
+        "REQ-041",
+        "REQ-051",
+        "REQ-058",
+        "REQ-059",
+        "REQ-060",
+        "REQ-061",
+        "REQ-062",
+        "REQ-063",
+        "REQ-064",
+        "REQ-065",
+        "REQ-066"
+      ]
+    },
+    {
+      "name": "m_vlsi_axfsm",
+      "description": "AXI address FSM: handshake, burst address generation sized by AxSIZE, alignment/oversize error detection, pushes {last, err, id, addr} into its FIFO.",
+      "instances": [],
+      "req_ids": [
+        "REQ-001",
+        "REQ-002",
+        "REQ-009",
+        "REQ-014",
+        "REQ-019",
+        "REQ-020",
+        "REQ-021",
+        "REQ-022",
+        "REQ-023",
+        "REQ-024",
+        "REQ-026",
+        "REQ-029",
+        "REQ-040",
+        "REQ-041",
+        "REQ-043",
+        "REQ-044",
+        "REQ-050",
+        "REQ-052",
+        "REQ-057",
+        "REQ-066"
+      ]
+    },
+    {
+      "name": "m_vlsi_fifo",
+      "description": "Parameterised synchronous FIFO with extra-MSB full/empty detection.",
+      "instances": [],
+      "req_ids": [
+        "REQ-001",
+        "REQ-002",
+        "REQ-011",
+        "REQ-012",
+        "REQ-023",
+        "REQ-029",
+        "REQ-030",
+        "REQ-031",
+        "REQ-032",
+        "REQ-041",
+        "REQ-042",
+        "REQ-050",
+        "REQ-053",
+        "REQ-060"
+      ]
+    },
+    {
+      "name": "m_vlsi_arbiter",
+      "description": "Shared round-robin toggle arbiter between write and read requests.",
+      "instances": [],
+      "req_ids": [
+        "REQ-001",
+        "REQ-002",
+        "REQ-033",
+        "REQ-034",
+        "REQ-041",
+        "REQ-066"
+      ]
+    },
+    {
+      "name": "m_vlsi_sram_misc",
+      "description": "Structural wrapper instantiating u_vlsi_axi_fifopack, u_vlsi_bank_arb and u_vlsi_sram_fanout.",
+      "instances": [
+        "m_vlsi_axi_fifopack",
+        "m_vlsi_bank_arb",
+        "m_vlsi_sram_fanout"
+      ],
+      "req_ids": [
+        "REQ-023",
+        "REQ-051"
+      ]
+    },
+    {
+      "name": "m_vlsi_axi_fifopack",
+      "description": "Combinational FIFO pack/unpack, err→SLVERR substitution, R/B output unpacking, read-bank rdata mux into RFIFO.",
+      "instances": [],
+      "req_ids": [
+        "REQ-010",
+        "REQ-011",
+        "REQ-012",
+        "REQ-013",
+        "REQ-014",
+        "REQ-023",
+        "REQ-024",
+        "REQ-027",
+        "REQ-028",
+        "REQ-029",
+        "REQ-030",
+        "REQ-042",
+        "REQ-045",
+        "REQ-046",
+        "REQ-048"
+      ]
+    },
+    {
+      "name": "m_vlsi_bank_arb",
+      "description": "Request generation, bank XOR hash, grant/issue decision, FIFO push/pop control and o_wready.",
+      "instances": [],
+      "req_ids": [
+        "REQ-010",
+        "REQ-011",
+        "REQ-012",
+        "REQ-014",
+        "REQ-018",
+        "REQ-023",
+        "REQ-027",
+        "REQ-034",
+        "REQ-035",
+        "REQ-036",
+        "REQ-037",
+        "REQ-038",
+        "REQ-039",
+        "REQ-045",
+        "REQ-046",
+        "REQ-047",
+        "REQ-048",
+        "REQ-050",
+        "REQ-052",
+        "REQ-053",
+        "REQ-054",
+        "REQ-055",
+        "REQ-056",
+        "REQ-066"
+      ]
+    },
+    {
+      "name": "m_vlsi_sram_fanout",
+      "description": "Per-bank SRAM control/data fan-out (we/wstrb gating for SLVERR) and the one-cycle read pipeline register.",
+      "instances": [],
+      "req_ids": [
+        "REQ-001",
+        "REQ-002",
+        "REQ-008",
+        "REQ-018",
+        "REQ-023",
+        "REQ-024",
+        "REQ-025",
+        "REQ-027",
+        "REQ-028",
+        "REQ-035",
+        "REQ-039",
+        "REQ-041",
+        "REQ-042",
+        "REQ-045",
+        "REQ-047",
+        "REQ-048",
+        "REQ-049",
+        "REQ-054",
+        "REQ-055",
+        "REQ-066"
+      ]
+    }
+  ],
+  "ambiguity_flags": [],
+  "module_order": [
+    "m_vlsi_axfsm",
+    "m_vlsi_fifo",
+    "m_vlsi_arbiter",
+    "m_vlsi_axi_fifopack",
+    "m_vlsi_bank_arb",
+    "m_vlsi_sram_fanout",
+    "m_vlsi_sram_misc",
+    "m_vlsi_axi4_sram"
+  ]
+}
