@@ -27,6 +27,12 @@ NAMES = {  # artifact file -> schema file (None: not validated against a file)
     "verification_report.json": "verification_report_schema.json",
     "selected_testplan.json": None,
     "synth_report.json": None,
+    # the `uvm_vip` tb backend (docs/spec/dut-dv.md): validated by their pydantic models in flows/vlsit/tb/uvm/
+    "golden_manifest.json": None,
+    "verification_contract.json": None,
+    "tb_architecture.json": None,
+    "vip_integration.json": None,
+    "dut_integration.json": None,
 }
 
 # selected_testplan.json (tb_generator.md "Schema output"): written by tb, read by sva / verify

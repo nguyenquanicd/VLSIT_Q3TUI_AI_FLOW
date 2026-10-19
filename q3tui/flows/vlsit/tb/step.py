@@ -77,7 +77,18 @@ class TbGenStep(VlsitStep):
             files += sorted(lay.tb.glob("*.sv")) + sorted(lay.tb.glob("*.svh")) + sorted((lay.tb / "tests").glob("*.sv"))
             files += [f for f in (lay.tb / "filelist.f", lay.tb / "run.sh") if f.is_file()]
         files += [f for f in (lay.artifact("selected_testplan.json"), self._q_paths(engine)[2]) if f.is_file()]
+        from q3tui.flows.vlsit.tb import uvm
+
+        if uvm.backend_of(self.options) == "uvm_vip":
+            files += uvm.output_files(self, engine)
         return files
+
+    def on_approve(self, engine) -> None:
+        super().on_approve(engine)
+        from q3tui.flows.vlsit.tb import uvm
+
+        if uvm.backend_of(self.options) == "uvm_vip":  # defaults accepted by this approval show in the review report
+            uvm.refresh_review_from_disk(self, engine)
 
     def reset_files(self, engine) -> list[Path]:
         return [*self.outputs(engine), *super().reset_files(engine)]
@@ -88,6 +99,11 @@ class TbGenStep(VlsitStep):
             return "the parsed spec is needed first (step parse: schemas/structured_spec.json)"
         if not artifacts.path(p, "final_config.json").is_file():
             return "the configuration is needed first (step config: schemas/final_config.json)"
+        from q3tui.flows.vlsit.tb import uvm
+
+        problem = uvm.input_problem(self.options, p.root)
+        if problem:
+            return problem
         from q3tui.eda.base import ToolUnavailable
         from q3tui.eda.tools import available, binary_of, load_tools
 
@@ -133,6 +149,11 @@ class TbGenStep(VlsitStep):
         from q3tui.eda.base import ToolUnavailable
         from q3tui.eda.tools import load_tools
 
+        from q3tui.flows.vlsit.tb import uvm
+
+        if uvm.backend_of(self.options) == "uvm_vip":  # the optional DUT-DV backend (docs/spec/dut-dv.md); plain_sv is the default
+            await uvm.run(self, ctx)
+            return
         engine, project = ctx.engine, ctx.project
         lay = self.lay(engine)
         spec = artifacts.read(project, "structured_spec.json")
