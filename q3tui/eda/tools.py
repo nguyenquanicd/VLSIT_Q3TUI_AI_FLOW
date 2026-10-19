@@ -324,7 +324,37 @@ def parse_generic(text: str, patterns: dict | None = None) -> list[ToolDiagnosti
     return out
 
 
-PARSERS = {"vcs": parse_vcs, "dc": parse_dc, "verilator": parse_verilator, "iverilog": parse_iverilog, "yosys": parse_yosys, "vivado": parse_vivado}
+_VERIBLE = re.compile(rf"^(?:\S+\.\w+:\s+)?(?P<file>[^\s:]+\.\w+):(?P<line>\d+):(?P<col>\d+)(?:-\d+)?:\s*(?P<msg>.*?)\s*$")  # (the formatter prefixes `file: `)
+_VERIBLE_TOOL = re.compile(r"^(?:ERROR:|[EF]\d{4}\s+\S+\s+\d+\s+\S+\]\s)\s*(?P<msg>.*)$")
+_VERIBLE_RULE = re.compile(r"\s*\[(?P<rule>[a-z][a-z0-9]*(?:-[a-z0-9]+)*)\]\s*$")
+
+
+def parse_verible(text: str) -> list[ToolDiagnostic]:
+    """verible-verilog-lint / -format: `file:line:col: message [Style: section] [rule-name]`. A finding that names a rule is a
+    warning (code = the rule); a syntax error (no rule) is an error with its file; a refusal of the tool itself (`ERROR: Illegal value …`,
+    `Fatal error: …`) is an error with code TOOL and no file. (Seen with a real Verible: lint exits 1 on findings, 2 on a fatal config error;
+    the formatter exits 0 on a syntax error and only prints it.)"""
+    out = []
+    for line in text.splitlines():
+        t = _VERIBLE_TOOL.match(line)
+        if t:  # the tool itself refused (an unknown flag, a parameter out of range): no file, nothing about the design
+            out.append(ToolDiagnostic("error", "TOOL", t["msg"][:500]))
+            continue
+        m = _VERIBLE.match(line)
+        if not m:
+            continue
+        msg = m["msg"]
+        rule = _VERIBLE_RULE.search(msg)
+        if rule:
+            text = re.sub(r"\s*\[Style:[^\]]*\]", "", _VERIBLE_RULE.sub("", msg))  # (the `[Style: section]` tag is the rule's doc section)
+            out.append(ToolDiagnostic("warning", rule["rule"], text[:500], m["file"], int(m["line"])))
+        elif "syntax error" in msg.lower() or msg.lower().startswith(("error", "lex")):
+            out.append(ToolDiagnostic("error", "SYNTAX", msg[:500], m["file"], int(m["line"])))
+    return out
+
+
+PARSERS = {"vcs": parse_vcs, "dc": parse_dc, "verilator": parse_verilator, "iverilog": parse_iverilog, "yosys": parse_yosys, "vivado": parse_vivado,
+           "verible": parse_verible}
 
 
 def parse_log(parse: str | dict, text: str) -> list[ToolDiagnostic]:
@@ -334,4 +364,4 @@ def parse_log(parse: str | dict, text: str) -> list[ToolDiagnostic]:
         return PARSERS[parse](text)
     if parse in ("generic", "", None):
         return parse_generic(text)
-    raise ToolUnavailable(f"unknown log parser '{parse}' (vcs, dc, verilator, yosys, iverilog, vivado, generic, or {{error: [...], warning: [...]}})")
+    raise ToolUnavailable(f"unknown log parser '{parse}' (vcs, dc, verilator, yosys, iverilog, vivado, verible, generic, or {{error: [...], warning: [...]}})")

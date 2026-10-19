@@ -53,6 +53,17 @@ flowchart LR
   session (role `verifier`) instead of queuing behind `rtl`'s on the flow's one shared session, so the LLM
   calls themselves run concurrently too, not just the tool runs.
 
+### The RTL flow (`rtl`, docs/spec/rtl-flow.md)
+
+- **Rules → Verible:** `rules/rtl_rules.md` (yours, wins) over `vlsit_rtl_rule_default.md`; the `rules` step checks the stack for contradictions before any RTL is
+  written and writes the Verible lint / format flags (verified with the real tool; a flag Verible refuses is never read as "clean").
+- **Generate → format → style lint → fix**: `format` changes whitespace only (checked, backed up, asks before touching a hand-edited file); `style_lint` runs Verible,
+  an LLM judge decides per finding (violation / flag problem / acceptable) and violations go back to `rtl` as scoped change requests; the engine's fix loop repeats it.
+- **CSR from a generator**: the registers come from the APB-CSR-Generator, driven from a register map (`rtl/csr/csr_map.json`) drafted from the spec; the map is checked
+  by code (the tool checks nothing); the generated module is *provided* to `rtl` (instantiated, never rewritten by an LLM).
+- **Smoke test** written from the spec alone (the writer cannot read the RTL), compiled and run by code; failures are triaged (RTL / testbench / spec) and fixed or asked.
+- **Skills and tools for the LLM**: markdown playbooks it reads when needed plus in-process tools (`verible_*`, `smoke_*`, `csr_check`); Q3TUI confines files and checks results.
+
 ## 3. Gates and review
 
 - **Four gate modes** per step: `human` (always stops), `auto` (self-signs once no blocking question is
@@ -153,6 +164,8 @@ focus.
 - See the [User guide](user_guide/) §6 for the full table of every setting across every tab.
 
 ## 10. Known limitations (beta)
+
+- RTL flow: known issues KI-1 (the generated CSR module is an exception to REF-003), KI-2 (RTL in `rtl/`, other flows read `src/rtl/`) and KI-3 (CSR source to move to the workbook), KI-4 (requirement ids), KI-5 (rule policy vs REF-003), KI-6 (smoke vs the spec's test plan), KI-7 (generator limits vs the spec), KI-8 (lint config not in the spec), KI-9 (option impact): docs/spec/rtl-flow.md "Known issues".
 
 - UI-chrome translation (`tui.language`) covers the legend, result banners, and the Questions/Picker
   dialogs; the full keybinding help text and some dialog screens (Settings, Flow/Skill/Prompt editors,

@@ -41,7 +41,8 @@ llm:
     verify: {effort: medium}
     # keys: spec parse config rtl tb sva verify doc assistant
   timeout_s: null                 # per LLM stage: null = no limit (like Claude Code); a number only if you want one
-  env: {}                         # passed to the SDK, e.g. ANTHROPIC_BASE_URL
+  env: {}                         # passed to the SDK, e.g. ANTHROPIC_BASE_URL. Q3TUI sets ENABLE_CLAUDEAI_MCP_SERVERS=false by default (the account's
+                                  # claude.ai connectors added 100–200k tokens to every stage that used a tool); "true" here turns them back on
 
 project:                          # folder names inside the project
   spec_dir: spec

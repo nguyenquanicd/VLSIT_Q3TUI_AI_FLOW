@@ -3,7 +3,7 @@
 Q3TUI works inside a **project directory**, one per design block. The deliverables
 are ordinary visible folders. Internal state lives in `.q3tui/`. The layout below is the
 VLSIT flow's ([vlsit-flow.md](vlsit-flow.md) "Layout" has every artifact); other flows
-write where their steps say.
+write where their steps say (the RTL flow: `rtl/`, `rtl/style_lint/`, `rtl/smoke/`, `rtl/csr/`, `rules/rtl_rules.md`, `skills/`: [rtl-flow.md](rtl-flow.md) "Layout").
 
 ```text
 <project>/

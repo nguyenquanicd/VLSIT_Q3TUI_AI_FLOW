@@ -2,7 +2,7 @@
 
 Q3TUI's pipeline is a **flow**: a YAML / JSON file listing the steps (by *kind*), their order and dependencies and
 which review gates stop for a human. The built-in flows are the **VLSIT flow** (`vlsit`, the default;
-docs/spec/vlsit-flow.md), the **FPGA flow** (`fpga`, docs/spec/fpga-flow.md), the **ASIC flow** (`asic`, docs/spec/asic-flow.md), the **Sanity flow** (`sanity`, docs/spec/sanity-flow.md), the **project settings flow** (`project`, docs/spec/project-flow.md) and `example` (a minimal folder flow, spec → parse, to copy); users can write their own. The TUI,
+docs/spec/vlsit-flow.md), the **FPGA flow** (`fpga`, docs/spec/fpga-flow.md), the **ASIC flow** (`asic`, docs/spec/asic-flow.md), the **Sanity flow** (`sanity`, docs/spec/sanity-flow.md), the **project settings flow** (`project`, docs/spec/project-flow.md), the **RTL flow** (`rtl`, docs/spec/rtl-flow.md: rules → Verible flags, RTL, CSR from a generator, format, style lint, smoke test) and `example` (a minimal folder flow, spec → parse, to copy); users can write their own. The TUI,
 `ops`, the assistant, the event bus, staleness, gates, questions and reset are the same for every flow.
 
 ## Flow files
@@ -107,6 +107,13 @@ Every action reaches the user three ways, all through `Ops.run_action`: an assis
 (no name: list them) and the TUI's `/act NAME key=value …`. A panel calls the same action for its keys. An action of the
 flow must not be needed by core: the FPGA flow's SDC editor (docs/spec/fpga-flow.md) is the example.
 
+## Playbook skills (`skills/<name>/SKILL.md`)
+
+Not to be confused with a step's `md/skill.md` (its prompts and settings). A flow folder may bring `skills/<name>/SKILL.md` playbooks (front matter
+`name`, `description`): an LLM stage's prompt lists them and the LLM reads the ones it needs, using its own judgment — Q3TUI gives the tools and
+checks the result, it does not script the steps. A project adds or replaces one with `<project>/skills/<name>/SKILL.md` (also `~/.q3tui/skills/`).
+`flows/rtl/lib/skills.py` is the loader; the RTL flow uses them (docs/spec/rtl-flow.md "Skills").
+
 ## Skill editor (TUI)
 
 `K` / `/skill` (assistant `get_skill` / `set_skill`; `Ops.skill_get` / `skill_set`): pick a step of a flow folder and edit its whole
@@ -184,7 +191,7 @@ A tools file (`tools.json` / `tools.yaml` in the project root, `tools.file`, or 
 ```
 
 Placeholders: `{top} {filelist} {files} {incdirs} {workdir} {project}` and whatever the step passes (a list expands to
-several arguments). `parse`: `vcs | dc | verilator | yosys | iverilog | generic` or `{"error": [regex], "warning": [regex]}`.
+several arguments). `parse`: `vcs | dc | verilator | yosys | iverilog | vivado | verible | generic` or `{"error": [regex], "warning": [regex]}`.
 `supports: ["sva"]` declares a capability; a step that needs one the role lacks reports the check as **N/A**, never as
 passed. `q3tui.eda.tools.run_role` runs a role (modules / setup script wrapped like the vendor adapters), keeps the log
 and returns normalised diagnostics; `describe_for_llm` tells a stage which roles exist. Stages that may run a tool

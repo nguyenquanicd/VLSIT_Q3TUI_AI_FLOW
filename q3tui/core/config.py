@@ -110,7 +110,7 @@ class ToolRole(_Strict):
     the step passes (docs/spec/flows.md "Tools")."""
 
     cmd: str
-    parse: str | dict = "generic"  # vcs | dc | verilator | yosys | iverilog | generic, or {"error": [regex], "warning": [regex]}
+    parse: str | dict = "generic"  # vcs | dc | verilator | yosys | iverilog | vivado | verible | generic, or {"error": [regex], "warning": [regex]}
     description: str = ""  # shown to the LLM stage that may run it
     cwd: str | None = None  # default: the step's working directory
     timeout_s: int | None = None  # default: tools.timeout_s

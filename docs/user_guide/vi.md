@@ -15,6 +15,7 @@ bạn sẽ dùng hàng ngày.
 - [7. Lệnh và phím tắt](#7-lệnh-và-phím-tắt)
 - [8. Input và output](#8-input-và-output)
 - [9. Chat với assistant](#9-chat-với-assistant)
+- [10. Flow RTL](#10-flow-rtl)
 
 ## 1. Cài đặt
 
@@ -314,3 +315,23 @@ Gõ bất kỳ thứ gì không bắt đầu bằng `/command` vào ô nhập d�
 tool cho mọi hành động trong tài liệu này (chạy step, trả lời câu hỏi, đổi mode gate, review assertion, sign
 off requirement, đổi setting...) và hỏi xác nhận trước khi làm gì có tính phá huỷ (reset, bật chế độ chạy
 không giám sát). Assistant luôn trả lời bằng đúng ngôn ngữ bạn gõ, không phụ thuộc vào `tui.language`.
+
+## 10. Flow RTL
+
+`pipeline.flow: rtl` (trong `q3tui.yaml`, hoặc `q3tui --flow rtl`) chạy riêng phần sinh RTL, kiểm tra và smoke test; verification để flow khác lo. Thiết kế chi tiết: `docs/spec/rtl-flow.md`.
+
+```
+spec → rules → parse → config → csr → rtl → format → style_lint → smoke
+```
+
+1. **Rule của bạn.** `q3tui act rtl_rules_init` tạo `rules/rtl_rules.md`: mỗi rule một bullet, `- **ID** nội dung`. File này được đọc trước rule mặc định của Q3TUI (cùng id = ghi đè).
+   Step `rules` kiểm tra mâu thuẫn (dừng và chỉ ra đúng chỗ cần sửa) rồi viết flag Verible vào `rtl/style_lint/`.
+2. **Thanh ghi.** Nếu spec có register map, step `csr` soạn `rtl/csr/csr_map.json` và sinh khối thanh ghi bằng APB-CSR-Generator (chạy `q3tui act csr_tool_install` một lần;
+   hoặc đặt `csr.tool_dir` / `$CSR_GEN_HOME`). Muốn đổi thanh ghi thì sửa `csr_map.json`: sau lần soạn đầu file này là của bạn. `csr.mode: off` để bỏ qua.
+3. **RTL, format, style lint.** `rtl` theo rule; `format` chỉ đổi khoảng trắng (hỏi trước khi đụng file bạn đã sửa tay); `style_lint` chạy Verible và gửi lỗi vi phạm về `rtl`.
+   Chuỗi này tự lặp, tối đa `style_lint.max_rounds` vòng.
+4. **Smoke test.** Testbench nhỏ viết chỉ từ spec, compile và chạy (role `sim`, `run`). Nếu fail thì được triage và sửa, hoặc thành câu hỏi cho bạn.
+
+Công cụ: Verible (`verible_lint`, `verible_format`) và generator CSR có cấu hình mặc định theo flow; `sim` / `run` / `lint` / `synth` lấy từ `tools.json` của bạn (preset Synopsys nếu chưa có).
+Thiếu tool thì step chờ và nêu tên role. **Skill:** các stage LLM đọc playbook (`skills/<tên>/SKILL.md`); đặt skill của bạn trong `<project>/skills/` để thêm hoặc thay.
+`q3tui act style_show` và `q3tui act csr_show` in ra những gì flow đã quyết định.

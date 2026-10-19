@@ -15,6 +15,7 @@ every command/key you'll use day to day.
 - [7. Commands and keys](#7-commands-and-keys)
 - [8. Input and output](#8-input-and-output)
 - [9. The assistant (chat)](#9-the-assistant-chat)
+- [10. The RTL flow](#10-the-rtl-flow)
 
 ## 1. Install
 
@@ -318,3 +319,24 @@ Type anything that isn't a `/command` into the bottom input and it goes to the a
 every action in this guide (run a step, answer a question, change a gate mode, review an assertion, sign off
 a requirement, change settings, …) and asks for confirmation before anything destructive (reset, turning on
 unattended modes). It always replies in whatever language you write to it in, independent of `tui.language`.
+
+## 10. The RTL flow
+
+`pipeline.flow: rtl` (in `q3tui.yaml`, or `q3tui --flow rtl`) runs RTL generation on its own, checks it and smoke-tests it; verification is left to another flow.
+Design reference: `docs/spec/rtl-flow.md`.
+
+```
+spec → rules → parse → config → csr → rtl → format → style_lint → smoke
+```
+
+1. **Your rules.** `q3tui act rtl_rules_init` writes `rules/rtl_rules.md`: one rule per bullet, `- **ID** text`. They are read before Q3TUI's default rules (same id =
+   override). The `rules` step checks them for contradictions (it stops with the exact text to change) and writes the Verible flags to `rtl/style_lint/`.
+2. **Registers.** If the spec has a register map, the `csr` step drafts `rtl/csr/csr_map.json` and generates the register block with the APB-CSR-Generator
+   (`q3tui act csr_tool_install` once; or set `csr.tool_dir` / `$CSR_GEN_HOME`). Edit `csr_map.json` to change a register: it is yours after the first draft. `csr.mode: off` skips it.
+3. **RTL, format, style lint.** `rtl` follows the rules; `format` only changes whitespace (it asks before touching a file you edited); `style_lint` runs Verible and sends
+   violations back to `rtl`. This repeats by itself, up to `style_lint.max_rounds`.
+4. **Smoke test.** A small testbench written from the spec only, compiled and run (tool roles `sim` and `run`). A failure is triaged and fixed, or becomes a question for you.
+
+Tools: Verible (`verible_lint`, `verible_format`) and the CSR generator come with the flow's defaults; `sim` / `run` / `lint` / `synth` come from your `tools.json` (the Synopsys
+preset when you have none). A missing tool makes its step wait and name the role. **Skills:** the LLM stages read playbooks (`skills/<name>/SKILL.md`); put your own in
+`<project>/skills/` to add or replace one. `q3tui act style_show` and `q3tui act csr_show` print what the flow decided.

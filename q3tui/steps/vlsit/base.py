@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 from q3tui.pipeline.base import StepDef
@@ -63,7 +63,10 @@ class VlsitStep(StepDef):
     gate_fields: dict[str, object] = {}  # written into the artifact's metadata when the gate is approved (see on_approve)
 
     def lay(self, engine) -> Layout:
-        return layout(engine)
+        """The layout; `options.rtl_dir` (a project-relative folder) moves the RTL out of `src/rtl` (the `rtl` flow: `rtl/`)."""
+        lay = layout(engine)
+        d = self.options.get("rtl_dir")
+        return replace(lay, rtl=engine.project.root / str(d)) if d else lay
 
     # -- questions: schemas/questions/<id>.json (+ .answers.json, .md) ---------------------------
 
