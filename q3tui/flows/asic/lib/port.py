@@ -1,4 +1,4 @@
-"""The ASIC port check (code, no LLM): what in the RTL an ASIC flow cannot take as it is.
+"""The ASIC port scan (code, ground truth; the LLM review of `review.py` adds to it): what in the RTL an ASIC flow cannot take as it is.
 
 An FPGA-minded (or simulation-minded) design carries things a standard-cell flow has no answer to: vendor primitives, FPGA
 attributes, memories that Design Compiler would build from flip-flops, power-up values, simulation-only statements. Each finding
@@ -133,7 +133,7 @@ def scan_file(path: Path, root: Path, min_words: int = 16, waive: tuple[str, ...
             if rid in waive or rid not in RULES:
                 continue
             r = RULES[rid]
-            out.append({"rule": rid, "severity": r.severity, "module": module, "file": rel, "line": n, "text": text[:160], "fix": r.fix})
+            out.append({"rule": rid, "severity": r.severity, "title": r.title, "module": module, "file": rel, "line": n, "text": text[:160], "fix": r.fix})
     return out
 
 
@@ -144,5 +144,6 @@ def scan(files: list[Path], root: Path, min_words: int = 16, waive: tuple[str, .
 
 
 def handoff_text(f: dict) -> str:
-    """The scoped change request for the flow that owns the RTL."""
-    return f"[rtl:{f['module']}] ASIC port ({f['file']}:{f['line']}, {RULES[f['rule']].title}): `{f['text']}` — {f['fix']}"
+    """The scoped change request (the work order) for the flow that owns the RTL."""
+    return f"[rtl:{f['module']}] ASIC port ({f['file']}:{f['line']}, {f.get('title') or RULES[f['rule']].title}): `{f['text']}` — {f['fix']}" + (f" Create the wrapper module `{f['wrapper']}`." if f.get('wrapper') else "") \
+        + " Keep the behaviour, the ports and every requirement tag unchanged; lint stays clean."
