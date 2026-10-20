@@ -66,6 +66,9 @@ Rules for the code:
   presents read data), driving `drv_cb`; the specification's statements marked as assumptions were reviewed by the user and are as shown.
 - A directed sequence uses the adapter: build a `dut_axi_txn` (is_write, id, addr, len, size, burst, data, strb) and call `adapter.send(t)`; use only
   values the specification allows.
+- A test body (region `test.<TC>`, inside `run_phase`): `phase.raise_objection(this)`, `wait_reset_release()`, build transactions and call
+  `env.axi_adapter.send(t)` one after the other (read the response and data from the transaction the scoreboard checks; the rules the class enables do the
+  checking), then `phase.drop_objection(this)`. The test makes the stimulus its description asks for and nothing the specification does not allow.
 
 Reply with the structured result only: one entry per region.
 <!-- /SEMANTIC_SYSTEM -->

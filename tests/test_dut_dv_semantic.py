@@ -100,3 +100,18 @@ def test_forbidden_code_is_sent_back_with_the_problem(engine, llm):
         run_tb(eng)
     calls = [c for c in llm.calls if c.name == "tb_semantic_sram"]
     assert len(calls) == 2 and "delay controls are not allowed" in calls[1].prompt
+
+
+def test_scope_all_adds_the_remaining_rules_and_the_directed_tests_only():
+    from tests.test_dut_dv_scaffold import baseline
+
+    c, _ = baseline()
+    smoke = sem.units(c)
+    allu = sem.units(c, "all")
+    assert [u["name"] for u in smoke] == ["sram", "checker"] and [u["name"] for u in allu][:2] == ["sram", "checker"]
+    assert allu[:2] == smoke
+    extra = [i for u in allu[2:] for i in u["regions"]]
+    assert all(i.startswith(("SBR-", "test.TC-")) for i in extra) and not any(i.startswith("COV-") or i == "assertions" for i in extra)
+    assert {f"test.{t.tc_id}" for t in c.tests if t.milestone == "later"} <= set(extra)
+    assert not set(extra) & set(sem.smoke_region_ids(c))
+    assert all(len(u["regions"]) <= 6 for u in allu if u["name"].startswith("tests_"))

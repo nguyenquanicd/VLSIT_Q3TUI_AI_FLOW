@@ -61,10 +61,18 @@ class IntegrationInputs(_Strict):
     port_map: dict[str, str] = Field(default_factory=dict)
 
 
+class SemanticOptions(_Strict):
+    """Which regions the agent implements (milestone M5 and later)."""
+
+    scope: Literal["smoke", "all"] = Field("smoke", description="smoke: the smoke path only; all: also the other scoreboard rules and the directed tests "
+                                                                "(coverage and assertions stay stubs)")
+
+
 class UvmVipOptions(_Strict):
     standards: list[str] = Field(default_factory=list, description="Approved standard documents (behavioral); paths relative to the project")
     vip: VipInputs
     integration: IntegrationInputs = Field(default_factory=IntegrationInputs)
+    semantic: SemanticOptions = Field(default_factory=SemanticOptions)
 
 
 def backend_of(options: dict | None) -> str:
@@ -439,7 +447,7 @@ async def semantic_phase(step, ctx, opts: UvmVipOptions, contract, vip: dict | N
 
     todo = []
     items = wl.scan(lay.tb, contract)
-    for unit in sem.units(contract):
+    for unit in sem.units(contract, opts.semantic.scope, items):
         sctx = sem.unit_context(lay.tb, contract, unit, items)
         h = sem.input_hash(sctx)
         owners = [i["owner"] for i in items if i["id"] in unit["regions"]]
@@ -452,6 +460,7 @@ async def semantic_phase(step, ctx, opts: UvmVipOptions, contract, vip: dict | N
         left = await run_unit(unit, [])
         if left:
             raise StepFailed(f"the {unit['name']} regions still have problems after the fix rounds:\n" + "\n".join(f"- {p}" for p in left[:15]))
+        meta[unit["name"]] = sem.input_hash(sem.unit_context(lay.tb, contract, unit, wl.scan(lay.tb, contract)))  # kept even if a later unit fails: no paid work is repeated
     # compile (with fix rounds on the compiler's errors in testbench files)
     res = entry = None
     for attempt in range(ctx.cfg.tb.max_fix_attempts + 1):
@@ -469,7 +478,7 @@ async def semantic_phase(step, ctx, opts: UvmVipOptions, contract, vip: dict | N
             (mine.setdefault(rel, []) if rel else outside).append(f"{d.code}{f' line {d.line}' if d.line else ''}: {d.message}" if rel else f"{d.file}:{d.line}: {d.message}")
         if not mine or attempt == ctx.cfg.tb.max_fix_attempts:
             raise StepFailed("the testbench does not compile (log " + (entry["log"] if entry else "") + "):\n" + "\n".join(f"- {x}" for x in [*sum(mine.values(), []), *outside][:12]))
-        for unit in sem.units(contract):
+        for unit in sem.units(contract, opts.semantic.scope, wl.scan(lay.tb, contract)):
             items = wl.scan(lay.tb, contract)
             files = {i["file"] for i in items if i["id"] in unit["regions"]}
             hit = [f for f in mine if f in files]
@@ -575,9 +584,9 @@ async def integration_phase(step, ctx, opts: UvmVipOptions, contract, architectu
     return {"conforms": True, "compile": entry}
 
 
-async def smoke_phase(step, ctx, opts: UvmVipOptions) -> dict | None:
-    """Run the deterministic smoke test with the tool role `run_uvm` on the simv built by the last compile (the DUT compile). The status comes from the
-    log only (DUT-DV-012, 023): exit code 0, zero UVM_ERROR and UVM_FATAL, a PASS result line for this test and no DV_TODO announced. Never invented."""
+async def run_one_test(step, ctx, test: str, seed: int, note: str) -> dict | None:
+    """Run one test with the tool role `run_uvm` on the simv built by the last compile (the DUT compile). The status comes from the log only
+    (DUT-DV-012, 023): exit code 0, zero UVM_ERROR and UVM_FATAL, a PASS result line for this test and no DV_TODO announced. Never invented."""
     import anyio
 
     from q3tui.eda import tools as T
@@ -589,16 +598,50 @@ async def smoke_phase(step, ctx, opts: UvmVipOptions) -> dict | None:
     ts = T.load_tools(ctx.cfg, project.root)
     work = lay.sim / "tb_uvm"
     if "run_uvm" not in ts.roles or not T.available(ts, "run_uvm"):
-        ctx.emit("warning", message="tool role 'run_uvm' is not configured or its tool was not found: the smoke simulation is NOT_RUN")
+        ctx.emit("warning", message="tool role 'run_uvm' is not configured or its tool was not found: the simulation is NOT_RUN")
         return None
-    test, seed = opts.integration.smoke_test, 1
     res = await anyio.to_thread.run_sync(lambda: T.run_role(ts, "run_uvm", work, {"test": test, "seed": seed, "workdir": work, "project": project.root},
                                                             log_name=f"run_{test}_seed{seed}.log"))
     text = Path(res.log_path).read_text(errors="replace") if res.log_path and Path(res.log_path).is_file() else ""
-    status, note = ev.judge_run(text, res.returncode, test)
-    entry = ev.record(project, "run", test, res, note or "smoke test with the released RTL as the DUT", artifacts.now(), status=status, seed=seed)
-    ctx.emit("log", message=f"smoke simulation {test} seed {seed}: {status}" + (f" ({note})" if note else "") + f"; UVM_ERROR={entry['uvm_error']} UVM_FATAL={entry['uvm_fatal']}; log {entry['log']}")
+    status, why = ev.judge_run(text, res.returncode, test)
+    entry = ev.record(project, "run", test, res, why or note, artifacts.now(), status=status, seed=seed)
+    ctx.emit("log", message=f"simulation {test} seed {seed}: {status}" + (f" ({why})" if why else "") + f"; UVM_ERROR={entry['uvm_error']} UVM_FATAL={entry['uvm_fatal']}; log {entry['log']}")
     return entry
+
+
+async def smoke_phase(step, ctx, opts: UvmVipOptions) -> dict | None:
+    """The deterministic smoke test (DUT-DV-015)."""
+    return await run_one_test(step, ctx, opts.integration.smoke_test, 1, "smoke test with the released RTL as the DUT")
+
+
+async def tests_phase(step, ctx, opts: UvmVipOptions, contract) -> list[dict]:
+    """Run every directed test whose body the agent implemented (an unimplemented one stays a todo and is not run). One entry per test; the
+    table docs/dv_test_results.md lists them with the tests that were not run (status `todo`)."""
+    from q3tui.flows.vlsit.tb.uvm import svgen as g
+    from q3tui.flows.vlsit.tb.uvm import worklist as wl
+
+    lay = step.lay(ctx.engine)
+    owner = {i["id"]: i["owner"] for i in wl.scan(lay.tb, contract)}
+    rows, entries = [], []
+    for t in contract.tests:
+        if t.kind == "smoke" and t.milestone == "v0_1":
+            continue
+        cls = f"dut_tc_{int(t.tc_id.split('-')[-1]):03d}_{g.lc(t.name)}_test"
+        if owner.get(f"test.{t.tc_id}", "scaffold") == "scaffold":
+            rows.append((t.tc_id, cls, "todo", "not implemented"))
+            continue
+        e = await run_one_test(step, ctx, cls, 1, f"{t.tc_id} with the released RTL as the DUT")
+        if e is None:
+            rows.append((t.tc_id, cls, "NOT_RUN", "tool role run_uvm is not available"))
+            continue
+        entries.append(e)
+        incomplete = e["status"] != "PASS" and e["note"].startswith("result line says INCOMPLETE")  # ran clean but made no check: no evidence either way
+        rows.append((t.tc_id, cls, "INCOMPLETE" if incomplete else e["status"], e["note"] or f"UVM_ERROR={e['uvm_error']} UVM_FATAL={e['uvm_fatal']}; log {e['log']}"))
+    lay.docs.mkdir(parents=True, exist_ok=True)
+    (lay.docs / "dv_test_results.md").write_text("# Directed test results (released RTL as the DUT)\n\nStatus is read from the simulator log of each run (`schemas/dv_evidence.json`); "
+                                                 "`todo` = not implemented, not run; `INCOMPLETE` = ran without error but made no check.\n\n| Test | Class | Status | Note |\n|---|---|---|---|\n"
+                                                 + "".join(f"| {a} | `{b}` | {c} | {d} |\n" for a, b, c, d in rows))
+    return entries
 
 
 async def run(step, ctx) -> None:
@@ -626,6 +669,15 @@ async def run(step, ctx) -> None:
     if smoke["status"] != "PASS":
         raise StepFailed(f"the smoke test {smoke['name']} did not pass: {smoke['note']} (log {smoke['log']}; UVM_ERROR={smoke['uvm_error']}, UVM_FATAL={smoke['uvm_fatal']}). "
                          "The expected behavior comes from the approved specification; a failure is a finding about the DUT or the testbench, never a reason to change it")
+    if opts.semantic.scope == "all":
+        entries = await tests_phase(step, ctx, opts, contract)
+        for e in entries:
+            if e["status"] != "PASS" and e["note"].startswith("result line says INCOMPLETE"):
+                ctx.emit("warning", message=f"{e['name']} made no check (INCOMPLETE): it is not evidence for its requirements")
+        failed = [e for e in entries if e["status"] != "PASS" and not e["note"].startswith("result line says INCOMPLETE")]
+        if failed:
+            raise StepFailed("directed tests that did not pass (details: docs/dv_test_results.md): " + ", ".join(f"{e['name']} ({e['note']})" for e in failed)
+                             + ". The expected behavior comes from the approved specification; a failure is a finding about the DUT or the testbench, never a reason to change it")
     return
 
 

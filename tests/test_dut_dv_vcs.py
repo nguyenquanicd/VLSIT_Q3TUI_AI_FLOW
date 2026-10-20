@@ -86,8 +86,12 @@ def test_example_runs_end_to_end_with_vcs_and_the_smoke_test_passes(tmp_path, mo
     eng = Engine(Project.open(root))
     anyio.run(lambda: eng.run_step(eng.by_name["tb"]))
     entries = json.loads((root / "schemas" / "dv_evidence.json").read_text())["entries"]
-    runs = [e for e in entries if e["kind"] == "run"]
-    assert runs and runs[-1]["status"] == "PASS" and runs[-1]["uvm_error"] == 0 and runs[-1]["uvm_fatal"] == 0
-    assert "status=PASS" in (root / runs[-1]["log"]).read_text()
+    runs = {e["name"]: e for e in entries if e["kind"] == "run"}  # the last run of each test
+    smoke = runs["dut_smoke_test"]
+    assert smoke["status"] == "PASS" and smoke["uvm_error"] == 0 and smoke["uvm_fatal"] == 0 and "status=PASS" in (root / smoke["log"]).read_text()
+    # the directed tests: all pass except TC-007 (backpressure cannot be stimulated through the VIP adapter: it makes no check, INCOMPLETE, never a PASS)
+    not_pass = sorted(n for n, e in runs.items() if e["status"] != "PASS")
+    assert not_pass == ["dut_tc_007_backpressure_test"] and len(runs) == 12  # the smoke test and 11 directed tests
+    assert "| TC-007 | `dut_tc_007_backpressure_test` | INCOMPLETE |" in (root / "docs" / "dv_test_results.md").read_text()
     after = {p.relative_to(root): p.read_bytes() for p in (root / "src" / "tb").rglob("*") if p.is_file()}
     assert after == before and not list(root.rglob("*.scaffold_new"))

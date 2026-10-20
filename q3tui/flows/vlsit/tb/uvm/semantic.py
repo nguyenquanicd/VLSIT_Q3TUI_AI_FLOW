@@ -54,10 +54,26 @@ def smoke_region_ids(c: VerificationContract) -> list[str]:
     return ["sram.monitor", "sram.responder", "seq.smoke", *ids]
 
 
-def units(c: VerificationContract) -> list[dict]:
+def units(c: VerificationContract, scope: str = "smoke", items: list[dict] | None = None) -> list[dict]:
+    """The agent's units of work. `smoke`: the SRAM model and the checker of the smoke path. `all`: also the remaining scoreboard rules and the directed
+    tests, in groups of at most 6 tests. Coverage and assertions are not part of it. `items` (the worklist) limits the ids to regions that exist."""
+    from q3tui.flows.vlsit.tb.uvm.scaffold import rule_uses_sram
+
     ids = smoke_region_ids(c)
-    return [{"name": "sram", "regions": [i for i in ids if i.startswith("sram.")]},
-            {"name": "checker", "regions": [i for i in ids if not i.startswith("sram.")]}]
+    out = [{"name": "sram", "regions": [i for i in ids if i.startswith("sram.")]},
+           {"name": "checker", "regions": [i for i in ids if not i.startswith("sram.")]}]
+    if scope == "all":
+        have = {i["id"] for i in items} if items is not None else None
+        rules = []
+        for r in c.scoreboard_rules:
+            if r.id not in ids:
+                rules += [r.id, f"{r.id}.sram"] if rule_uses_sram(r, c) else [r.id]
+        tests = [f"test.{t.tc_id}" for t in c.tests if not (t.kind == "smoke" and t.milestone == "v0_1")]
+        ok = lambda x: have is None or x in have  # noqa: E731
+        out.append({"name": "rules", "regions": [i for i in rules if ok(i)]})
+        for n, k in (("tests_a", 0), ("tests_b", 6)):
+            out.append({"name": n, "regions": [i for i in tests[k:k + 6] if ok(i)]})
+    return [u for u in out if u["regions"]]
 
 
 def mark(text: str, ids: list[str]) -> str:
@@ -78,16 +94,20 @@ def unit_context(tb_dir: Path, c: VerificationContract, unit: dict, items: list[
                 need.append(r)
     smoke = next((t for t in c.tests if t.kind == "smoke" and t.milestone == "v0_1"), None)
     files = sorted({i["file"] for i in mine})
+    tests = [{"tc_id": t.tc_id, "name": t.name, "kind": t.kind, "description": t.description, "rules": t.rule_ids, "requirements": t.requirement_ids}
+             for t in c.tests if f"test.{t.tc_id}" in unit["regions"]]
+    extra = ("adapters/dut_axi_adapter.svh", "sequences/dut_seq_lib.svh", "tests/dut_test_lib.svh") if tests else ()
     return {"regions": [{k: i.get(k) for k in ("id", "kind", "file", "line", "owner", "requirements", "source", "text")} for i in mine],
             "files": {f: (tb_dir / f).read_text() for f in files},
             "requirements": {r: {"text": reqs[r].text, "status": reqs[r].status, "origin": reqs[r].origin_class, "reason": reqs[r].status_reason} for r in need if r in reqs},
             "smoke": ({"tc_id": smoke.tc_id, "description": smoke.description, "rules": smoke.rule_ids} if smoke else None),
-            "support": {f: (tb_dir / f).read_text() for f in ("interfaces/dut_pins_if.sv", "env/dut_txn.svh") if (tb_dir / f).is_file()}}
+            "support": {f: (tb_dir / f).read_text() for f in ("interfaces/dut_pins_if.sv", "env/dut_txn.svh", *extra) if (tb_dir / f).is_file() and f not in files},
+            **({"tests": tests} if tests else {})}
 
 
 def input_hash(ctx: dict) -> str:
     keep = {"regions": [{k: v for k, v in r.items() if k not in ("line", "owner")} for r in ctx["regions"]], "requirements": ctx["requirements"], "smoke": ctx["smoke"],
-            "support": ctx["support"]}
+            "support": ctx["support"], **({"tests": ctx["tests"]} if ctx.get("tests") else {})}
     return hashlib.sha256(json.dumps(keep, sort_keys=True).encode()).hexdigest()[:20]
 
 
@@ -100,6 +120,8 @@ def prompt(ctx: dict, decisions: list[str], previous: dict[str, str], problems: 
     parts.append("\n## Requirements (approved; the specification is the only source of expected behavior)\n"
                  + "\n".join(f"- {k} [{v['status']}{', ' + v['origin'] if v['origin'] != 'NORMATIVE' else ''}]: {v['text']}" + (f" (decision: {v['reason']})" if v["reason"] else "")
                              for k, v in ctx["requirements"].items()))
+    for t in ctx.get("tests", []):
+        parts.append(f"\n## Test {t['tc_id']} ({t['kind']}): {t['name']}\nRequirements: {', '.join(t['requirements'])}; scoreboard rules enabled by the class: {', '.join(t['rules'])}\n{t['description']}")
     if ctx["smoke"]:
         parts.append(f"\n## The smoke test {ctx['smoke']['tc_id']}\n{ctx['smoke']['description']}")
     if decisions:
