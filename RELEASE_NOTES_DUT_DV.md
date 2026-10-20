@@ -17,8 +17,11 @@ Core rule: the specification is the golden behavior; the RTL is only the DUT. RT
 ### Release status
 | Item | Status |
 |---|---|
-| TC-001 `dut_smoke_test` (VCS X-2025.06, real RTL and VIP) | **PASS**: 8 checks, 0 mismatches, UVM_ERROR 0, UVM_FATAL 0 |
-| TC-002..TC-012 (incl. the 4 KB boundary test), SBR-004..007/009, COV-001..009, assertions | **todo** (run as INCOMPLETE, never PASS) |
+| TC-001 `dut_smoke_test` (VCS X-2025.06, real RTL and VIP) | **PASS**: 11 checks, 0 mismatches, UVM_ERROR 0, UVM_FATAL 0 |
+| TC-002..006, 008, 009, 010, 012 (incl. the 4 KB boundary test) | **PASS** (live agent run, about 0.7 USD) |
+| TC-011 timing | PASS but does **not** verify timing (SBR-007 makes no check) |
+| TC-007 backpressure | **INCOMPLETE** (0 checks; not evidence) |
+| SBR-006, 007, 009 checks; COV-001..009; assertions | **todo** (not checked / not implemented) |
 | Full regression | 349 passed, 4 failed (pre-existing: missing `examples/sync_fifo/fifo.f`) |
 
 ### Modified files (4)
@@ -61,7 +64,7 @@ Results: `.q3tui/sim/tb_uvm/*.log` (logs, `VLSIT_DUT_TB_RESULT` line) and `schem
 A run that finds the step up to date does not simulate again.
 
 ### Notes and limitations
-- Only the smoke path is implemented (10 regions); 29 regions are `DV_TODO` stubs. No constrained-random or stress tests yet.
+- 29 of 39 regions are implemented (smoke path, remaining scoreboard rules, TC-002..012); 10 are `DV_TODO` stubs (COV-001..009 and assertions). SBR-006/007/009 are cycle-level pin properties and have no check; TC-007 cannot stimulate backpressure through the VIP adapter. No stress tests.
 - SBR-008 is checked only on the SRAM cycles the monitor observes, not on idle cycles. Functional coverage is off.
 - `selected_testplan.json` is not produced, so the sva/verify steps are not wired.
 - The VIP drops zero-valued data beats, so checking uses a TB-owned pin monitor; VCS-incompatible VIP parts use stand-ins (strong SVA, FCIRS coverage).
@@ -84,8 +87,11 @@ parameter, file). Spec và RTL lệch nhau thì báo cáo, không tự điều c
 ### Trạng thái release
 | Hạng mục | Trạng thái |
 |---|---|
-| TC-001 `dut_smoke_test` (VCS X-2025.06, RTL và VIP thật) | **PASS**: 8 checks, 0 mismatches, UVM_ERROR 0, UVM_FATAL 0 |
-| TC-002..TC-012 (gồm test 4 KB), SBR-004..007/009, COV-001..009, assertions | **todo** (chạy ra INCOMPLETE, không bao giờ PASS) |
+| TC-001 `dut_smoke_test` (VCS X-2025.06, RTL và VIP thật) | **PASS**: 11 checks, 0 mismatches, UVM_ERROR 0, UVM_FATAL 0 |
+| TC-002..006, 008, 009, 010, 012 (gồm test 4 KB) | **PASS** (chạy agent thật, khoảng 0.7 USD) |
+| TC-011 timing | PASS nhưng **không** kiểm tra timing (SBR-007 không có check) |
+| TC-007 backpressure | **INCOMPLETE** (0 check, không phải bằng chứng) |
+| Check SBR-006, 007, 009; COV-001..009; assertions | **todo** (chưa kiểm tra / chưa implement) |
 | Regression đầy đủ | 349 pass, 4 fail (đã có từ trước: thiếu `examples/sync_fifo/fifo.f`) |
 
 ### File đã sửa (4)
@@ -128,7 +134,7 @@ Kết quả: `.q3tui/sim/tb_uvm/*.log` (log, dòng `VLSIT_DUT_TB_RESULT`) và `s
 Nếu step đã "up to date" thì không simulate lại.
 
 ### Ghi chú và giới hạn
-- Mới implement smoke path (10 vùng); 29 vùng còn là stub `DV_TODO`. Chưa có test constrained-random hay stress.
+- Đã implement 29/39 vùng (smoke path, các scoreboard rule còn lại, TC-002..012); 10 vùng còn là stub `DV_TODO` (COV-001..009 và assertions). SBR-006/007/009 là thuộc tính mức chu kỳ nên chưa có check; TC-007 không tạo được backpressure qua VIP adapter. Chưa có test stress.
 - SBR-008 chỉ kiểm tra trên các chu kỳ SRAM mà monitor quan sát được, không kiểm tra chu kỳ idle. Coverage đang tắt.
 - Chưa sinh `selected_testplan.json` nên các step sva/verify chưa được nối.
 - VIP làm rơi beat dữ liệu bằng 0 nên việc kiểm tra dùng pin monitor của TB; phần VIP VCS không hỗ trợ dùng stand-in (strong SVA, FCIRS coverage).

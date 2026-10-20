@@ -37,9 +37,10 @@ the behavioral phase stale.
 | M5 | spec-driven scoreboard and smoke test | done (one live agent run; compile PASS with VCS; run against the interface shell hits the watchdog by design) |
 | M6 | RTL integration and conformance | done (real RTL: 6 parameter-name mismatches reported; with an approved mapping the interface conforms) |
 | M7 | VCS compile with the RTL as DUT | done: the specification now names its parameters `PARA_*` like the RTL, so no mapping is needed; conformance clean, VCS compile rc 0 |
-| M8 | one smoke simulation | done: `dut_smoke_test` with the real RTL, `status=PASS checks=8 mismatches=0 todo=0`, UVM_ERROR 0, UVM_FATAL 0 (a deliberately wrong expectation FAILs) |
+| M8 | one smoke simulation | done: `dut_smoke_test` with the real RTL, `status=PASS checks=11 mismatches=0 todo=0`, UVM_ERROR 0, UVM_FATAL 0 (a deliberately wrong expectation FAILs) |
 | M9 | example regression | done: the committed example runs end to end with VCS on a copy (`-m vcs` test), smoke test PASS, no LLM beyond the reviewed intent |
 | M10 | final documentation and report | done: `docs/spec/dut-dv-report.md` |
+| M11 | all scoreboard rules and directed tests (`semantic.scope: all`) | done: 10 of 11 directed tests PASS (TC-011 without checking timing), TC-007 INCOMPLETE |
 
 ## M2: from the approved specification to a frozen contract
 
@@ -157,7 +158,7 @@ findings; `docs/dut_conformance_report.md` is the readable report.
 - `smoke_phase` runs the smoke test through the tool role `run_uvm`; `judge_run` reads only the log (DUT-DV-022/023). Evidence keeps the earlier FAIL runs.
 - `uvm_vip.vip.env` names an environment variable (here `AXI_VIP_HOME`) used for the VIP root in every generated filelist, so nothing machine specific is
   written. A second run keeps the integration files (their hashes stay in the scaffold record) and creates no `.scaffold_new`.
-- Not covered yet: SBR-008 on idle SRAM cycles, functional coverage (off), the rules SBR-004..007 and SBR-009, 29 regions are still `DV_TODO` stubs, `selected_testplan.json` is not produced.
+- Not covered yet: SBR-008 on idle SRAM cycles, functional coverage (off), checks for SBR-006/007/009, 10 regions (COV-001..009, assertions) are still `DV_TODO` stubs, `selected_testplan.json` is not produced.
 
 ## M9: the example as a regression
 
@@ -165,3 +166,11 @@ findings; `docs/dut_conformance_report.md` is the readable report.
 copies it, runs the `tb` step with only `tb_intent` answered (from the reviewed contract; any other LLM stage fails the test), and checks a `PASS` run
 read from the log with zero UVM_ERROR/UVM_FATAL and that no generated file changed. It found a real defect: a regeneration put the scaffold stubs back
 over agent-implemented regions when the file matched its recorded hash; `scaffold.write` now always keeps agent/user regions.
+
+## M11: all scoreboard rules and the directed tests
+
+Option `uvm_vip.semantic.scope: all` (default `smoke`) adds the units `rules` (the other scoreboard rules) and `tests_a`/`tests_b` (TC-002..012, up to 6 tests
+each) to the agent's work; coverage and assertions stay stubs. After the smoke test, `tests_phase` runs every directed test whose body is implemented and writes
+`docs/dv_test_results.md`; a test that ran clean but made no check is reported `INCOMPLETE` (a warning, not a pass), any other non-pass fails the step. A unit is
+recorded as done as soon as it succeeds, so a later failure does not repeat paid agent work. Live run on `axi4_sram_ctrl` (claude-sonnet-5-5): three agent calls, about 0.7 USD;
+TC-008 exposed a testbench defect (a rule that needs SBR-001's memory model was enabled without it), fixed in the test body. Results: examples/axi4_sram_ctrl/README.md.

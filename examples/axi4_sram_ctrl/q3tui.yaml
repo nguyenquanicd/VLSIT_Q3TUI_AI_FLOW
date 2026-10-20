@@ -16,3 +16,4 @@ pipeline:
           top: m_vlsi_axi4_sram
           simulator: vcs
           smoke_test: dut_smoke_test
+        semantic: {scope: all}   # the agent also implements the other scoreboard rules and the directed tests (coverage, assertions stay todo)

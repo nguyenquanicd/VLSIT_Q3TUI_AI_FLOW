@@ -35,21 +35,31 @@ specification and an existing AXI VIP. The existing plain-SystemVerilog backend 
 
 ## Verification status (release V0.1)
 
-| Item | Status | Note |
-|---|---|---|
-| TC-001 `dut_smoke_test` | **PASS** | VCS, real RTL and VIP: 8 checks, 0 mismatches, UVM_ERROR 0, UVM_FATAL 0 |
-| TC-002 .. TC-011 (directed, negative, random) | **todo** | contract `milestone: later`; regions are `DV_TODO` stubs, not run |
-| TC-012 INCR burst crossing 4 KB (approved by you, Q-TB-OI-006) | **todo** | in the contract with its expected behavior; not implemented, not run |
-| Scoreboard rules SBR-004..007, SBR-009 (+ `.sram`) | **todo** | not implemented (SBR-001, 002, 003 and 008 are implemented and run in the smoke test; SBR-008 is checked on the SRAM cycles the monitor observes, not on idle cycles) |
-| Functional coverage COV-001..009 | **todo** | coverage is off |
-| Assertions | **todo** | stub region |
+Run with `semantic: {scope: all}` (live agent run, claude-sonnet-5-5, about 0.7 USD) and the released RTL as the DUT under VCS X-2025.06.
+Per-test results: `docs/dv_test_results.md`; the evidence behind them is written by a run to `schemas/dv_evidence.json` and `.q3tui/sim/tb_uvm/*.log`.
 
-A `todo` item is never reported as PASS: running its test prints `DV_TODO` and ends `INCOMPLETE` (DUT-DV-023/024). The smoke PASS shows the
-flow works end to end; it is not a claim that the DUT is verified beyond that test.
+| Test | Status | Note |
+|---|---|---|
+| TC-001 smoke | **PASS** | 11 checks, 0 mismatches |
+| TC-002 INCR bursts, TC-003 FIXED, TC-004 WRAP, TC-005 narrow/strobes, TC-006 error bursts | **PASS** | 18 / 6 / 12 / 4 / 8 checks |
+| TC-008 ID ordering, TC-009 max length, TC-010 random mixed, TC-012 INCR crossing 4 KB (your Q-TB-OI-006) | **PASS** | 80 / 6 / 1027 / 9 checks |
+| TC-011 timing/latency | PASS, **but it does not verify timing** | its checks come from SBR-008; SBR-007 (latency) makes no check, see below |
+| TC-007 backpressure | **INCOMPLETE** | ran without error, made 0 checks: ready hold-off cannot be stimulated through the VIP adapter and SBR-006 has no check. Not evidence |
+
+Scoreboard rules with real checks: SBR-001, 002, 003, 004, 005, 008. **Not checked** (cycle-level pin properties the testbench does not observe): SBR-006
+(handshake stability), SBR-007 (latency), SBR-009 (reset/idle soft checks): their requirements are not verified by this example. Functional coverage
+COV-001..009 and assertions are still `todo`.
+
+Two findings from the run (neither changes an expectation of the specification):
+- TC-008 first failed with 20 mismatches: it enabled SBR-003 (read data) but not SBR-001, which maintains the reference memory SBR-003 compares against.
+  The DUT returned exactly the data written. The contract's TC-008 lists no SBR-001; the test body now enables it. The contract is frozen, so this is recorded here.
+- The simulator log has one `UVM_WARNING` (`DRVCONNECT`, VIP driver proxy without a sequencer), not analysed yet.
+
+A `todo` or INCOMPLETE item is never reported as PASS (DUT-DV-023/024).
 
 ## Known limitations
 
-Smoke run with the real RTL: `dut_smoke_test` PASS (8 checks, 0 mismatches, UVM_ERROR 0, UVM_FATAL 0). Not yet: functional coverage, the remaining `DV_TODO` regions, constrained-random and stress tests, a committed copy of the generated testbench (M9).
+Not yet: functional coverage, assertions, checks for SBR-006/007/009 (need a cycle-level pin checker), real backpressure stimulus (TC-007), stress tests.
 
 ## Run it
 

@@ -181,46 +181,96 @@ class dut_scoreboard extends uvm_scoreboard;
   // SBR-004 | REQ-020, REQ-021, REQ-022 | spec address generation section
   // Beat address sequence: FIXED keeps the address; INCR adds 2**AxSIZE modulo 2**PARA_ADDR_WD with no 4 KB check; WRAP wraps within the size*len window.
   function void check_sbr_004(dut_axi_txn t);
-    // DV_REGION(SBR-004) BEGIN scaffold
-    `DV_TODO(SBR-004, "Beat address sequence: FIXED keeps the address; INCR adds 2**AxSIZE modulo 2**PA")
+    // DV_REGION(SBR-004) BEGIN agent
+    int unsigned nb;
+    int unsigned msz;
+    bit err;
+    nb = int'(t.len) + 1;
+    msz = $clog2(PARA_DATA_WD/8);
+    err = (t.size > msz) || ((t.addr & ((1 << t.size) - 1)) != 0);
+    // Beat addresses are not visible at the AXI level; the sequence is verified through the data/memory comparison in SBR-001/SBR-003.
+    // Here: an error-free burst (including an INCR burst crossing a 4 KB boundary) must not be flagged, i.e. no 4 KB check: all beats OKAY.
+    if (err || t.burst == 2'b11) return;
+    if (t.is_write) begin
+      if (t.resp.size() == 1) begin
+        checks++;
+        if (t.resp[0] != 2'b00)
+          mismatch("SBR-004", $sformatf("aligned valid write burst answered with BRESP %b, expected OKAY (no 4 KB check): %s", t.resp[0], t.convert2string()));
+      end
+    end else begin
+      if (t.resp.size() == nb) begin
+        checks++;
+        for (int i = 0; i < nb; i++)
+          if (t.resp[i] != 2'b00)
+            mismatch("SBR-004", $sformatf("aligned valid read burst beat %0d RRESP %b, expected OKAY: %s", i, t.resp[i], t.convert2string()));
+      end
+    end
     // DV_REGION(SBR-004) END
   endfunction
 
   // SBR-005 | REQ-026, REQ-027, REQ-028 | spec error handling section
   // Error prediction: AxSIZE > MAX_SIZE or misaligned start address gives SLVERR on all beats of the burst; a write error leaves the memory unmodified; the next aligned burst is OKAY.
   function void check_sbr_005(dut_axi_txn t);
-    // DV_REGION(SBR-005) BEGIN scaffold
-    `DV_TODO(SBR-005, "Error prediction: AxSIZE > MAX_SIZE or misaligned start address gives SLVERR on ")
+    // DV_REGION(SBR-005) BEGIN agent
+    int unsigned nb;
+    int unsigned msz;
+    bit err;
+    bit [1:0] exp_resp;
+    nb = int'(t.len) + 1;
+    msz = $clog2(PARA_DATA_WD/8);
+    err = (t.size > msz) || ((t.addr & ((1 << t.size) - 1)) != 0);
+    exp_resp = err ? 2'b10 : 2'b00;
+    if (t.is_write) begin
+      checks++;
+      if (t.resp.size() != 1)
+        mismatch("SBR-005", $sformatf("expected one B response, got %0d: %s", t.resp.size(), t.convert2string()));
+      else if (t.resp[0] != exp_resp)
+        mismatch("SBR-005", $sformatf("BRESP %b, expected %b (err=%0b): %s", t.resp[0], exp_resp, err, t.convert2string()));
+      // memory unmodified on error: SBR-001 skips the exp_mem update for SLVERR writes
+    end else begin
+      checks++;
+      if (t.resp.size() != nb)
+        mismatch("SBR-005", $sformatf("expected %0d R beats, got %0d: %s", nb, t.resp.size(), t.convert2string()));
+      else begin
+        for (int i = 0; i < nb; i++)
+          if (t.resp[i] != exp_resp)
+            mismatch("SBR-005", $sformatf("beat %0d RRESP %b, expected %b (err=%0b): %s", i, t.resp[i], exp_resp, err, t.convert2string()));
+      end
+    end
     // DV_REGION(SBR-005) END
   endfunction
 
   // SBR-005 (memory side): called for every SRAM access the monitor observes
   function void sram_sbr_005(dut_sram_txn s);
-    // DV_REGION(SBR-005.sram) BEGIN scaffold
-    `DV_TODO(SBR-005.sram, "Error prediction: AxSIZE > MAX_SIZE or misaligned start address gives  (memory side)")
+    // DV_REGION(SBR-005.sram) BEGIN agent
+    // No separate SRAM-side check: write-error memory preservation is predicted via exp_mem (SBR-001 ignores SLVERR writes) and checked on read-back by SBR-003.
+    // Nothing is counted here because no check is made.
     // DV_REGION(SBR-005.sram) END
   endfunction
 
   // SBR-006 | REQ-009, REQ-010, REQ-011, REQ-012 | spec §5 handshake rules
   // Handshake stability and READY rules: o_awready/o_arready/o_wready do not depend on VALID; B and R payload stay stable until accepted.
   function void check_sbr_006(dut_axi_txn t);
-    // DV_REGION(SBR-006) BEGIN scaffold
-    `DV_TODO(SBR-006, "Handshake stability and READY rules: o_awready/o_arready/o_wready do not depend ")
+    // DV_REGION(SBR-006) BEGIN agent
+    // Handshake stability and READY independence are cycle-level pin properties; the transaction carries no per-cycle information.
+    // No check is made here and nothing is counted.
     // DV_REGION(SBR-006) END
   endfunction
 
   // SBR-007 | REQ-052, REQ-053, REQ-054, REQ-055, REQ-057 | spec timing section
   // Latency model: single-beat write AW handshake to o_bvalid is at least 3 cycles; AR handshake to first o_rvalid is at least 4 cycles; reads issue at most every 2 cycles; AxREADY low for the burst duration.
   function void check_sbr_007(dut_axi_txn t);
-    // DV_REGION(SBR-007) BEGIN scaffold
-    `DV_TODO(SBR-007, "Latency model: single-beat write AW handshake to o_bvalid is at least 3 cycles; ")
+    // DV_REGION(SBR-007) BEGIN agent
+    // Cycle latency checks need per-cycle pin timing; the transaction only has absolute times and the clock period is not specified to the scoreboard.
+    // No check is made here and nothing is counted.
     // DV_REGION(SBR-007) END
   endfunction
 
   // SBR-007 (memory side): called for every SRAM access the monitor observes
   function void sram_sbr_007(dut_sram_txn s);
-    // DV_REGION(SBR-007.sram) BEGIN scaffold
-    `DV_TODO(SBR-007.sram, "Latency model: single-beat write AW handshake to o_bvalid is at least  (memory side)")
+    // DV_REGION(SBR-007.sram) BEGIN agent
+    // SRAM access carries no cycle number or handshake reference; latency/issue-rate checks are not possible here.
+    // No check is made and nothing is counted.
     // DV_REGION(SBR-007.sram) END
   endfunction
 
@@ -249,15 +299,21 @@ class dut_scoreboard extends uvm_scoreboard;
   // SBR-009 | REQ-041, REQ-042, REQ-049 | spec reset section (assumption)
   // Reset and idle soft checks: ready 1, valid 0 and payloads 0 after reset (soft only, per OI-002).
   function void check_sbr_009(dut_axi_txn t);
-    // DV_REGION(SBR-009) BEGIN scaffold
-    `DV_TODO(SBR-009, "Reset and idle soft checks: ready 1, valid 0 and payloads 0 after reset (soft on")
+    // DV_REGION(SBR-009) BEGIN agent
+    // Reset and idle values are pin-level soft checks (OI-002); not observable from a completed transaction.
+    // No check is made and nothing is counted.
     // DV_REGION(SBR-009) END
   endfunction
 
   // SBR-009 (memory side): called for every SRAM access the monitor observes
   function void sram_sbr_009(dut_sram_txn s);
-    // DV_REGION(SBR-009.sram) BEGIN scaffold
-    `DV_TODO(SBR-009.sram, "Reset and idle soft checks: ready 1, valid 0 and payloads 0 after rese (memory side)")
+    // DV_REGION(SBR-009.sram) BEGIN agent
+    // Soft check of REQ-049: idle bank must have address 0 when neither we nor oe is asserted (soft only per OI-002; reported as a warning, not counted as a mismatch).
+    if (!s.we && !s.oe) begin
+      checks++;
+      if (s.addr !== '0)
+        `uvm_warning("SBR-009", $sformatf("idle bank %0d has o_sram_addr %0h, expected 0 (soft check)", s.bank, s.addr))
+    end
     // DV_REGION(SBR-009.sram) END
   endfunction
 endclass

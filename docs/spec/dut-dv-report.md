@@ -31,20 +31,20 @@ Q3TUI_VCS_MODULE=synopsys/vcs/X-2025.06 AXI_VIP_HOME=... uv run pytest -m vcs
 
 ## Results
 - Full regression: 349 passed, 4 failed. The 4 failures predate this work (`examples/sync_fifo/fifo.f` missing): `test_vcs_command`, `test_slang_syntax_adapter`, `test_example_filelist`, `test_example_design`.
-- VCS X-2025.06 (`-ntb_opts uvm-ieee-2020-2.0`), real axi4_avip and the real `axi4_sram_ctrl` RTL: compile rc 0; `dut_smoke_test` `status=PASS checks=8 mismatches=0 todo=0`,
+- VCS X-2025.06 (`-ntb_opts uvm-ieee-2020-2.0`), real axi4_avip and the real `axi4_sram_ctrl` RTL: compile rc 0; `dut_smoke_test` `status=PASS checks=11 mismatches=0 todo=0`,
   UVM_ERROR 0, UVM_FATAL 0. A deliberately wrong expectation FAILs. The end-to-end example test passes (about 41 s).
 - Findings reported, not accommodated: the spec named parameters `PR_*` and the RTL `PARA_*`; the user renamed the spec, no mapping was applied.
 
 ## Limitations
-Release decision: every item below is status `todo` in the example (table in `examples/axi4_sram_ctrl/README.md`); only TC-001 is PASS.
-- Only the smoke path is implemented; 29 regions remain `DV_TODO` stubs. No constrained-random or stress tests.
+Status of every test and rule is in `examples/axi4_sram_ctrl/README.md` and `docs/dv_test_results.md`.
+- 29 of 39 regions implemented; COV-001..009 and assertions are `DV_TODO` stubs. SBR-006/007/009 have no check (cycle-level pin properties), so TC-011 (timing) passes without verifying timing and TC-007 (backpressure) is INCOMPLETE. No stress tests.
 - Scoreboard rules SBR-004..007 and SBR-009 are not implemented (SBR-001, 002, 003, 008 are; SBR-008 only on observed SRAM cycles, not idle ones). Functional coverage is off. `selected_testplan.json` is not produced, so the sva/verify steps are not wired.
 - The VIP drops zero-valued data beats (`ZERO_BEAT_DROPPED`), so checking uses a TB-owned pin monitor. VCS-incompatible VIP parts use stand-ins (strong SVA, FCIRS coverage).
 - The generator's parameter-role detection is by name pattern (`ID`, `ADDR`, `DATA`). Python 3.12 is required by the repo.
 - Live agent runs cost about $4.3 (intent and semantic stages) plus about $1.6 for the later reruns.
 
 ## Next optimizations
-1. Implement the remaining regions (directed tests TC-002..012, including the approved 4 KB crossing test) and run them as a regression.
+1. Add a cycle-level pin checker for SBR-006/007/009 and a way to hold READY low, then re-run TC-007/TC-011.
 2. Turn on functional coverage tied to the contract goals, plus the open scoreboard rules.
 3. Produce `selected_testplan.json` and connect the sva/verify steps.
 4. Generalize the VIP binding beyond axi4_avip (APB/AHB) and drop the stand-ins when the VIP supports VCS.

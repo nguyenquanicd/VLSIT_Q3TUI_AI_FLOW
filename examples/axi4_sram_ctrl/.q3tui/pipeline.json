@@ -11,16 +11,15 @@
         "src/tb/dut_tb_params_pkg.sv": "4a61bf9d03374aa3371d03b9f15a323f6d0dcbe3765bc983198e3aec9d6c1836",
         "src/tb/tb_top.sv": "fb8bf966b2a436c793f431a584b3df387b9ccd3f600469b72960f9092de46a16",
         "src/tb/dut_dv_base.svh": "5900d26259031dc9ec262fb28f3cea75b6f631a95b665f42a11bd1541e299aeb",
-        "schemas/questions/tb.md": "a14f6f4de2edc9530da294f41cecdfd807d137c219e7dd3185e4912724debfb8",
         "schemas/golden_manifest.json": "e68df408774c37c746dd2f8f9730bfd3abdfa8c93deaa0c404e9851b70172f40",
         "schemas/verification_contract.json": "8b7767aa7bdebd637fa62b125512ac7186ab56d6fc4134b2fefb180e4c62846d",
         "schemas/tb_architecture.json": "c7c64f5c452a68bc858e54d05e6a48b38d8e72e36e0d7694dff82a70e38204dc",
         "schemas/vip_integration.json": "27d807d0054b302c55834d33e72770dac7643e7887736b607ad67c44560a37f3",
         "schemas/dut_integration.json": "f5fd3fc0ef443e9700c69c4976954d1209c2f9a219ffe5ee40bbc1e45d3598f8",
-        "schemas/dv_review.json": "3eadf66ef60cf89cdf3bdbf5beff5669b45bd13831108c318472a37f73e01562",
-        "schemas/dv_worklist.json": "11bc242e69837f75f0b27a46f4fd9e9d749ce226e313c9bc7f15b7fbf4a34597",
+        "schemas/dv_review.json": "a48eb1d30f317a0cf60f6b65c2ba68c4b17aa6566e7abe93d575e7b91ed80a00",
+        "schemas/dv_worklist.json": "ae5af349c4a07ae2adc4a952f6eb658a6050ff80d8494055c6c2f5daad2478d4",
         "schemas/dv_validation.json": "1301210604a92b99d23de3653b456f2e87ccfeb02a1533a8b70dc656041aaae6",
-        "schemas/dv_evidence.json": "a577b5941b49ee4ac356558f18c1b894cdddf1ac947e4655571bbc9003a2c119",
+        "schemas/dv_evidence.json": "1cb5a9ee3ecaa1cf21e512eada28ec1a11a5328c8a9ee304a2c1f0497a6fee93",
         "docs/tb_architecture.md": "2829b30e96cc2387785ed53e6eaa7c72f33015bc56a3822ba2e5981d86d5aed3",
         "docs/dv_review_report.md": "07ef5d8d10d966a48904fbb8d0f8bbd0873330791a14531863f839bbb2d257d5",
         "docs/dut_conformance_report.md": "fc18c385743627a5a6940ae0776b632661e35a2d49ee917f1f234e65f51dee48",
@@ -36,16 +35,16 @@
         "src/tb/integration/dut_wrapper.sv": "4e84454d752194b05fd277f81bfc17b4008a7ff1d9ea22599f291e6c9e15fae1",
         "src/tb/integration/dut_wrapper_shell.sv": "f16de71c027c67e8c21adee901fb0c73305d719328e74e541c6b9d15350f50d7",
         "src/tb/interfaces/dut_pins_if.sv": "3d51b668715712780860f0c32919a22fb1ba2e888f4d8ddd19ee2bf79a5ce149",
-        "src/tb/scoreboard/dut_scoreboard.svh": "eadf23176fcf2bd6af64862b61205b13f2a994cad87b22b41658e6b809f141dd",
+        "src/tb/scoreboard/dut_scoreboard.svh": "abeac87170e8dd81a68e2190ed021724eaa0d8b8b66d093abd5c3a2542a195d0",
         "src/tb/sequences/dut_seq_lib.svh": "28e33ced91a4f150d7d981fe6b2a2182f4df8efed335152eeaf0aaf1046fccac",
         "src/tb/sram/dut_sram_agent.svh": "cc065e0f3b1fbe2961a76bae4c89af133d5ad3570b1518a53024540614b62c78",
-        "src/tb/tests/dut_test_lib.svh": "c7d631979988cbb2904fb9f3bf1af7bcd0f9db16c2557ed1d9556b71bc3092af",
+        "src/tb/tests/dut_test_lib.svh": "9da0f7f2619e400eccb197bb026171ec95002145e4c8cebe51e2cd59de10aa2d",
         "src/tb/vip_cfg/axi4_globals_pkg.sv": "e3c56f89b87b530636b07dce541ebcad06d92d08b3ce42b59e7d09ef2b2ef296",
         "src/tb/vip_cfg/axi4_master_coverage.sv": "2b19a2d03e51c97b7e55f784263a1ad9b3fd138da794e76ebf6a5ae372c35d6f",
         "src/tb/vip_cfg/master_assertions_standin.sv": "c0bc7c65c18084e96f79920ea78acd491cf26261b9e52533e97f1a5eeb694f91"
       },
       "run_id": null,
-      "finished": "2026-10-19T11:00:02",
+      "finished": "2026-10-20T22:58:12",
       "error": null,
       "cost_usd": 0.0
     }
@@ -76,11 +75,11 @@
           "env/dut_txn.svh": "85dcfacea102fc52efbbb912d0560be46123a993bbc86dd18d77e42f99a0f290",
           "sram/dut_sram_agent.svh": "cc065e0f3b1fbe2961a76bae4c89af133d5ad3570b1518a53024540614b62c78",
           "adapters/dut_axi_adapter.svh": "98b75e330ffc20ff8c625d3130a9813f1074acbf61802a6e3eeafcf1cb1cf905",
-          "scoreboard/dut_scoreboard.svh": "eadf23176fcf2bd6af64862b61205b13f2a994cad87b22b41658e6b809f141dd",
+          "scoreboard/dut_scoreboard.svh": "abeac87170e8dd81a68e2190ed021724eaa0d8b8b66d093abd5c3a2542a195d0",
           "coverage/dut_cov.svh": "9b35b0f596b69aa29387fff88ed1edabc0f78236e4ed73e91b37764af8736c13",
           "env/dut_env.svh": "3e3dd33adea2bf2801e4be8a08ef7bc74addef0e39faa270c7d233b263bc0c94",
           "sequences/dut_seq_lib.svh": "28e33ced91a4f150d7d981fe6b2a2182f4df8efed335152eeaf0aaf1046fccac",
-          "tests/dut_test_lib.svh": "c7d631979988cbb2904fb9f3bf1af7bcd0f9db16c2557ed1d9556b71bc3092af",
+          "tests/dut_test_lib.svh": "9da0f7f2619e400eccb197bb026171ec95002145e4c8cebe51e2cd59de10aa2d",
           "assertions/dut_assertions.sv": "d99e1c977c97d2ebfb795fe28d0516c76124ebe27bee27062eb8c069a9f9201f",
           "dut_dv_pkg.sv": "eb4ffdca7741ccb9ad4af15f28f358a0b5fb2defbb037f3b75a537c4b430956a",
           "env/dut_axi_pin_monitor.svh": "34669a62702210b5802f6c2a29e105dbe0e08a60c32a9f2337e376ccf2a149ab",
@@ -95,12 +94,15 @@
         },
         "semantic": {
           "sram": "c34e5984bce6c113bafd",
-          "checker": "db4c4f456414a17f1b3a"
+          "checker": "db4c4f456414a17f1b3a",
+          "rules": "0d3dcb23e481a19a8923",
+          "tests_a": "19725cae3ccb1b7ed6ff",
+          "tests_b": "4480fce9752c2ed0cd6d"
         }
       }
     }
   },
-  "total_cost_usd": 4.8418768,
+  "total_cost_usd": 5.52404784,
   "sections": {},
   "cost_resets": []
 }

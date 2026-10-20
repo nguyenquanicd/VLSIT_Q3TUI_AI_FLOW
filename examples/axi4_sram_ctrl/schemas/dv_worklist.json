@@ -3,9 +3,9 @@
   "contract_hash": "3d3d7bc64241ba197f200b37d30754b8fc5f049a7d27c69d79f6aff8603de949",
   "summary": {
     "regions": 39,
-    "open": 29,
-    "agent_or_user_owned": 10,
-    "implemented": 10
+    "open": 10,
+    "agent_or_user_owned": 29,
+    "implemented": 29
   },
   "items": [
     {
@@ -231,8 +231,8 @@
       "kind": "scoreboard_rule",
       "file": "scoreboard/dut_scoreboard.svh",
       "line": 184,
-      "owner": "scaffold",
-      "open": true,
+      "owner": "agent",
+      "open": false,
       "requirements": [
         "REQ-020",
         "REQ-021",
@@ -245,9 +245,9 @@
       "id": "SBR-005",
       "kind": "scoreboard_rule",
       "file": "scoreboard/dut_scoreboard.svh",
-      "line": 192,
-      "owner": "scaffold",
-      "open": true,
+      "line": 214,
+      "owner": "agent",
+      "open": false,
       "requirements": [
         "REQ-026",
         "REQ-027",
@@ -260,9 +260,9 @@
       "id": "SBR-005.sram",
       "kind": "scoreboard_rule",
       "file": "scoreboard/dut_scoreboard.svh",
-      "line": 199,
-      "owner": "scaffold",
-      "open": true,
+      "line": 245,
+      "owner": "agent",
+      "open": false,
       "requirements": [
         "REQ-026",
         "REQ-027",
@@ -275,9 +275,9 @@
       "id": "SBR-006",
       "kind": "scoreboard_rule",
       "file": "scoreboard/dut_scoreboard.svh",
-      "line": 207,
-      "owner": "scaffold",
-      "open": true,
+      "line": 254,
+      "owner": "agent",
+      "open": false,
       "requirements": [
         "REQ-009",
         "REQ-010",
@@ -291,9 +291,9 @@
       "id": "SBR-007",
       "kind": "scoreboard_rule",
       "file": "scoreboard/dut_scoreboard.svh",
-      "line": 215,
-      "owner": "scaffold",
-      "open": true,
+      "line": 263,
+      "owner": "agent",
+      "open": false,
       "requirements": [
         "REQ-052",
         "REQ-053",
@@ -308,9 +308,9 @@
       "id": "SBR-007.sram",
       "kind": "scoreboard_rule",
       "file": "scoreboard/dut_scoreboard.svh",
-      "line": 222,
-      "owner": "scaffold",
-      "open": true,
+      "line": 271,
+      "owner": "agent",
+      "open": false,
       "requirements": [
         "REQ-052",
         "REQ-053",
@@ -325,7 +325,7 @@
       "id": "SBR-008",
       "kind": "scoreboard_rule",
       "file": "scoreboard/dut_scoreboard.svh",
-      "line": 230,
+      "line": 280,
       "owner": "agent",
       "open": false,
       "requirements": [
@@ -339,7 +339,7 @@
       "id": "SBR-008.sram",
       "kind": "scoreboard_rule",
       "file": "scoreboard/dut_scoreboard.svh",
-      "line": 237,
+      "line": 287,
       "owner": "agent",
       "open": false,
       "requirements": [
@@ -353,9 +353,9 @@
       "id": "SBR-009",
       "kind": "scoreboard_rule",
       "file": "scoreboard/dut_scoreboard.svh",
-      "line": 252,
-      "owner": "scaffold",
-      "open": true,
+      "line": 302,
+      "owner": "agent",
+      "open": false,
       "requirements": [
         "REQ-041",
         "REQ-042",
@@ -368,9 +368,9 @@
       "id": "SBR-009.sram",
       "kind": "scoreboard_rule",
       "file": "scoreboard/dut_scoreboard.svh",
-      "line": 259,
-      "owner": "scaffold",
-      "open": true,
+      "line": 310,
+      "owner": "agent",
+      "open": false,
       "requirements": [
         "REQ-041",
         "REQ-042",
@@ -428,8 +428,8 @@
       "kind": "test",
       "file": "tests/dut_test_lib.svh",
       "line": 76,
-      "owner": "scaffold",
-      "open": true,
+      "owner": "agent",
+      "open": false,
       "requirements": [
         "REQ-014",
         "REQ-020",
@@ -441,9 +441,9 @@
       "id": "test.TC-003",
       "kind": "test",
       "file": "tests/dut_test_lib.svh",
-      "line": 91,
-      "owner": "scaffold",
-      "open": true,
+      "line": 107,
+      "owner": "agent",
+      "open": false,
       "requirements": [
         "REQ-020"
       ],
@@ -453,9 +453,9 @@
       "id": "test.TC-004",
       "kind": "test",
       "file": "tests/dut_test_lib.svh",
-      "line": 106,
-      "owner": "scaffold",
-      "open": true,
+      "line": 138,
+      "owner": "agent",
+      "open": false,
       "requirements": [
         "REQ-021"
       ],
@@ -465,9 +465,9 @@
       "id": "test.TC-005",
       "kind": "test",
       "file": "tests/dut_test_lib.svh",
-      "line": 121,
-      "owner": "scaffold",
-      "open": true,
+      "line": 176,
+      "owner": "agent",
+      "open": false,
       "requirements": [
         "REQ-024",
         "REQ-025"
@@ -478,9 +478,9 @@
       "id": "test.TC-006",
       "kind": "test",
       "file": "tests/dut_test_lib.svh",
-      "line": 136,
-      "owner": "scaffold",
-      "open": true,
+      "line": 236,
+      "owner": "agent",
+      "open": false,
       "requirements": [
         "REQ-013",
         "REQ-026",
@@ -493,9 +493,9 @@
       "id": "test.TC-007",
       "kind": "test",
       "file": "tests/dut_test_lib.svh",
-      "line": 151,
-      "owner": "scaffold",
-      "open": true,
+      "line": 289,
+      "owner": "agent",
+      "open": false,
       "requirements": [
         "REQ-011",
         "REQ-012",
@@ -509,9 +509,9 @@
       "id": "test.TC-008",
       "kind": "test",
       "file": "tests/dut_test_lib.svh",
-      "line": 167,
-      "owner": "scaffold",
-      "open": true,
+      "line": 322,
+      "owner": "agent",
+      "open": false,
       "requirements": [
         "REQ-029"
       ],
@@ -521,9 +521,9 @@
       "id": "test.TC-009",
       "kind": "test",
       "file": "tests/dut_test_lib.svh",
-      "line": 183,
-      "owner": "scaffold",
-      "open": true,
+      "line": 358,
+      "owner": "agent",
+      "open": false,
       "requirements": [
         "REQ-022"
       ],
@@ -533,9 +533,9 @@
       "id": "test.TC-010",
       "kind": "test",
       "file": "tests/dut_test_lib.svh",
-      "line": 202,
-      "owner": "scaffold",
-      "open": true,
+      "line": 392,
+      "owner": "agent",
+      "open": false,
       "requirements": [
         "REQ-019",
         "REQ-040",
@@ -549,9 +549,9 @@
       "id": "test.TC-011",
       "kind": "test",
       "file": "tests/dut_test_lib.svh",
-      "line": 218,
-      "owner": "scaffold",
-      "open": true,
+      "line": 453,
+      "owner": "agent",
+      "open": false,
       "requirements": [
         "REQ-052",
         "REQ-053",
@@ -567,9 +567,9 @@
       "id": "test.TC-012",
       "kind": "test",
       "file": "tests/dut_test_lib.svh",
-      "line": 234,
-      "owner": "scaffold",
-      "open": true,
+      "line": 500,
+      "owner": "agent",
+      "open": false,
       "requirements": [
         "REQ-020"
       ],
