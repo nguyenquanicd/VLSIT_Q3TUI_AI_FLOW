@@ -77,11 +77,9 @@ class StepContext:
         from q3tui.llm import roles
 
         if self.engine.session_mode() == "flow":  # the flow's one session (flows/*.yaml `session: flow`), like one conversation
-            # pipeline.parallel_rtl_tb + parallel_multi_agent: tb runs alongside rtl in its own session instead
-            # (engine._run_parallel sets this for the duration of that parallel run only)
-            # reviewers and the flow file's `fresh_steps` (vlsit: spec, parse, config — their prompts carry all they need) run fresh
+            # reviewers and the flow file's `fresh_steps` (their prompts carry all they need) run fresh
             fresh = roles.FLOW_FRESH.search(stage.name) or self.emit.step in self.engine.flow.fresh_steps
-            role = None if fresh else self.engine._step_role_override.get(self.emit.step, "flow")
+            role = None if fresh else "flow"
         else:
             role = roles.role_of(stage.name) if self.cfg.team.enabled else None
             if role and self.cfg.team.unit_sessions == "own" and roles.unit_level(stage.name):
@@ -184,7 +182,7 @@ class StepDef:
         return 0
 
     def pending_reviews(self, engine: "Engine") -> list[str]:
-        """Ids of this step's own reviewable items (an SVA assertion, a flagged requirement, …) you have not yet
+        """Ids of this step's own reviewable items (a flagged requirement, a changed parameter, …) you have not yet
         confirmed or rejected — distinct from blocking questions (a gap only you can decide). Non-empty: `approve()`
         refuses the gate unless forced or the project runs unattended (`engine.auto_reviews()`)."""
         return []
@@ -203,9 +201,9 @@ class StepDef:
         """Called after a reset deleted this step's files (a step that moved your documents aside puts them back)."""
 
     def import_dir(self, engine: "Engine", kind: str) -> Path | None:
-        """Where this step takes imported files of `kind` (rtl | tb | sva; core/importer.py), None: it takes none.
+        """Where this step takes imported files of `kind` (spec | rtl; core/importer.py), None: it takes none.
         Files imported into the step's own output folder are its starting point (it checks them and updates what does
-        not follow its rules); a sub-folder of its own (e.g. src/tb/imported/) holds references it ports from."""
+        not follow its rules); a sub-folder of its own (e.g. spec/ref/) holds references it ports from."""
         return None
 
     def on_import(self, engine: "Engine", kind: str, files: list[Path]) -> None:

@@ -16,7 +16,7 @@ spec ─► parse ─► config
 No tool role is needed. The steps are LLM stages and code (pyslang for the module map).
 
 The testbench, SVA, verification (simulation, mutation testing, the requirements traceability matrix) and the final document
-(`tb`, `sva`, `verify`, `doc`) were part of this flow before; they are removed and come back as their own flows. Their
+(`tb`, `sva`, `verify`, `doc`) were part of this flow before; they are removed. Their
 artifacts (`selected_testplan.json`, `rtm.json`, `verification_report.json`, `docs/specification.md`) no longer exist.
 
 ## Starting point: an intent or a spec
@@ -35,12 +35,13 @@ A model that puts a table into an invented field of the template gets it moved i
 
 ### Importing your own project (Q3TUI extension; VLSIT has no import)
 
-Code (`core/importer.py`, no LLM) sorts a folder by its folder names (`rtl/ src/ hdl/` · `tb/ sim/ test(s)/ verif/ env/` ·
-`sva/ assert*/ formal/` · `doc(s)/`) and, for HDL files outside such folders, by their content (`bind` / `assert property`
-→ SVA; classes, programs, `$finish`, UVM/VMM/SVT → testbench; else RTL). Scripts, Makefiles, filelists and images are
-listed as left out. Each kind goes to the step that takes it (`StepDef.import_dir`); a kind no step of the flow takes is
-reported, not copied. Re-importing a kind replaces its previous import (backed up). In the spec flow only spec documents are
-taken; the `rtl` flow also takes RTL. Testbench and SVA files are reported as not imported until a flow with a step for them exists.
+Code (`core/importer.py`, no LLM) sorts a folder by its folder names (`rtl/ src/ hdl/` · `doc(s)/`) and, for HDL files outside
+such folders, by their content. Only two kinds are imported: spec documents and RTL. Testbench, test and SVA files (folders
+`tb/ sim/ test(s)/ verif/ env/ sva/ assert*/ formal/`; content `bind` / `assert property`, classes, programs, `$finish`,
+UVM/VMM/SVT) and the documents of a test environment are recognised only to keep them out of the RTL; scripts, Makefiles,
+filelists and images likewise: all are listed as left out. Each kind goes to the step that takes it (`StepDef.import_dir`); a
+kind no step of the flow takes is reported, not copied. Re-importing a kind replaces its previous import (backed up). In the
+spec flow only spec documents are taken; the `rtl` flow also takes RTL.
 
 | Kind | Goes to | What the flow does with it |
 |---|---|---|

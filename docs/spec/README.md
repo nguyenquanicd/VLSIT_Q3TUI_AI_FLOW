@@ -3,7 +3,7 @@
 Q3TUI takes a hardware block from **intent to checked RTL**. A pipeline engine runs a
 **flow** (a data file listing the steps): write the spec, extract requirements, settle the
 configuration (the `spec` flow), then write the RTL, format it, lint it and smoke-test it (the `rtl` flow).
-Testbench, assertions, verification and the final document were removed and come back as their own flows.
+Testbench, assertions, verification and the final document were removed.
 
 | Doc | Content |
 |---|---|
@@ -49,21 +49,19 @@ the flow starts at parse. `q3tui run` runs whatever is missing or stale, like `m
 
 ## Principles
 
-1. **Requirements are the backbone.** Every requirement has an ID (`REQ-001`). RTL,
-   assertions and test cases cite the REQs they implement or check. Signoff means *every
-   requirement is checked and passing* and signed off by a person, not "coverage is high".
-2. **Independent checks.** The testbench is written from the spec, the requirements and the
-   configuration alone, never from the RTL; assertions and mutation testing add evidence.
+1. **Requirements are the backbone.** Every requirement has an ID (`REQ-001`). RTL
+   and checks cite the REQs they implement or check. Every requirement is meant to be checked, not "coverage is high".
+2. **Independent checks.** The smoke testbench is written from the spec, the requirements and the
+   configuration alone, never from the RTL.
 3. **The fix loop is the product.** Failures are not just reported. Triage decides whose
-   bug it is (RTL, TB, SVA) and sends a scoped fix to the owning step. The loop ends when
-   every test passes or the iteration budget runs out.
+   bug it is and sends a scoped fix to the owning step (the rtl flow: format, style lint and smoke test
+   send fixes back to `rtl`). The loop ends when every check passes or the iteration budget runs out.
 4. **Deterministic first.** Parsing, lint, synthesis, simulating, log parsing and
    traceability are code. LLMs do writing, reasoning and repair, and they always get tool
    output as ground truth.
-5. **Humans at the decision points.** Review gates (their mode set per step) and
-   sign-offs; spec ambiguities found anywhere come back to a human as questions. They are
+5. **Humans at the decision points.** Review gates (their mode set per step); spec ambiguities found anywhere come back to a human as questions. They are
    never silently decided.
-6. **Everything is a reviewable file.** The spec, artifacts, RTL, TB and SVA are ordinary
+6. **Everything is a reviewable file.** The spec, artifacts and RTL are ordinary
    Markdown, JSON and SV in the project tree. The user can edit any of them, and
    downstream steps become stale.
 

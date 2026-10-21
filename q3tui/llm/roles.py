@@ -133,17 +133,17 @@ def notes_path(project, role: str) -> Path:
     if role == "flow":
         return project.schemas_dir / "NOTES.md"
     return {"architect": project.arch_dir, "modeler": project.model_dir, "designer": project.rtl_dir,
-            "verifier": project.tb_dir}[role] / "NOTES.md"
+            "verifier": project.sim_dir}[role] / "NOTES.md"
 
 
 def role_denied(project, role: str) -> list[Path]:
     """What a role never reads (its init turn; every task adds its own deny_dirs)."""
     if role == "flow":  # one engineer, no independence between its tasks (each task still carries its own deny_dirs)
         return [project.state_dir]
-    other = {"architect": [project.model_dir, project.rtl_dir, project.tb_dir],
-             "modeler": [project.rtl_dir, project.tb_dir],
-             "designer": [project.model_dir, project.tb_dir],
-             "reviewer": [project.model_dir, project.tb_dir],
+    other = {"architect": [project.model_dir, project.rtl_dir, project.sim_dir],
+             "modeler": [project.rtl_dir, project.sim_dir],
+             "designer": [project.model_dir, project.sim_dir],
+             "reviewer": [project.model_dir, project.sim_dir],
              "verifier": [project.rtl_dir, project.model_dir]}[role]
     return [*other, project.state_dir]
 
@@ -152,13 +152,13 @@ def brief(project, role: str) -> str:
     rel = project.rel
     if role == "flow":
         return (f"# Project brief\n\nProject `{project.root.name}` at {project.root}. Spec: {rel(project.spec_dir)}/; JSON artifacts: "
-                f"{rel(project.schemas_dir)}/; RTL / SVA / testbench: {rel(project.src_dir)}/{{rtl,sva,tb}}/; documents: "
+                f"{rel(project.schemas_dir)}/; RTL: {rel(project.rtl_dir)}/; documents: "
                 f"{rel(project.docs_dir)}/ (each may not exist yet).\nYour notes: {rel(notes_path(project, role))}"
                 + _notes_text(project, role))
     own = {"architect": f"{rel(project.spec_dir)}/, {rel(project.req_dir)}/, {rel(project.arch_dir)}/",
            "modeler": f"{rel(project.model_dir)}/", "designer": f"{rel(project.rtl_dir)}/",
            "reviewer": f"{rel(project.rtl_dir)}/ (reading and reviewing only)",
-           "verifier": f"{rel(project.tb_dir)}/"}[role]
+           "verifier": f"{rel(project.sim_dir)}/"}[role]
     never = ", ".join(f"{rel(d)}/" for d in role_denied(project, role))
     return (f"# Project brief\n\nProject `{project.root.name}` at {project.root}. The spec is in {rel(project.spec_dir)}/, "
             f"the requirements in {rel(project.req_dir)}/req.json, the architecture and block contracts in "

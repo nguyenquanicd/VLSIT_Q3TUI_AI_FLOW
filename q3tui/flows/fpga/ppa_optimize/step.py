@@ -105,7 +105,7 @@ class Step(FpgaStep):
         modules = sorted(f.stem for f in self.rtl_files(engine))
         stage = Stage(name="ppa_optimize", system_prompt=SYSTEM, prompt=self._prompt(engine, ppa, missed, history, modules),
                       cwd=project.root, builtin_tools=["Read", "Grep", "Glob"], output_model=PpaPlan,
-                      deny_dirs=[project.src_dir / "tb", project.src_dir / "sva", project.tb_dir, project.model_dir])
+                      deny_dirs=[project.model_dir])
         out: PpaPlan = (await ctx.llm(stage)).output
         fixes, dropped = [], []
         for i, f in enumerate(out.fixes[:5], 1):

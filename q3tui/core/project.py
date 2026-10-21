@@ -114,10 +114,6 @@ class Project:
         return self._dir("rtl_dir")
 
     @property
-    def tb_dir(self) -> Path:
-        return self._dir("tb_dir")
-
-    @property
     def state_dir(self) -> Path:
         return self._dir("state_dir")
 

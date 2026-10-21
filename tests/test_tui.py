@@ -373,12 +373,12 @@ async def test_settings_dialog(app, llm):
         screen = app.screen
         assert screen.query_one(TabbedContent).active == "set-tab-spec"   # opens on the selected step's tab
         screen.query_one("#set-spec-self_review", Switch).value = False
-        screen.query_one("#set-tb-max_turns", Input).value = "33"
+        screen.query_one("#set-rtl-max_turns", Input).value = "33"
         # saved to the project by default (no box to tick)
         await pilot.press("ctrl+s")
         await pilot.pause()
         assert not isinstance(app.screen, SettingsScreen)
-        assert app.project.cfg.spec.self_review is False and app.project.cfg.tb.max_turns == 33
+        assert app.project.cfg.spec.self_review is False and app.project.cfg.rtl.max_turns == 33
         assert "max_turns: 33" in (app.project.root / "q3tui.yaml").read_text()
 
         await pilot.press("comma")

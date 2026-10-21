@@ -25,17 +25,13 @@ class StepLLM(_Strict):
 
 
 class StepModels(_Strict):
-    """Per-step overrides (llm.steps.<step>); the vlsit steps are listed, any other flow's steps are extra keys."""
+    """Per-step overrides (llm.steps.<step>); the spec flow's steps and rtl are listed, any other flow's steps are extra keys."""
 
     model_config = ConfigDict(extra="allow")
     spec: StepLLM = Field(default_factory=lambda: StepLLM(effort="medium"))  # high: one 6-minute think, 400k+ tokens
     parse: StepLLM = Field(default_factory=StepLLM)
     config: StepLLM = Field(default_factory=StepLLM)
     rtl: StepLLM = Field(default_factory=StepLLM)
-    tb: StepLLM = Field(default_factory=StepLLM)
-    sva: StepLLM = Field(default_factory=StepLLM)
-    verify: StepLLM = Field(default_factory=StepLLM)
-    doc: StepLLM = Field(default_factory=StepLLM)
     assistant: StepLLM = Field(default_factory=StepLLM)
 
     @model_validator(mode="after")
@@ -145,7 +141,6 @@ class ProjectConfig(_Strict):
     docs_dir: str = "docs"  # the final specification only
     src_dir: str = "src"
     rtl_dir: str = "src/rtl"
-    tb_dir: str = "src/tb"
     build_dir: str = "build"  # disposable tool output
     syn_dir: str = "build/syn"  # build/syn/{fpga,asic}
     sim_dir: str = "build/sim"
@@ -169,22 +164,16 @@ class PipelineConfig(_Strict):
     # LLM sessions: null = the flow's (`session:` in the flow file); "flow" = one persistent session for the whole flow
     # (like one Claude Code conversation), "fresh" = a session per stage
     session: Literal["flow", "fresh"] | None = None
-    # per-step options on top of the flow file's (`options:` of the step): {sva: {auto_confirm: true}, verify: {max_fix_rounds: 12}}
+    # per-step options on top of the flow file's (`options:` of the step): {parse: {auto_confirm: true}, rtl: {max_fix_rounds: 12}}
     step_options: dict[str, dict] = Field(default_factory=dict)
     # per-step overrides of the flow file's `view` / `pass` / `notes`: {rtl: {pass: ["exists rtl/*.sv"], notes: "..."}} (TUI: /step)
     step_flow: dict[str, dict] = Field(default_factory=dict)
     # per-step gate mode overrides: human | auto | auto_answer | none (flow files set the defaults; TUI: /gate)
     gate_modes: dict[str, Literal["human", "auto", "auto_answer", "none"]] = Field(default_factory=dict)
-    # vlsit flow: rtl (lint + synthesis) and tb (testbench generator) read only spec/parse/config, neither
-    # depends on the other's output — run them together instead of one after the other (TUI: /parallel, g)
-    parallel_rtl_tb: bool = False
-    # parallel_rtl_tb only: give tb its own persistent LLM session (role "verifier") instead of sharing the
-    # flow's one session with rtl — true concurrent agents, not one session forked while it is busy
-    parallel_multi_agent: bool = False
-    # confirm a step's own reviewable items (SVA assertions, flagged requirements, …) without asking — a human
+    # confirm a step's own reviewable items (flagged requirements, changed parameters, …) without asking — a human
     # gate still stops for Approve, but Approve itself no longer refuses for unconfirmed items (engine.approve,
     # StepDef.pending_reviews). Narrower than auto_approve/auto_answer (TUI Settings → General); a per-step
-    # `options: {sva: {auto_confirm: true}}` still overrides this one step.
+    # `options: {parse: {auto_confirm: true}}` still overrides this one step.
     auto_confirm_reviews: bool = False
 
 
@@ -194,15 +183,8 @@ class SpecConfig(_Strict):
 
 class RTLConfig(_Strict):
     max_fix_attempts: int = Field(3, ge=0, le=10)  # extra rounds when Q3TUI's own checks (lint, synthesis) still fail
-    parallel: int = Field(4, ge=1, le=16)  # modules (RTL, SVA) written at once
+    parallel: int = Field(4, ge=1, le=16)  # modules written at once
     max_turns: int = Field(60, ge=5, le=400)  # agent turns per module (write, compile, fix)
-
-
-class TBConfig(_Strict):
-    max_fix_attempts: int = Field(3, ge=0, le=10)  # extra rounds when the plan / TB checks still fail
-    max_turns: int = Field(30, ge=5, le=400)  # agent turns per TB stage
-    tests_per_agent: int = Field(6, ge=1, le=100)  # test cases per agent (agents run in parallel)
-    parallel: int = Field(4, ge=1, le=32)  # test-case agents at once
 
 
 class TeamConfig(_Strict):
@@ -245,7 +227,6 @@ class Config(_Strict):
     pipeline: PipelineConfig = PipelineConfig()
     spec: SpecConfig = SpecConfig()
     rtl: RTLConfig = RTLConfig()
-    tb: TBConfig = TBConfig()
     team: TeamConfig = TeamConfig()
     tools: ToolsConfig = ToolsConfig()
     tui: TuiConfig = TuiConfig()
@@ -302,11 +283,11 @@ def _merge(base: dict, over: dict) -> dict:
     return out
 
 
-# settings of the removed `units` / `steps` flows: still in older config files, ignored
-_REMOVED = {None: ("requirements", "req", "arch", "model", "sim", "triage", "units"),
+# settings of the removed `units` / `steps` flows and of the tb step: still in older config files, ignored
+_REMOVED = {None: ("requirements", "req", "arch", "model", "sim", "triage", "units", "tb"),
+            "pipeline": ("parallel_rtl_tb", "parallel_multi_agent"),
             "project": ("requirements_dir", "signoff_dir"),
-            "rtl": ("rules", "review", "use_vcs", "language", "lint"),
-            "tb": ("checks_per_agent", "stimulus_chars_per_agent", "session_max_turns", "use_vcs", "timeout_cycles", "seed")}
+            "rtl": ("rules", "review", "use_vcs", "language", "lint")}
 _REMOVED_STEP_MODELS = ("req", "arch", "model", "vplan", "tb_checker", "tb_stimulus", "triage", "triage_investigator")
 
 

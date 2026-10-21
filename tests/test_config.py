@@ -57,10 +57,10 @@ def test_settings_of_the_removed_flows_are_ignored(tmp_path):
     (tmp_path / "q3tui.yaml").write_text(
         "requirements: {self_review: false}\nreq: {parallel: 2}\narch: {max_repair_attempts: 1}\nmodel: {parallel: 2}\n"
         "sim: {debug_runs: 3}\ntriage: {investigate: false}\nunits: {judge: triage}\nproject: {signoff_dir: so, rtl_dir: hw}\n"
-        "rtl: {rules: [a], review: false, parallel: 2}\ntb: {seed: 3, max_turns: 9}\n"
+        "rtl: {rules: [a], review: false, parallel: 2}\ntb: {seed: 3, max_turns: 9}\npipeline: {parallel_rtl_tb: true}\n"
         "llm: {steps: {tb_stimulus: {model: claude-haiku-4-5}, rtl: {effort: low}}}\n")
     cfg = load_config(cwd=tmp_path)
-    assert cfg.rtl.parallel == 2 and cfg.tb.max_turns == 9 and cfg.project.rtl_dir == "hw"
+    assert cfg.rtl.parallel == 2 and not hasattr(cfg, "tb") and cfg.project.rtl_dir == "hw"
     assert cfg.llm.steps.rtl.effort == "low" and not hasattr(cfg, "units")
 
 

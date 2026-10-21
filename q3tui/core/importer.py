@@ -1,9 +1,10 @@
 """Bring your own project: sort a folder (or a file) into what the flow's steps take — by code, no LLM.
 
-Kinds: `spec` (documents → spec/), `rtl` (design sources), `tb` (testbench environment, tests and their docs), `sva`
-(assertion files). Everything else (scripts, Makefiles, filelists, images, logs) is listed as not imported. The folder's
-names decide first (rtl/ src/ hdl/ · tb/ sim/ test(s)/ verif/ env/ · sva/ assert*/ formal/); for HDL files no folder
-names, the content does (bind / assert property → sva; classes, programs, $finish, UVM/VMM/SVT → tb; else rtl).
+Kinds: `spec` (documents → spec/) and `rtl` (design sources). Everything else is listed as not imported: scripts,
+Makefiles, filelists, images, logs, and testbench / test / assertion files (and the documents of a test environment),
+which are recognised only to keep them out of the RTL. The folder's names decide first (rtl/ src/ hdl/ · tb/ sim/
+test(s)/ verif/ env/ · sva/ assert*/ formal/); for HDL files no folder names, the content does (bind / assert property,
+classes, programs, $finish, UVM/VMM/SVT → not the design; else rtl).
 `design_facts` gives the imported RTL's module hierarchy (pyslang, regex fallback) as ground truth for the steps.
 """
 
@@ -16,7 +17,7 @@ from pathlib import Path
 from q3tui.core.project import SPEC_DOC_EXTS
 
 HDL_EXTS = {".sv", ".v", ".svh", ".vh"}
-KINDS = ("spec", "rtl", "tb", "sva")
+KINDS = ("spec", "rtl")
 _SKIP_DIRS = {".git", ".svn", ".hg", "__pycache__", ".q3tui", "node_modules", "csrc", "simv.daidir", "work", "obj_dir"}
 _RTL_DIRS = {"rtl", "src", "hdl", "design", "hw", "verilog", "systemverilog"}
 _TB_DIRS = {"tb", "tbs", "sim", "simulation", "test", "tests", "testcases", "verif", "verification", "env", "dv", "testbench", "uvm", "vip"}
@@ -54,22 +55,20 @@ def classify(f: Path, root: Path) -> str | None:
     ext = f.suffix.lower()
     dirs = _dirs(f, root)
     if ext in HDL_EXTS:
-        for d in reversed(dirs):  # the innermost folder that says something decides (sim/vcs/env → tb)
-            if d in _SVA_DIRS:
-                return "sva"
-            if d in _TB_DIRS:
-                return "tb"
+        for d in reversed(dirs):  # the innermost folder that says something decides (sim/vcs/env → not the design)
+            if d in _SVA_DIRS or d in _TB_DIRS:
+                return None
             if d in _RTL_DIRS:
                 return "rtl"
         text = _COMMENT.sub("", f.read_text(errors="replace"))
         if _SVA_TEXT.search(text) and not re.search(r"^\s*always", text, re.M):
-            return "sva"
+            return None
         if _TB_TEXT.search(text) or re.match(r"(tb_|test_|tc_)|.*(_tb|_test)$", f.stem.lower()):
-            return "tb"
+            return None
         return "rtl" if _MODULE.search(text) else None
     if ext in SPEC_DOC_EXTS:
         if any(d in _TB_DIRS for d in dirs):
-            return "tb"  # (a test environment's README describes the tests, not the design)
+            return None  # (a test environment's README describes the tests, not the design)
         if any(d in _RTL_DIRS | _SVA_DIRS for d in dirs) and not any(d in _DOC_DIRS for d in dirs):
             return None
         return "spec"

@@ -2,7 +2,7 @@
 
 Also available: [Tiếng Việt](vi.md).
 
-Q3TUI runs the **spec flow**: `spec → parse → config`, and the **rtl flow** (`rules → csr → rtl → format → style_lint → smoke` after the same three steps). The testbench, SVA, verification and document steps were removed and come back as their own flows. This guide covers
+Q3TUI runs the **spec flow**: `spec → parse → config`, and the **rtl flow** (`rules → csr → rtl → format → style_lint → smoke` after the same three steps). The testbench, SVA, verification and document steps were removed. This guide covers
 installing it, running a project start to finish, the rule system RTL is checked against, every setting, and
 every command/key you'll use day to day.
 
@@ -167,11 +167,9 @@ The dialog has one tab per area: **General**, **Gates**, **LLM**, **Models per s
 |---|---|---|
 | `pipeline.auto_approve` | bool | Every gate approves itself; a gate with blocking questions still stops and asks. |
 | `pipeline.auto_answer` | bool | Unattended: every gate approves itself, every question (blocking too) takes its default, and proposals are accepted as suggested. |
-| `pipeline.max_fix_iterations` | int | How many times verify → fixes → verify may repeat before stopping and handing it to you. |
+| `pipeline.max_fix_iterations` | int | How many times a step's check → fixes → check loop may repeat before stopping and handing it to you. |
 | `pipeline.escalate_after_repeats` | int | A bug classified the same way this many times in a row is handed to you instead of being fixed again automatically. |
 | `pipeline.auto_confirm_reviews` | bool | Confirms a step's own reviewable items (flagged requirements, changed parameters) without asking. A human gate still stops for `Approve`; `Approve` itself no longer refuses for unconfirmed items. Narrower than auto-approve/auto-answer above — gates still stop, only per-item review is skipped. |
-| `pipeline.parallel_rtl_tb` | bool | Only meaningful in a flow with both an `rtl` and a `tb` step (none is built in now). |
-| `pipeline.parallel_multi_agent` | bool | Only with the setting above on. Off: `tb` shares the flow's one session and its LLM calls queue behind `rtl`'s (their tool runs still overlap). On: `tb` gets its own persistent session (role "verifier") so both run their LLM calls at the same time too. |
 | `tui.icons` | choice | Status icon set: `unicode` (✔ ⚑ ◐ …), `nerd` (needs a "… Nerd Font Mono" font), `ascii` (any font). |
 | `tui.language` | choice | TUI chrome (legend, result banners, dialogs) and pipeline-generated content (spec, RTL comments, questions, docs): `en` / `vi` / `ko`. The assistant chat is unaffected — it always mirrors whichever language you write to it in. |
 

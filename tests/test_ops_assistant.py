@@ -181,10 +181,10 @@ def test_settings_are_validated_applied_and_saved(engine):
     ops = Ops(engine)
     cfg = engine.project.cfg
     assert ops.settings()["rtl.parallel"] == 4 and ops.settings()["pipeline.gates"] == []
-    msg = ops.apply_settings({"tb.max_turns": "40", "spec.self_review": "off", "pipeline.gates": "spec, parse"})
-    assert cfg.tb.max_turns == 40 and cfg.spec.self_review is False and cfg.pipeline.gates == ["spec", "parse"]
-    assert "tb.max_turns = 40" in msg and not (engine.project.root / "q3tui.yaml").read_text().count("max_turns")
-    assert ops.apply_settings({"tb.max_turns": 40}) == "settings unchanged"
+    msg = ops.apply_settings({"rtl.max_turns": "40", "spec.self_review": "off", "pipeline.gates": "spec, parse"})
+    assert cfg.rtl.max_turns == 40 and cfg.spec.self_review is False and cfg.pipeline.gates == ["spec", "parse"]
+    assert "rtl.max_turns = 40" in msg and not (engine.project.root / "q3tui.yaml").read_text().count("max_turns")
+    assert ops.apply_settings({"rtl.max_turns": 40}) == "settings unchanged"
     ops.apply_settings({"llm.timeout_s": ""})           # empty: no limit (like Claude Code)
     assert cfg.llm.timeout_s is None
     with pytest.raises(EngineError, match="rtl.parallel"):

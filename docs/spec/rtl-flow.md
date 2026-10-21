@@ -1,6 +1,6 @@
 # The RTL flow (`flows/rtl/`)
 
-RTL from a spec, checked and ready for the verification flow: generate, format, style-lint, smoke-test. It stands alone (pick it with `pipeline.flow: rtl`):
+RTL from a spec, checked: generate, format, style-lint, smoke-test. It stands alone (pick it with `pipeline.flow: rtl`):
 its front half reuses the [spec flow](spec-flow.md)'s steps (spec, parse, config: code in `flows/spec/`) and its `rtl` step has its own generator base
 (`flows/rtl/rtl/`: `gen.py`, `plan.py`, `task.py`, `rules/`), so the flow does not need the removed VLSIT tb / sva / verify / doc steps.
 
@@ -98,7 +98,7 @@ error goes to `rtl` without the LLM. The judge edits neither the RTL (the `rtl` 
 
 ## smoke
 
-Independent like the removed VLSIT `tb`: the writer sees the spec, the requirements and the configuration; every RTL file and `style_lint/` are in its
+Independent of the RTL: the writer sees the spec, the requirements and the configuration; every RTL file and `style_lint/` are in its
 `deny_dirs` (the folder `src/rtl/` itself cannot be: `src/rtl/smoke/` lives in it). It works with the skill `smoke-testbench` and the tools `smoke_compile` /
 `smoke_run` (roles `sim` and `run`), so it iterates by itself; a compile error about a name means its reading of the spec's interface differs from the
 design: it fixes its side or asks a `spec_gap` question, it never adapts to the RTL. Result lines: `SMOKE_RESULT <id> PASS|FAIL …`,
@@ -172,5 +172,5 @@ Settings (Settings dialog → step tabs): `csr.mode`, `csr.tool_dir`, `style_lin
 
 ## Not in this flow
 
-Verification (testbench per requirement, SVA, mutation testing, the RTM) is the verification flow's job; the smoke test only says the design does its
-basic job at all. A verification flow reads `src/rtl/`, like the others.
+There is no verification here (testbench per requirement, SVA, mutation testing, the RTM were removed with the VLSIT flow's verification steps); the
+smoke test only says the design does its basic job at all.

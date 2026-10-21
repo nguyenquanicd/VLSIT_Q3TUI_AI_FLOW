@@ -25,8 +25,7 @@ def import_summary(report: dict) -> str:
     """What `Engine.import_path` did, as text: per kind the files taken, what no step takes, what was left out."""
     lines = [f"imported from {report['source']}:"]
     where = {"spec": "spec documents (references: the spec step ports them into spec/spec.md with the template's sections)", "rtl": "RTL (the rtl step checks it against the RTL rules and updates what does "
-             "not follow them)", "tb": "testbench / tests (references: the tb step ports them into its test cases)",
-             "sva": "SVA (references: the sva step ports them)"}
+             "not follow them)"}
     for kind, label in where.items():
         if report.get(kind):
             files = report[kind]
@@ -247,8 +246,8 @@ class Ops:
         return f"reset {step}{' only' if only else ' and downstream'}: removed {len(files)} file(s) (backed up)"
 
     def import_files(self, kind: str, path: str) -> str:
-        """Import a file or a whole folder. kind `all`: sorted by code into spec documents, RTL, testbench / tests and
-        SVA (core/importer.py); spec | rtl | tb | sva: only that kind."""
+        """Import a file or a whole folder. kind `all`: sorted by code into spec documents and RTL (core/importer.py);
+        spec | rtl: only that kind."""
         from q3tui.core.importer import KINDS
 
         p = Path(path).expanduser()
@@ -394,34 +393,13 @@ class Ops:
         return self._log(None, msg)
 
     def set_auto_confirm_reviews(self, on: bool, save: bool = False) -> str:
-        """Confirm a step's own reviewable items (SVA assertions, flagged requirements, …) without asking. A human
+        """Confirm a step's own reviewable items (flagged requirements, changed parameters, …) without asking. A human
         gate still stops for Approve; Approve itself no longer refuses for unconfirmed items."""
         self.project.cfg.pipeline.auto_confirm_reviews = on
         msg = f"auto-confirm reviews: {'on — gates still stop, but no longer wait for per-item review' if on else 'off'}"
         if save:
             msg += f" (saved to {self.project.rel(self.project.save_config_values({'pipeline': {'auto_confirm_reviews': on}}))})"
         return self._log(None, msg)
-
-    def set_parallel_rtl_tb(self, on: bool, multi_agent: bool | None = None, save: bool = False) -> str:
-        """vlsit: run rtl (lint + synthesis) and tb (testbench generator) together instead of one after the
-        other — neither reads the other's output. multi_agent (only meaningful when on): tb gets its own
-        persistent LLM session instead of queuing behind rtl's on the flow's shared one (real concurrency
-        for the LLM calls too, not just their lint/synth/tool runs)."""
-        pc = self.project.cfg.pipeline
-        pc.parallel_rtl_tb = on
-        if multi_agent is not None:
-            pc.parallel_multi_agent = multi_agent and on
-        msg = f"parallel rtl/tb: {'on' if on else 'off'}"
-        if on:
-            msg += f" ({'separate agent for tb' if pc.parallel_multi_agent else 'shared session: tb queues behind rtl'})"
-        if save:
-            values = {"parallel_rtl_tb": pc.parallel_rtl_tb}
-            if multi_agent is not None:
-                values["parallel_multi_agent"] = pc.parallel_multi_agent
-            msg += f" (saved to {self.project.rel(self.project.save_config_values({'pipeline': values}))})"
-        return self._log(None, msg)
-
-    # -- questions, spec-flow reviews (flows/spec/*/review.py) ---------------------------------------------
 
     def answer(self, question_id: str, text: str) -> str:
         """Answer a question (the step, and the step it is handed to, update on the next run)."""

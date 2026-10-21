@@ -78,8 +78,8 @@ not just by prompt), and settled decisions follow the flow's `sees:`. In the spe
 |---|---|---|
 | spec | intent, spec template, reference documents in `spec/` | — |
 | parse, config | spec (+ parse) | — |
-| rtl | spec, parse, config | **tb**, **sva** (folders the stage may not read when they exist) |
-| smoke (rtl flow) | spec, parse, config (writes the testbench) | style-lint results, the RTL it is compiled with is built by code |
+| rtl | spec, parse, config | `build/` (old tool output), the model folder |
+| smoke (rtl flow) | spec, parse, config (writes the testbench) | the RTL and the style-lint results; the RTL it is compiled with is read by code |
 
 In `session: flow` mode the one session may have seen what a later stage writes against;
 the stages still cannot read what they are denied. `.q3tui/` is denied to every stage.
@@ -258,7 +258,7 @@ The answer becomes a `[decision]` change request on the owner step, which update
 q3tui run [--intent TEXT | --intent-file F] [--spec F ...] [--import DIR ...]
               [--from STEP] [--to STEP] [--only STEP] [--regenerate STEP] [--yes]   # --yes: approve all gates
               [--auto-approve] [--auto-answer] [--spec-review/--no-spec-review]
-q3tui import PATH [--kind all|spec|rtl|tb|sva]   # your own project folder / files (spec-flow.md "Importing")
+q3tui import PATH [--kind all|spec|rtl]   # your own project folder / files (spec-flow.md "Importing")
 q3tui status                     # step states, staleness, open gates
 q3tui approve STEP|all [--force] # open questions → default accepted; blocking ones must be answered
 q3tui change STEP -m "..."       # request a change; the step re-runs with it

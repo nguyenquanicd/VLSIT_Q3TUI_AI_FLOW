@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
 import shutil
 from dataclasses import dataclass
 from datetime import datetime
@@ -68,10 +67,7 @@ class Engine:
         self.by_name = {s.name: s for s in self.steps}
         self.state_path = project.state_dir / "pipeline.json"
         self.state = PipelineState.load(self.state_path)
-        self._running: set[str] = set()  # steps executing right now (usually 0 or 1; 2 with parallel_rtl_tb)
-        # parallel_rtl_tb + parallel_multi_agent: step name -> LLM role to use instead of the flow's shared
-        # "flow" session for the duration of the parallel run (StepContext.llm, pipeline/base.py)
-        self._step_role_override: dict[str, str] = {}
+        self._running: set[str] = set()  # steps executing right now (0 or 1; `running_steps` lists them all)
         from q3tui.core.stats import StatsRecorder
 
         if not getattr(self.bus, "stats_recorder", None):  # once per bus, however many engines share it
@@ -82,9 +78,8 @@ class Engine:
 
     @property
     def running(self) -> str | None:
-        """One running step's name (None: nothing is running). With parallel_rtl_tb both run_step() calls are
-        in `_running` at once; this picks one for the single-name messages (quit confirm, reset's error) —
-        `running_steps` lists all of them."""
+        """One running step's name (None: nothing is running), for the single-name messages (quit confirm, reset's
+        error); `running_steps` lists all of them."""
         return next(iter(self._running), None)
 
     @running.setter
@@ -354,7 +349,7 @@ class Engine:
             raise EngineError(f"cannot approve '{name}': blocking question(s) {ids} need an answer (or approve with force)")
         if not force and not auto and not self.auto_confirm_reviews():
             # `auto` (gate mode "auto", or --yes/auto-answer's own force=True call): the gate still signs itself —
-            # unconfirmed items simply do not count (RTM condition 2, "SVA traced"), same as a human who signs with none reviewed
+            # unconfirmed items simply do not count, same as a human who approves with none reviewed
             pending = step.pending_reviews(self)
             if pending:
                 shown = ", ".join(pending[:5]) + (f", … ({len(pending)} total)" if len(pending) > 5 else "")
@@ -534,8 +529,8 @@ class Engine:
         the answer stays in `origin` (design choice, or a gap toward itself / a later step)."""
         from q3tui.steps.common import GAP_TARGETS
 
-        # no kind given: the testbench's question is about its own work (a design choice), anyone else's a gap
-        kind = q.get("kind") or ("design_choice" if origin.split(":")[-1] == "tb" else "spec_gap")
+        # no kind given: a gap in the spec
+        kind = q.get("kind") or "spec_gap"
         target = self.flow.gap_targets.get(kind, GAP_TARGETS.get(kind))
         order = [s.name for s in self.steps]
         if target not in order or origin not in order or order.index(target) >= order.index(origin):
@@ -758,8 +753,8 @@ class Engine:
         return list(dict.fromkeys(out))
 
     def import_path(self, path: Path, kinds: set[str] | None = None) -> dict:
-        """Import a folder (or one file): spec documents into spec/, RTL / testbench and tests / SVA into the step of the
-        flow that takes them (`StepDef.import_dir`). Sorted by code (core/importer.py). Returns {kind: [targets],
+        """Import a folder (or one file): spec documents and RTL into the step of the flow that takes them
+        (`StepDef.import_dir`; spec documents without such a step go to spec/ as they are). Sorted by code (core/importer.py). Returns {kind: [targets],
         skipped: [files not imported], not_taken: {kind: [files no step of this flow takes]}}."""
         from q3tui.core import importer
         from q3tui.core.project import write_json
@@ -794,14 +789,8 @@ class Engine:
     def _copy_import(self, kind: str, files: list[Path], root: Path, dest: Path, old: dict) -> list[Path]:
         from q3tui.core import importer
 
-        if kind in ("rtl", "spec"):  # one flat folder: module files / documents by name
-            names = importer.flat_names(files, root)
-            targets = [dest / names[f] for f in files]
-        else:  # a folder of references: the files' own structure below their common folder
-            import os
-
-            base = Path(os.path.commonpath([str(f.parent) for f in files]))
-            targets = [dest / f.relative_to(base) for f in files]
+        names = importer.flat_names(files, root)  # one flat folder: module files / documents by name
+        targets = [dest / names[f] for f in files]
         # the previous import of this kind that this one does not bring again goes (backed up)
         stale = [self.project.root / r for r in old.get("files", {}) if (self.project.root / r) not in targets]
         self.project.backup([*stale, *targets])
@@ -984,12 +973,12 @@ class Engine:
     def auto_reviews(self) -> bool:
         """Auto approve in the wide sense (project switches `pipeline.auto_approve` / `auto_answer`, or this run's --yes):
         besides the gates, the VLSIT flow confirms its assertions and signs its ready requirements itself
-        (step options `sva.auto_confirm`, `verify.auto_sign` override per step)."""
+        (the step option `auto_confirm` overrides per step)."""
         pc = self.project.cfg.pipeline
         return bool(pc.auto_approve or pc.auto_answer or getattr(self, "_yes", False))
 
     def auto_confirm_reviews(self) -> bool:
-        """Confirm a step's own reviewable items (SVA assertions, flagged requirements, …) without asking: the
+        """Confirm a step's own reviewable items (flagged requirements, changed parameters, …) without asking: the
         dedicated `pipeline.auto_confirm_reviews` switch (Settings → General), or any wider unattended mode
         (`auto_reviews()`). Narrower than `auto_reviews()`: a project may skip per-item review while still
         stopping at every gate for a human to press Approve."""
@@ -1037,50 +1026,10 @@ class Engine:
         self.bus.emit("run_finished", outcome=outcome, total_cost_usd=self.state.total_cost_usd)
         return outcome
 
-    def _parallel_tb_ready(self, selected: list[str], regenerate: set[str]) -> StepDef | None:
-        """vlsit: rtl (lint + synthesis) and tb (testbench generator) both read only spec/parse/config
-        (FLOW.md `sees`), neither needs the other's output. `pipeline.parallel_rtl_tb` on, 'tb' in the
-        requested range, and it actually needs a real run: returns the tb StepDef to run alongside rtl."""
-        if not self.project.cfg.pipeline.parallel_rtl_tb:
-            return None
-        tb_step = self.by_name.get("tb")
-        if tb_step is None or tb_step.name not in selected:
-            return None
-        view = self.evaluate(tb_step)
-        if view.status == "unavailable" or view.status == "missing_input":
-            return None
-        if view.status in ("user", "done") and tb_step.name not in regenerate:
-            return None  # skipped same as the sequential path would skip it — nothing to parallelise
-        return tb_step
-
-    async def _run_parallel(self, rtl_step: StepDef, rtl_regen: bool, tb_step: StepDef, tb_regen: bool) -> None:
-        """Run rtl and tb together. The flow's one shared session (role "flow") runs one task at a time —
-        without parallel_multi_agent, tb's LLM calls queue behind rtl's and only the non-LLM parts of each
-        step (tool runs: lint, synth, sim) truly overlap. parallel_multi_agent gives tb its own persistent
-        session (role "verifier", the same charter tb's stages would get outside flow sessions) so both
-        sets of LLM calls run at the same time too."""
-        multi_agent = self.project.cfg.pipeline.parallel_multi_agent
-        if multi_agent:
-            self._step_role_override[tb_step.name] = "verifier"
-        self.bus.emit("log", None, message=f"running {rtl_step.name} and {tb_step.name} in parallel"
-                      + (" (tb: its own agent session)" if multi_agent
-                         else " (shared session: tb's LLM calls queue behind rtl's; their tool runs still overlap)"))
-        try:
-            results = await asyncio.gather(self.run_step(rtl_step, regenerate=rtl_regen),
-                                           self.run_step(tb_step, regenerate=tb_regen), return_exceptions=True)
-        finally:
-            self._step_role_override.pop(tb_step.name, None)
-        errors = [r for r in results if isinstance(r, BaseException)]
-        if errors:
-            raise errors[0]
-
     async def _run(self, selected: list[str], yes: bool, regenerate: set[str]) -> Outcome:
         first = selected[0]
         started = False
-        handled: set[str] = set()  # tb already run alongside rtl: its own loop turn is a no-op
         for step in self.steps:
-            if step.name in handled:
-                continue
             view = self.evaluate(step)
             in_range = step.name in selected
             if step.name == first:
@@ -1115,17 +1064,6 @@ class Engine:
             elif view.status == "missing_input":
                 self.bus.emit("error", step.name, message=view.detail)
                 return "blocked"
-            elif step.name == "rtl" and (tb_step := self._parallel_tb_ready(selected, regenerate)) is not None:
-                await self._run_parallel(step, regen, tb_step, tb_step.name in regenerate)
-                handled.add(tb_step.name)
-                if not self._gate_ok(tb_step, yes):
-                    return "gate"
-                tb_earlier = [s.name for s in self.steps[: self.steps.index(tb_step)] if s.name in selected
-                             and any(f.startswith(DECISION_PREFIX) for f in self.state.feedback.get(s.name, []))]
-                if tb_earlier:
-                    self.bus.emit("log", tb_step.name, message=f"decisions for {', '.join(tb_earlier)}: updating "
-                                                                f"{'it' if len(tb_earlier) == 1 else 'them'} first, then going on")
-                    return "restart"
             else:
                 await self.run_step(step, regenerate=regen)
             if not self._gate_ok(step, yes):

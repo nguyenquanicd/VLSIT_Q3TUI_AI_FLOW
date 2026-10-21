@@ -99,7 +99,7 @@ class Step(RtlFlowStep):
                       cwd=project.root, builtin_tools=["Read", "Grep", "Glob"],
                       sdk_tools=verible_tools(ts, work, project.root, lambda: self.rtl_files(engine), self._flags_file(engine)),
                       add_dirs=skillmod.add_dirs(skills), output_model=StyleVerdict,
-                      deny_dirs=[project.tb_dir, project.model_dir, project.src_dir / "tb", project.src_dir / "sva"])
+                      deny_dirs=[project.model_dir, project.build_dir])
         verdict: StyleVerdict = (await ctx.llm(stage)).output
         modules = {f.stem for f in files}
         fixes = [x for x in verdict.fixes if x.module in modules and x.request.strip()]

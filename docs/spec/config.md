@@ -9,7 +9,7 @@
 5. Command-line flags: `q3tui --model <id> [--effort <level>] ...`
 
 In the TUI, `,` (or `/settings [tab]`) opens the **settings dialog**: tabs General, Gates, LLM,
-Spec, RTL, TB and Models per step, built from `q3tui/core/settings.py`.
+Spec, RTL and Models per step, built from `q3tui/core/settings.py`.
 Changes are validated against this schema, apply from the next stage on, and are written
 to `<project>/q3tui.yaml` unless "Only for this session" is ticked. The assistant
 has the same (`get_settings` / `set_settings`).
@@ -37,9 +37,8 @@ llm:
   steps:                          # per-step model / effort (Settings → "Models per step"); unset = the values above,
                                   # except spec: effort medium by default (`spec: {effort: default}` = the global one)
     rtl:    {model: claude-sonnet-5-5, effort: high}
-    tb:     {model: claude-haiku-4-5}               # effort: default | none | low … max ("none" for Haiku)
-    verify: {effort: medium}
-    # keys: spec parse config rtl tb sva verify doc assistant
+    parse:  {model: claude-haiku-4-5}               # effort: default | none | low … max ("none" for Haiku)
+    # keys: spec parse config rtl assistant (any other flow's step ids are accepted too)
   timeout_s: null                 # per LLM stage: null = no limit (like Claude Code); a number only if you want one
   env: {}                         # passed to the SDK, e.g. ANTHROPIC_BASE_URL. Q3TUI sets ENABLE_CLAUDEAI_MCP_SERVERS=false by default (the account's
                                   # claude.ai connectors added 100–200k tokens to every stage that used a tool); "true" here turns them back on
@@ -49,12 +48,11 @@ project:                          # folder names inside the project (docs/spec/p
   config_dir: config              # tools.json, pdks.json, rtl_rules.md, skills/, sanity/<role>_knowledge.md
   constraints_dir: constraints    # constraints/sdc/ (sdc.json and the rendered Tcl files)
   schemas_dir: schemas            # generated JSON artifacts (structured_spec.json, final_config.json, …), questions/<step>.*
-  reviews_dir: reviews            # yours, kept on reset: parse / config reviews, sanity answers, later sign-offs
+  reviews_dir: reviews            # yours, kept on reset: parse / config reviews, sanity answers
   reports_dir: reports            # readable results rendered by code
   docs_dir: docs                  # the final specification only
-  src_dir: src                    #   src/sva (src/rtl and src/tb: rtl_dir, tb_dir)
+  src_dir: src                    # src/ holds rtl/ only
   rtl_dir: src/rtl                # where the rtl flow writes (its csr/, style_lint/, smoke/ are inside)
-  tb_dir: src/tb
   build_dir: build                # disposable tool output; gitignored by `q3tui init`
   syn_dir: build/syn              #   build/syn/fpga, build/syn/asic
   sim_dir: build/sim              #   lint / synthesis / simulation logs
@@ -73,13 +71,11 @@ pipeline:
                                   # Settings → Gates; CLI: `q3tui gate STEP MODE`; assistant: set_gate_mode)
   auto_approve: false             # gates approve themselves, but stop for blocking questions (/autoapprove, --auto-approve)
   auto_answer: false              # unattended: gates approve, every question takes its default, proposals accepted (/autoanswer, --auto-answer)
-  auto_confirm_reviews: false     # confirm a step's own reviewable items (SVA assertions, flagged REQs) without asking (/autoconfirm)
-  max_fix_iterations: 5           # fix rounds (verify: triage → fixes → verify) when the step sets no `max_fix_rounds`
+  auto_confirm_reviews: false     # confirm a step's own reviewable items (flagged REQs, changed parameters) without asking (/autoconfirm)
+  max_fix_iterations: 5           # fix rounds (a step's triage → fixes → check loop) when the step sets no `max_fix_rounds`
   escalate_after_repeats: 2       # same finding, no progress → ask human
   step_options: {}                # per-step options on top of the flow file's: {rtl: {lint_max_warnings: 0}}
   step_flow: {}                   # per-step view / pass / notes overrides (/step; docs/spec/flows.md)
-  parallel_rtl_tb: false          # only meaningful in a flow with both an rtl and a tb step (none built in now)
-  parallel_multi_agent: false     # with parallel_rtl_tb: tb gets its own session (role verifier)
 
 spec:
   self_review: true               # review pass after a full draft; returns only its changes (/specreview)
@@ -92,12 +88,6 @@ rtl:                              # the rtl flow's rtl step
   max_fix_attempts: 3             # extra rounds when Q3TUI's own checks (rules, lint, synthesis) still fail
   parallel: 4                     # modules written at once
   max_turns: (ignored)            # like Claude Code: no turn limit, Claude decides when a task is done
-
-tb:                               # (the tb step was removed; kept for a flow that brings one back)
-  max_fix_attempts: 3             # extra rounds when the plan / TB checks still fail
-  max_turns: (ignored)
-  tests_per_agent: 6              # test cases per agent (agents run in parallel)
-  parallel: 4                     # test-case agents at once
 
 team:                             # role sessions (team.md)
   enabled: false                  # every role's tasks go to that role's one persistent session (`q3tui team`)
