@@ -7,7 +7,7 @@ from q3tui.flows.rtl.lib import rules, verible
 
 RULES_SKELETON = """# My RTL rules
 
-These rules are read before Q3TUI's default rules (`vlsit_rtl_rule_default.md`): where they differ, **yours win**. A rule with the same id as a
+These rules are read before Q3TUI's default rules (`rtl_rule_default.md`): where they differ, **yours win**. A rule with the same id as a
 default rule replaces it; a new id adds a rule. The same rules go to the RTL generator, to Verible (as flags, written by the `rules` step) and to the
 style judge. Write one rule per bullet, `- **ID** text`, in plain words: say what, and where it matters (naming, layout, structure).
 
@@ -54,7 +54,7 @@ def register(api) -> None:
             raise EngineError("git clone failed: " + (res.stderr or res.stdout).strip()[-400:])
         return ops._log("csr", f"the APB-CSR-Generator is installed at {dest}")
 
-    @api.action("csr_show", "Show the register map the csr step drafted (rtl/csr/csr_map.json: registers, offsets, fields) and the ports of the module the APB-CSR-Generator made from it.")
+    @api.action("csr_show", "Show the register map the csr step drafted (src/rtl/csr/csr_map.json: registers, offsets, fields) and the ports of the module the APB-CSR-Generator made from it.")
     def csr_show(ops) -> str:
         from q3tui.core.project import read_json
 
@@ -76,12 +76,12 @@ def register(api) -> None:
             lines += ["", rep["ports"]]
         return "\n".join(lines)
 
-    @api.action("rtl_rules_init", "Create rules/rtl_rules.md, your own RTL rules (markdown, one `- **ID** text` rule per bullet), from a skeleton. They are read "
+    @api.action("rtl_rules_init", "Create config/rtl_rules.md, your own RTL rules (markdown, one `- **ID** text` rule per bullet), from a skeleton. They are read "
                 "before Q3TUI's default rules and win where they differ; the rules step turns them into Verible flags and checks them for contradictions.")
     def rtl_rules_init(ops) -> str:
         from q3tui.pipeline.engine import EngineError
 
-        f = rules.user_file(ops.project.root)
+        f = rules.user_file(ops.project)
         if f.exists():
             raise EngineError(f"{ops.project.rel(f)} exists already")
         f.parent.mkdir(parents=True, exist_ok=True)

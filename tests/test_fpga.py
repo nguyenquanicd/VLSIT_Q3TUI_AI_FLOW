@@ -131,7 +131,7 @@ async def test_the_flow_stops_when_the_rtl_renames_the_clock(proj):
     eng = Engine(proj)
     await eng.run(yes=True)
     assert {v.status for v in eng.status()} == {"done"}
-    assert "create_clock -name i_clk -period 5 [get_ports i_clk_core]" in (proj.root / "sdc" / "clocks.tcl").read_text()
+    assert "create_clock -name i_clk -period 5 [get_ports i_clk_core]" in (proj.root / "constraints" / "sdc" / "clocks.tcl").read_text()
 
 
 def test_replacing_an_item_keeps_its_place_and_an_invalid_one_changes_nothing():
@@ -190,7 +190,7 @@ def test_the_fpga_role_falls_back_to_the_flows_default_only_for_that_flow(tmp_pa
     assert "fpga_synth" not in plain.roles and "lint" in plain.roles  # a project's tool set is exactly its own
     ts = load_tools(Config(), tmp_path, flows.load_flow("fpga"))
     assert ts.role("fpga_synth").modules == ["xilinx/vivado"] and "lint" in ts.roles  # (the Synopsys preset stays)
-    assert "fpga_synth" not in load_tools(Config(), tmp_path, flows.load_flow("vlsit")).roles
+    assert "fpga_synth" not in load_tools(Config(), tmp_path, flows.load_flow("spec")).roles
 
 
 # -- the flow -------------------------------------------------------------------------------------------------------
@@ -208,8 +208,8 @@ async def test_the_steps_run(proj):
     assert all(v.status == "done" for v in eng.status()), [(v.name, v.status, v.detail) for v in eng.status()]
     cfg = sdc.load(proj)
     assert cfg.clocks[0].period_ns == 5.0  # the spec's 200 MHz
-    assert (proj.root / "sdc" / "io_constraints.tcl").is_file() and (proj.root / "fpga" / "synth.tcl").is_file()
-    assert 'read_xdc -mode out_of_context' in (proj.root / "fpga" / "synth.tcl").read_text()
+    assert (proj.root / "constraints" / "sdc" / "io_constraints.tcl").is_file() and (proj.root / "build" / "syn" / "fpga" / "synth.tcl").is_file()
+    assert 'read_xdc -mode out_of_context' in (proj.root / "build" / "syn" / "fpga" / "synth.tcl").read_text()
     s = json.loads((proj.schemas_dir / "fpga_synth.json").read_text())
     assert s["status"] == "pass" and s["tool"] == "Vivado 2025.1" and s["warnings"] == 1 and s["critical_warnings"] == 0
     ppa = json.loads((proj.schemas_dir / "ppa_report.json").read_text())
@@ -264,14 +264,14 @@ async def test_vivados_progress_reaches_the_log_and_stop_kills_it(proj):
     assert progress[:3] == ["vivado: Starting RTL Elaboration", "vivado: Start Technology Mapping", "vivado: Finished Technology Mapping"]
     assert not any("noise" in m for m in said)  # only the phases, not every line
     await anyio.sleep(1.5)
-    left = subprocess.run(["pgrep", "-f", str(proj.root / "fpga" / "synth.tcl")], capture_output=True, text=True).stdout.split()
+    left = subprocess.run(["pgrep", "-f", str(proj.root / "build" / "syn" / "fpga" / "synth.tcl")], capture_output=True, text=True).stdout.split()
     assert left == [], "the tool was left running after the stop"
 
 
 async def test_a_report_without_timing_says_why(proj):
     eng = Engine(proj)
     await eng.run(yes=True)
-    rpt = proj.root / "fpga" / "reports" / "timing.rpt"
+    rpt = proj.root / "build" / "syn" / "fpga" / "reports" / "timing.rpt"
     text = rpt.read_text()
     row = [l for l in text.splitlines() if l.strip().startswith("3.639")][0]
     rpt.write_text(text.replace(row, "         NA           NA                     NA                   NA           NA           NA                     NA                   NA           NA           NA                      NA                    NA  "))
@@ -308,16 +308,16 @@ async def test_editing_the_sdc_makes_the_synthesis_stale(proj):
     ops = Ops(eng)
     assert any(k == "clock.i_clk.freq_mhz" and v == "200" for k, _, v in _rows(ops))
     msg = ops.run_action("sdc_set", key="clock.i_clk.freq_mhz", value="400")
-    assert "2.5 ns" in msg and "create_clock -name i_clk -period 2.5" in (proj.root / "sdc" / "clocks.tcl").read_text()
+    assert "2.5 ns" in msg and "create_clock -name i_clk -period 2.5" in (proj.root / "constraints" / "sdc" / "clocks.tcl").read_text()
     st = {v.name: v.status for v in Engine(proj).status()}
     assert st["sdc"] == "stale" and st["fpga_synth"] == "stale"
     with pytest.raises(EngineError, match="positive"):
         ops.run_action("sdc_set", key="clock.i_clk.freq_mhz", value="-5")
-    assert "400" in json.dumps(json.loads((proj.root / "sdc" / "sdc.json").read_text()) and _rows(ops))
+    assert "400" in json.dumps(json.loads((proj.root / "constraints" / "sdc" / "sdc.json").read_text()) and _rows(ops))
     ops.run_action("sdc_add", what="exception", text="false_path from=i_v to=o_y")
-    assert "set_false_path -from [get_ports i_v] -to [get_ports o_y]" in (proj.root / "sdc" / "exceptions.tcl").read_text()
+    assert "set_false_path -from [get_ports i_v] -to [get_ports o_y]" in (proj.root / "constraints" / "sdc" / "exceptions.tcl").read_text()
     ops.run_action("sdc_remove", key="exception.0")
-    assert "i_v" not in (proj.root / "sdc" / "exceptions.tcl").read_text().replace("i_vld", "")
+    assert "i_v" not in (proj.root / "constraints" / "sdc" / "exceptions.tcl").read_text().replace("i_vld", "")
     e2 = Engine(proj)
     await e2.run(yes=True)  # the sdc step renders again and the synthesis follows
     assert {v.status for v in e2.status()} == {"done"}
@@ -526,7 +526,7 @@ async def test_handoff_sends_change_requests_to_the_owning_flow(proj, monkeypatc
     (proj.root / "flows").mkdir(exist_ok=True)
     (proj.root / "flows" / "owner.yaml").write_text("name: owner\nsteps:\n  - {id: spec, kind: spec}\n  - {id: rtl, kind: reads, deps: [spec]}\n")
     _fork(proj, timing_util_report=("options: {}", "options:\n  targets: {min_slack_ns: 5}"),
-          ppa_optimize=("handoff_flow: vlsit", "handoff_flow: owner"))
+          ppa_optimize=("handoff_flow: rtl", "handoff_flow: owner"))
     monkeypatch.setattr(runtime, "run_stage", PlanLLM(_plan()))
     eng = Engine(proj)
     await eng.run(yes=True)
@@ -580,7 +580,7 @@ async def test_the_rounds_are_bounded_and_remembered(proj, monkeypatch):
 def test_settings_follow_the_flows_steps(proj):
     ops = Ops(Engine(proj))
     tabs = {t.id: t for t in ops.settings_tabs()}
-    assert not {"spec", "rtl", "tb"} & set(tabs)  # the vlsit tabs are not this flow's
+    assert not {"spec", "rtl", "tb"} & set(tabs)  # the spec tabs are not this flow's
     assert [s.path for s in tabs["models"].settings][::2] == [
         f"llm.steps.{k}.model" for k in ("sdc", "fpga_synth", "timing_util_report", "ppa_optimize", "assistant")]
     assert "pipeline.parallel_rtl_tb" not in {s.path for t in tabs.values() for s in t.settings}
@@ -615,17 +615,17 @@ async def test_switching_flows_from_the_tui(proj):
     app = Q3TUIApp(proj)
     async with app.run_test(size=(150, 45)) as pilot:
         await pilot.pause()
-        assert "vlsit" in app._completions("flow") and "fpga" in app._completions("flow")
+        assert "spec" in app._completions("flow") and "fpga" in app._completions("flow")
         app.action_switch_flow("fpga")  # already there: nothing happens
         await pilot.pause()
         assert app.return_value is None
         app.action_switch_flow("nope")  # unknown: stays, says why
         await pilot.pause()
         assert app.return_value is None and "flow: fpga" in (proj.root / "q3tui.yaml").read_text()
-        app.action_switch_flow("vlsit")
+        app.action_switch_flow("spec")
         await pilot.pause()
-    assert app.return_value == ("flow", "vlsit")
-    assert load_config(None, cwd=proj.root).pipeline.flow == "vlsit"
+    assert app.return_value == ("flow", "spec")
+    assert load_config(None, cwd=proj.root).pipeline.flow == "spec"
 
 
 async def test_the_flow_map_picks_the_flow_of_a_box(proj):
@@ -644,9 +644,9 @@ async def test_the_flow_map_picks_the_flow_of_a_box(proj):
         app.screen.pick(by_title["DV"])  # not developed: stays open
         await pilot.pause()
         assert isinstance(app.screen, FlowMapScreen)
-        app.screen.pick(by_title["Spec"])  # a box of the vlsit flow
+        app.screen.pick(by_title["Spec"])  # a box of the spec flow
         await pilot.pause()
-    assert app.return_value == ("flow", "vlsit")
+    assert app.return_value == ("flow", "spec")
 
 
 def _owner_flow(proj):
@@ -661,7 +661,7 @@ async def test_a_human_gate_offers_the_handoff_and_the_switch(proj, monkeypatch)
 
     _owner_flow(proj)
     _fork(proj, timing_util_report=("options: {}", "options:\n  targets: {min_slack_ns: 5}"),
-          ppa_optimize=("handoff_flow: vlsit", "handoff_flow: owner"))
+          ppa_optimize=("handoff_flow: rtl", "handoff_flow: owner"))
     monkeypatch.setattr(runtime, "run_stage", PlanLLM(_plan()))
     eng = Engine(proj)
     await eng.run(yes=True)
@@ -687,7 +687,7 @@ async def test_a_gate_in_mode_auto_hands_off_the_rtl_fixes_only(proj, monkeypatc
 
     _owner_flow(proj)
     _fork(proj, timing_util_report=("options: {}", "options:\n  targets: {min_slack_ns: 5}"),
-          ppa_optimize=("handoff_flow: vlsit", "handoff_flow: owner"))
+          ppa_optimize=("handoff_flow: rtl", "handoff_flow: owner"))
     skill = proj.root / "flows" / "fpga" / "ppa_optimize" / "md" / "skill.md"
     skill.write_text(skill.read_text().replace("gate: human", "gate: auto"))
     monkeypatch.setattr(runtime, "run_stage", PlanLLM(_plan()))
@@ -705,7 +705,7 @@ async def test_auto_answer_runs_the_owner_flow_and_goes_round_again(proj, monkey
 
     _owner_flow(proj)
     _fork(proj, timing_util_report=("options: {}", "options:\n  targets: {min_slack_ns: 5}"),
-          ppa_optimize=("handoff_flow: vlsit", "handoff_flow: owner"))
+          ppa_optimize=("handoff_flow: rtl", "handoff_flow: owner"))
     skill = proj.root / "flows" / "fpga" / "ppa_optimize" / "md" / "skill.md"
     skill.write_text(skill.read_text().replace("gate: human", "gate: auto_answer"))
     fake = PlanLLM(_plan())
@@ -740,7 +740,7 @@ async def test_h_in_the_fixes_tab_moves_to_the_owner_flow(proj, monkeypatch):
 
     _owner_flow(proj)
     _fork(proj, timing_util_report=("options: {}", "options:\n  targets: {min_slack_ns: 5}"),
-          ppa_optimize=("handoff_flow: vlsit", "handoff_flow: owner"))
+          ppa_optimize=("handoff_flow: rtl", "handoff_flow: owner"))
     monkeypatch.setattr(runtime, "run_stage", PlanLLM(_plan()))
     await Engine(proj).run(yes=True)
     app = Q3TUIApp(proj)
@@ -768,18 +768,18 @@ async def test_switching_while_a_step_runs_asks_instead_of_refusing(proj):
 
         app._pipeline_worker = Busy()
         app.engine.running = "fpga_synth"
-        app.action_switch_flow("vlsit")
+        app.action_switch_flow("spec")
         await pilot.pause()
         assert isinstance(app.screen, ConfirmScreen) and app.return_value is None
         app.screen.dismiss(False)  # no: stays
         await pilot.pause()
         assert app.return_value is None
-        app.action_switch_flow("vlsit")
+        app.action_switch_flow("spec")
         await pilot.pause()
         app.screen.dismiss(True)
         await pilot.pause()
         app.engine.running = None
-    assert app.return_value == ("flow", "vlsit")
+    assert app.return_value == ("flow", "spec")
 
 
 async def test_targets_met_on_changed_rtl_run_the_owners_functional_check(proj, monkeypatch):
@@ -788,9 +788,9 @@ async def test_targets_met_on_changed_rtl_run_the_owners_functional_check(proj, 
     (proj.root / "flows").mkdir(exist_ok=True)
     (proj.root / "flows" / "owner.yaml").write_text(
         "name: owner\nsteps:\n  - {id: spec, kind: spec}\n  - {id: rtl, kind: reads, deps: [spec]}\n"
-        "  - {id: tb, kind: reads, deps: [rtl]}\n  - {id: verify, kind: reads, deps: [tb]}\n")
+        "  - {id: format, kind: reads, deps: [rtl]}\n  - {id: smoke, kind: reads, deps: [format]}\n")
     _fork(proj, timing_util_report=("options: {}", "options:\n  targets: {min_slack_ns: 5}"),
-          ppa_optimize=("handoff_flow: vlsit", "handoff_flow: owner"))
+          ppa_optimize=("handoff_flow: rtl", "handoff_flow: owner"))
     fake = PlanLLM(_plan())
     monkeypatch.setattr(runtime, "run_stage", fake)
     eng = Engine(proj)
@@ -807,21 +807,21 @@ async def test_targets_met_on_changed_rtl_run_the_owners_functional_check(proj, 
     await eng.run(yes=True)
     assert json.loads((proj.schemas_dir / "ppa_plan.json").read_text())["status"] == "met"
     offer = eng.by_name["ppa_optimize"].follow_up(eng)
-    assert offer and offer["switch"] == "owner" and "action" not in offer and "tb → verify" in offer["detail"]
-    assert not (proj.root / "notes" / "verify.txt").exists()
-    # auto_answer: it runs the owner's tb → verify itself, once for this RTL, and never goes back into the PPA loop
+    assert offer and offer["switch"] == "owner" and "action" not in offer and "format → smoke" in offer["detail"]
+    assert not (proj.root / "notes" / "smoke.txt").exists()
+    # auto_answer: it runs the owner's format → smoke itself, once for this RTL, and never goes back into the PPA loop
     skill.write_text(skill.read_text().replace("gate: human", "gate: auto_answer"))
     eng = Engine(proj)
     events = []
     eng.bus.subscribe(lambda e: events.append(str(e.data.get("message", ""))))
     await eng.run(yes=True)
-    assert (proj.root / "notes" / "tb.txt").is_file() and (proj.root / "notes" / "verify.txt").is_file()
-    assert any("running owner:tb → verify" in m for m in events) and any("owner tb → verify ended 'complete'" in m for m in events)
+    assert (proj.root / "notes" / "format.txt").is_file() and (proj.root / "notes" / "smoke.txt").is_file()
+    assert any("running owner:format → smoke" in m for m in events) and any("owner format → smoke ended 'complete'" in m for m in events)
     assert len(fake.stages) == 1  # (no further PPA round)
     assert eng.by_name["ppa_optimize"].follow_up(eng) is None  # this RTL is verified: nothing left to offer
     n = len(events)
     await Engine(proj).run(yes=True)  # again: not run twice for the same RTL
-    assert (proj.root / "notes" / "verify.txt").read_text() == "verify: 1 input(s)\n" and len(events) == n
+    assert (proj.root / "notes" / "smoke.txt").read_text() == "smoke: 1 input(s)\n" and len(events) == n
 
 
 class StubRunner:
@@ -860,9 +860,9 @@ async def test_a_background_run_survives_a_flow_switch_and_stops_with_x(proj):
                 if app.engine.other_run():
                     break
             assert app.engine.other_run()["pid"] == runner.pid
-            app.action_switch_flow("vlsit")  # no confirmation, no cancel: the run is not this TUI's
+            app.action_switch_flow("spec")  # no confirmation, no cancel: the run is not this TUI's
             await pilot.pause()
-        assert app.return_value == ("flow", "vlsit") and runner.alive()
+        assert app.return_value == ("flow", "spec") and runner.alive()
         # the next TUI (the other flow) sees it, `x` stops it, quitting asks first
         app2 = Q3TUIApp(proj, background=True, runner=runner)
         async with app2.run_test(size=(150, 45)) as pilot:
@@ -960,7 +960,7 @@ def test_the_synthesis_options_are_settings_of_fpga_synth(proj):
     ops.apply_settings({base + "implement": "on", base + "synth_args": "-flatten_hierarchy full\n-retiming"})
     step = ops.engine.by_name["fpga_synth"]
     assert step._fpga_cfg()["implement"] is True and step._fpga_cfg()["synth_args"] == ["-flatten_hierarchy full", "-retiming"]
-    tcl = vivado.script_text([], "blk", proj.root / "sdc", proj.root, {"fpga": step._fpga_cfg()})
+    tcl = vivado.script_text([], "blk", proj.root / "constraints" / "sdc", proj.root, {"fpga": step._fpga_cfg()})
     assert "-flatten_hierarchy full -retiming" in tcl and "route_design" in tcl
 
 

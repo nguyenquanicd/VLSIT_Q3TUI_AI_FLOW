@@ -16,7 +16,7 @@ Conditions (all):
 - the data is stable from before valid is sent until the receiver has captured it (check the RTL and the spec's handshake: data is not changed while valid is high / before the acknowledge);
 - the data path has `set_max_delay` of **1 to 1.5 receiving-clock periods** (so the data reaches the destination flops before the synchronized valid does: valid takes the synchronizer's latency).
 
-Evidence: the RTL of the sender and the receiver; the SDC (`sdc/*.tcl`, `set_max_delay` on the data path); the spec's protocol.
+Evidence: the RTL of the sender and the receiver; the SDC (`constraints/sdc/*.tcl`, `set_max_delay` on the data path); the spec's protocol.
 Constraint to give when the SDC lacks it: `set_max_delay <1.0 to 1.5 × receiving clock period> -from <data launch flops> -to <data capture flops>` (datapath-only).
 When unclear (the handshake or the stability is not shown in the RTL / spec): ask the user; never assume it.
 

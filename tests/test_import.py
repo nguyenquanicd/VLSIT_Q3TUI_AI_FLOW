@@ -1,6 +1,6 @@
 """Importing your own project (core/importer.py, Engine.import_path, Ops.import_files): sorted by code, RTL adopted and
 brought in line with the RTL rules, tests / SVA as references the steps port. Fake LLM and fake tools, as in
-test_vlsit_rtl_tb.py."""
+test_rtl_gen.py."""
 
 from types import SimpleNamespace
 
@@ -8,14 +8,12 @@ import pytest
 
 from q3tui.core import importer
 from q3tui.core.ops import Ops
-from q3tui.flows.vlsit.parse.step import fit_to_design
-from q3tui.flows.vlsit.rtl.plan import PlanModule, RtlPlan
-from q3tui.flows.vlsit.rtl.step import RtlGenStep
-from q3tui.flows.vlsit.tb import plan as tb_plan
-from q3tui.flows.vlsit.tb.plan import TbCase
+from q3tui.flows.spec.parse.step import fit_to_design
+from q3tui.flows.rtl.rtl.plan import PlanModule, RtlPlan
+from q3tui.flows.rtl.rtl.gen import RtlGenStep
 from q3tui.pipeline.engine import EngineError
-from q3tui.steps.vlsit import rules_check
-from tests.test_vlsit_rtl_tb import MODULES, _rtl_text, calls, llm, make_engine, run_step, tools_dir  # noqa: F401 (fixtures)
+from q3tui.flows.rtl.lib import rules_check
+from tests.test_rtl_gen import MODULES, _rtl_text, calls, llm, make_engine, run_step, tools_dir  # noqa: F401 (fixtures)
 
 TB_ENV = "class my_env extends uvm_env;\nendclass\n"
 TEST = "// write then read back\nclass basic_test extends uvm_test;\nendclass\n"
@@ -90,11 +88,9 @@ def test_import_folder_into_a_vlsit_project(tmp_path, tools_dir, llm):
     eng = make_engine(tmp_path, tools_dir)
     src = reference(tmp_path / "ref" / "demo", rtl_ok=False)
     text = Ops(eng).import_files("all", "ref/demo")
-    assert "3 RTL" in text and "3 testbench / tests" in text and "1 sva file(s) not imported" in text  # (this flow has no sva step)
-    assert "left out (3" in text
+    assert "3 RTL" in text  # (this flow has no tb / sva step: those files are left out)
     assert (tmp_path / "spec" / "README.md").is_file() and (tmp_path / "spec" / "arch.html").is_file()
     assert sorted(p.name for p in (tmp_path / "src" / "rtl").glob("*.sv")) == ["leaf_a.sv", "leaf_b.sv", "top.sv"]
-    assert (tmp_path / "src" / "tb" / "imported" / "tests" / "ts.basic_test.sv").is_file()
     assert eng.import_record("rtl")["design"]["top"] == "top"
     assert eng.import_sources() == [src]
 
@@ -106,32 +102,6 @@ def test_import_folder_into_a_vlsit_project(tmp_path, tools_dir, llm):
     assert len(fix_b) == 1 and "REQ trace tags missing: REQ-002" in fix_b[0].prompt and "REQ-002: b is registered" in fix_b[0].prompt
     assert src in fix_a[0].deny_dirs  # the originals are never read by a stage
     assert eng.state.steps["rtl"].status == "done" and set(eng.state.step_meta["rtl"]["modules"]) == set(MODULES)
-
-    # tb: the imported tests are listed for the plan; a test case ported from one gets it in its prompt
-    llm.vlsit_tb_plans = [[{"tc_id": "TC-001", "name": "basic", "description": "b", "req_ids": ["REQ-001", "REQ-002", "REQ-003"],
-                            "source": "src/tb/imported/tests/ts.basic_test.sv"}]]
-    run_step(eng, "tb")
-    plan_call = calls(llm, "tb_plan")[0]
-    assert "src/tb/imported/tests/ts.basic_test.sv" in plan_call.prompt and "src/tb/imported/README.md" in plan_call.prompt
-    top_call = calls(llm, "tb_top")[0]
-    assert "src/tb/imported/env/my_env.sv" in top_call.prompt
-    group = [c for c in calls(llm, "tb_g")][0]
-    assert "Port từ test có sẵn" in group.prompt and "ts.basic_test.sv" in group.prompt
-    assert eng.state.step_meta["tb"]["plan"]["cases"][0]["source"] == "src/tb/imported/tests/ts.basic_test.sv"
-
-
-def test_reimport_replaces_the_previous_import(tmp_path, tools_dir, llm):
-    eng = make_engine(tmp_path, tools_dir)
-    reference(tmp_path / "ref" / "demo")
-    Ops(eng).import_files("all", "ref/demo")
-    (tmp_path / "ref" / "demo" / "sim" / "vcs" / "tests" / "ts.basic_test.sv").unlink()
-    (tmp_path / "ref" / "demo" / "sim" / "vcs" / "tests" / "ts.other_test.sv").write_text(TEST)
-    before = eng.inputs_hash(eng.by_name["tb"])
-    Ops(eng).import_files("tb", "ref/demo")
-    tests = tmp_path / "src" / "tb" / "imported" / "tests"
-    assert [p.name for p in tests.iterdir()] == ["ts.other_test.sv"]  # (the old one is backed up)
-    assert eng.inputs_hash(eng.by_name["tb"]) != before  # the tb step goes stale
-
 
 def test_import_kind_and_errors(tmp_path, tools_dir, llm):
     eng = make_engine(tmp_path, tools_dir)
@@ -158,13 +128,6 @@ def test_imported_top_keeps_its_port_names():
     assert not any("`clk`" in v.message for v in step._violations(run, pm, top))
     run.keep_ports = set()  # (not imported: every rule applies)
     assert any("`clk`" in v.message for v in step._violations(run, pm, top))
-
-
-def test_normalize_keeps_known_sources_only():
-    cases = [TbCase(name="a", source="t/a.sv"), TbCase(name="b", source="t/nope.sv")]
-    out, warnings = tb_plan.normalize(cases, set(), None, {"t/a.sv", "t/c.sv"})
-    assert [c.source for c in out] == ["t/a.sv", ""] and "nope" in warnings[0]
-    assert tb_plan.unported([c.model_dump() for c in out], ["t/a.sv", "t/c.sv"]) == ["t/c.sv"]
 
 
 def test_imported_documents_are_ported_into_the_template_by_the_llm(tmp_path, monkeypatch):
@@ -217,23 +180,3 @@ def test_imported_documents_are_ported_into_the_template_by_the_llm(tmp_path, mo
     upd = [c for c in fake.calls if c.name == "spec_update"]
     assert upd and "INCR and WRAP bursts only." in upd[-1].prompt and "spec/ref/README.md" in upd[-1].prompt
     assert [c.name for c in fake.calls].count("spec_write") == 1
-
-
-def test_imported_tests_are_the_test_plan():
-    tests = ["src/tb/imported/tests/ts.wrap_len2_axi_sram_test.sv", "src/tb/imported/tests/ts.basic_axi_sram_test.sv",
-             "src/tb/imported/tests/ts.burst_axi_sram_test.sv"]
-    assert tb_plan.imported_names(tests) == {tests[0]: "wrap_len2", tests[1]: "basic", tests[2]: "burst"}
-    seed = tb_plan.seed_imported(tests)
-    assert [(s["tc_id"], s["name"]) for s in seed] == [("TC-001", "basic"), ("TC-002", "burst"), ("TC-003", "wrap_len2")]
-    # the LLM renamed one, left one out and added its own with a clashing id: the imported ones win
-    llm = [{"tc_id": "TC-007", "name": "basic_rw", "description": "d", "req_ids": ["REQ-001"], "source": tests[1]},
-           {"tc_id": "TC-002", "name": "wrap2", "description": "w", "req_ids": ["REQ-002"], "source": tests[0]},
-           {"tc_id": "TC-001", "name": "reset_values", "description": "r", "req_ids": ["REQ-003"], "source": ""}]
-    cases, warnings = tb_plan.apply_imported(llm, seed)
-    assert [(c["tc_id"], c["name"], c["req_ids"]) for c in cases] == [
-        ("TC-001", "basic", ["REQ-001"]), ("TC-002", "burst", []), ("TC-003", "wrap_len2", ["REQ-002"]),
-        ("TC-004", "reset_values", ["REQ-003"])]
-    assert "burst" in warnings[0]
-    # a later import keeps the ids the plan already gave
-    again = tb_plan.seed_imported([*tests, "src/tb/imported/tests/ts.aaa_axi_sram_test.sv"], cases)
-    assert {s["name"]: s["tc_id"] for s in again} == {"aaa": "TC-005", "basic": "TC-001", "burst": "TC-002", "wrap_len2": "TC-003"}

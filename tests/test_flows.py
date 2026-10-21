@@ -61,15 +61,15 @@ def run(engine, **kw):
 
 
 def test_builtin_flows_are_valid():
-    assert set(flows.list_flows()) == {"vlsit", "example", "fpga", "asic", "project", "rtl", "sanity"}
+    assert set(flows.list_flows()) == {"spec", "example", "fpga", "asic", "project", "rtl", "sanity"}
     example = flows.load_flow("example")
     assert flows.validate(example) == [] and [s.id for s in example.steps] == ["spec", "parse"]
 
 
-def test_vlsit_flow_is_valid():
-    f = flows.load_flow("vlsit")
+def test_spec_flow_is_valid():
+    f = flows.load_flow("spec")
     assert flows.validate(f) == []
-    assert f.gates["parse"] == "human" and f.gates["config"] == "auto" and f.gates["sva"] == "human" and f.gates["verify"] == "human"
+    assert f.gates["parse"] == "human" and f.gates["config"] == "auto"
 
 
 def test_validation_problems(tmp_path):
@@ -99,7 +99,7 @@ def test_flow_files_are_found_project_before_user_before_builtin(tmp_path, monke
     write_flow(proj)
     assert flows.load_flow("mine", proj).title == "a test flow"  # the project's wins
     assert flows.load_flow("example", proj).title == "shadowed"  # a user flow shadows a built-in one
-    assert set(flows.list_flows(proj)) >= {"mine", "example", "vlsit"}
+    assert set(flows.list_flows(proj)) >= {"mine", "example", "spec"}
     assert flows.load_flow("flows/mine.yaml", proj).name == "mine"  # by path
     with pytest.raises(flows.FlowError):
         flows.load_flow("does-not-exist", proj)
@@ -203,7 +203,6 @@ def test_fresh_steps(tmp_path):
     assert flows.validate(f) == ["fresh_steps: unknown step 'zz'"]
     with pytest.raises(flows.FlowError, match="fresh_steps"):
         flows.parse_flow({"name": "x", "fresh_steps": "a", "steps": [{"id": "a", "kind": "spec"}]})
-    assert flows.load_flow("vlsit").fresh_steps == ["spec", "parse", "config"]
 
 
 def test_cli_flow_commands(tmp_path):
@@ -213,12 +212,12 @@ def test_cli_flow_commands(tmp_path):
     assert r.exit_code == 0 and "mine" in r.output and "example" in r.output
     r = CliRunner().invoke(main, ["-C", str(tmp_path), "flow", "check"])
     assert r.exit_code == 0 and "flow is valid" in r.output
-    r = CliRunner().invoke(main, ["-C", str(tmp_path), "flow", "check", "vlsit"])
+    r = CliRunner().invoke(main, ["-C", str(tmp_path), "flow", "check", "rtl"])
     assert r.exit_code == 0 and "tools needed: lint, synth, sim, run" in r.output
     r = CliRunner().invoke(main, ["-C", str(tmp_path), "gate", "a", "auto"])
     assert r.exit_code == 0 and "auto" in r.output
     assert "a: auto" in (tmp_path / "q3tui.yaml").read_text().replace("'", "")
-    r = CliRunner().invoke(main, ["-C", str(tmp_path), "--flow", "vlsit", "status"])
+    r = CliRunner().invoke(main, ["-C", str(tmp_path), "--flow", "spec", "status"])
     assert r.exit_code == 0 and "parse" in r.output
 
 
@@ -251,12 +250,12 @@ def test_queued_decisions_for_a_step_you_provided_are_dropped_on_load(tmp_path):
     assert eng2.state.feedback["a"] == ["my own change request"]
 
 
-def test_vlsit_is_the_default_flow(tmp_path):
+def test_spec_is_the_default_flow(tmp_path):
     fresh = tmp_path / "fresh"
     fresh.mkdir()
     (fresh / "q3tui.yaml").write_text("llm: {model: claude-haiku-4-5}\n")
     p = Project.open(fresh)
-    assert p.cfg.pipeline.flow == "vlsit" and p.flow_ref() == "vlsit"
+    assert p.cfg.pipeline.flow == "spec" and p.flow_ref() == "spec"
     assert [s.name for s in Engine(p).pipeline_steps][:3] == ["spec", "parse", "config"]
 
 
@@ -314,10 +313,10 @@ def test_skill_sections_are_the_prompts_and_a_flow_copy_overrides_them(tmp_path)
     from q3tui.llm import prompts
     from q3tui.llm.runtime import Stage
 
-    builtin = flows.BUILTIN_DIR / "vlsit"
+    builtin = flows.BUILTIN_DIR / "spec"
     base = flows.skill_sections(builtin / "parse" / "md" / "skill.md")
-    assert "SYSTEM" in base and flows.load_flow("vlsit").steps[2].notes == ""  # sections are not notes
-    copy = tmp_path / "flows" / "vlsit"
+    assert "SYSTEM" in base and flows.load_flow("spec").steps[2].notes == ""  # sections are not notes
+    copy = tmp_path / "flows" / "spec"
     for p in builtin.glob("*/md/skill.md"):
         (copy / p.parent.parent.name / "md").mkdir(parents=True, exist_ok=True)
         (copy / p.parent.parent.name / "md" / "skill.md").write_text(p.read_text().replace(base["SYSTEM"], "MY OWN SYSTEM PROMPT") if p.parent.parent.name == "parse" else p.read_text())

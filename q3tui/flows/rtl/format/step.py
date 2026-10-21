@@ -1,4 +1,4 @@
-"""Step `format` of the RTL flow: Verible's formatter on `rtl/` (code only, no LLM).
+"""Step `format` of the RTL flow: Verible's formatter on `src/rtl/` (code only, no LLM).
 
 Runs by itself whenever the RTL changed (generated, or fixed through `style_lint`). Guardrails: the formatter works on copies; a result is
 written only when it is the same code (whitespace differences only) and is backed up first; a file you edited by hand (its hash is not the one

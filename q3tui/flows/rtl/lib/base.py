@@ -7,11 +7,11 @@ from pathlib import Path
 
 from q3tui.core.project import read_json, write_json
 from q3tui.flows.rtl.lib import csr, rules, verible
-from q3tui.steps.vlsit.base import VlsitStep, rules_text
+from q3tui.flows.spec.lib.base import VlsitStep, rules_text
 
 
 class RtlFlowStep(VlsitStep):
-    """Base of the RTL flow's steps. The RTL is the `rtl` step's result (`rtl/`: its `options.rtl_dir`); the style files go to
+    """Base of the RTL flow's steps. The RTL is the `rtl` step's result (`src/rtl/`: `project.rtl_dir`); the style files go to
     `<rtl>/style_lint/`, the smoke test to `<rtl>/smoke/`."""
 
     def rtl_dir(self, engine) -> Path:
@@ -69,15 +69,15 @@ class RtlFlowStep(VlsitStep):
         return None
 
     def rule_files(self, engine) -> list[str]:
-        """The rule stack (first wins): your `rules/rtl_rules.md` when it exists, then the `rtl` step's own rule files."""
-        return rules.stack(engine.project.root, list(engine.by_name["rtl"].options.get("rules") or []))
+        """The rule stack (first wins): your `config/rtl_rules.md` when it exists, then the `rtl` step's own rule files."""
+        return rules.stack(engine.project, list(engine.by_name["rtl"].options.get("rules") or []))
 
     def rule_text(self, engine) -> str:
         return rules_text(self.rule_files(engine), engine.project.root)
 
     def rule_paths(self, engine) -> list[Path]:
         """The rule files on disk (for staleness): the project's, else the shipped one."""
-        from q3tui.steps.vlsit.base import rule_dirs
+        from q3tui.flows.spec.lib.base import rule_dirs
 
         out = []
         for n in self.rule_files(engine):

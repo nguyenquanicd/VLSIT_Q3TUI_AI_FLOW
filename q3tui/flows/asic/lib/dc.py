@@ -1,6 +1,6 @@
 """Design Compiler for the ASIC flow: the synthesis script (code) and the report readers (code).
 
-The script analyzes / elaborates the RTL, sources `sdc/sdc.tcl` (the same constraints the FPGA flow uses), compiles, writes the
+The script analyzes / elaborates the RTL, sources `constraints/sdc/sdc.tcl` (the same constraints the FPGA flow uses), compiles, writes the
 netlist, the constraints and the Formality guidance (SVF), and the reports of `REPORTS` next to itself."""
 
 from __future__ import annotations

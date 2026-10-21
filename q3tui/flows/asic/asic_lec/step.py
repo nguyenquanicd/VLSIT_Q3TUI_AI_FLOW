@@ -1,5 +1,5 @@
 """ASIC step `asic_lec`: Formality proves the netlist equals the RTL (tool role `asic_lec`). `schemas/asic_lec.json` holds the result,
-`asic/reports/lec.rpt` the matched / failing points. A tool that is not there, or a run without a verdict, is a failed step."""
+`build/syn/asic/reports/lec.rpt` the matched / failing points. A tool that is not there, or a run without a verdict, is a failed step."""
 
 from __future__ import annotations
 
@@ -76,7 +76,7 @@ class Step(AsicStep):
             toolmod.check_broken(res, "asic_lec")
             raise StepFailed(f"Formality gave no verdict (log: {res.log_path})")
         if result["status"] != "equivalent":
-            raise StepFailed(f"the netlist is {result['status'].replace('_', ' ')} to the RTL ({result.get('failing', '?')} failing point(s)): see asic/reports/lec.rpt")
+            raise StepFailed(f"the netlist is {result['status'].replace('_', ' ')} to the RTL ({result.get('failing', '?')} failing point(s)): see build/syn/asic/reports/lec.rpt")
         if result.get("rtl_messages"):
             ctx.emit("warning", message="Formality: RTL interpretation messages were produced (accepted by options.message_filter): the result can differ from a simulator's")
         ctx.emit("log", message=f"equivalent: {result.get('passing', '?')} compare points pass ({time.monotonic() - t0:.0f} s)")

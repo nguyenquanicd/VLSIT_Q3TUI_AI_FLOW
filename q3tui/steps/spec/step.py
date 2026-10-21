@@ -25,8 +25,8 @@ class SpecStep(StepDef):
     # -- files ----------------------------------------------------------------------------
 
     def _paths(self, engine) -> tuple[Path, Path, Path, Path, Path]:
-        d = engine.project.spec_dir
-        return d / "intent.md", d / "spec.md", d / "questions.json", d / "questions.md", d / "answers.json"
+        d, q = engine.project.spec_dir, engine.project.schemas_dir / "questions"  # (questions and answers: like every step's)
+        return d / "intent.md", d / "spec.md", q / "spec.json", q / "spec.md", q / "spec.answers.json"
 
     def inputs(self, engine) -> list[Path]:
         intent, _, _, _, answers = self._paths(engine)

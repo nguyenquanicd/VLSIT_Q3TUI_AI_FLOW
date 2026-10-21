@@ -335,18 +335,6 @@ class Q3TUIApp(App):
         finally:
             self._replaying = False
 
-    def _vlsit_badge(self, kind: str) -> str:
-        from q3tui.tui.vlsit_panels import artifact
-
-        rtm = (artifact(self, "rtm.json", {}) or {}).get("requirements", [])
-        if not rtm:
-            return ""
-        if kind == "vlsit_verify":
-            signed = sum(bool(r.get("signed_off")) for r in rtm)
-            return f"[{'green' if signed == len(rtm) else 'yellow'}]{signed}/{len(rtm)} REQ[/]"
-        traced = sum(bool(r.get("sva_traced")) for r in rtm)
-        return f"[{'green' if traced == len(rtm) else 'yellow'}]{traced}/{len(rtm)} SVA[/]"
-
     def _render_steps(self, views: list[StepView]) -> None:
         modes = self.engine.gate_modes()
         for v in views:
@@ -366,12 +354,9 @@ class Q3TUIApp(App):
                 extra.append(f"[grey42]{v.detail.replace('planned for ', '')}[/]")
             if v.edited:
                 extra.append(f"[grey62]{I('edited')}[/]")
-            kind = self.engine.by_name[v.name].kind or v.name
             mode = modes.get(v.name)
             if mode in ("auto", "auto_answer"):
                 extra.append(f"[grey62]{'auto' if mode == 'auto' else 'auto-ans'}[/]")
-            if kind in ("vlsit_verify", "vlsit_sva") and v.status in ("done", "stale"):
-                extra.append(self._vlsit_badge(kind))
             label = f"[{color}]{icon}[/] {self.engine.label(v.name):<2} {v.name:<13}" + " ".join(x for x in extra if x)
             w = self._w(f"#step-{safe_id(v.name)}")
             if getattr(w, "_last", None) != label:

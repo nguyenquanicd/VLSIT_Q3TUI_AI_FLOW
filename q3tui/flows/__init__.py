@@ -1,7 +1,7 @@
 """Flow definitions as data (docs/spec/flows.md).
 
 A flow is a YAML / JSON file: which step kinds run, in which order, what each depends on, which gates stop for a
-human. The built-in flow is `vlsit` (q3tui/flows/vlsit/); users add their own under `<project>/flows/` or
+human. The default flow is `spec` (q3tui/flows/spec/); users add their own under `<project>/flows/` or
 `~/.q3tui/flows/` and select one with `pipeline.flow: <name | path>`.
 """
 

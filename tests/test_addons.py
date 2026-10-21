@@ -49,7 +49,7 @@ class Host:
 def test_the_flow_brings_its_files(proj):
     flow = flows.load_flow("greeter", proj.root)
     assert list(flow.actions) == ["greet"] and flow.tool_defaults["say"]["cmd"] == "echo hi" and flow.panels_file.name == "panels.py"
-    assert flows.load_flow("vlsit").actions == {} and flows.load_flow("vlsit").tool_defaults == {}  # other flows: nothing
+    assert flows.load_flow("spec").actions == {} and flows.load_flow("spec").tool_defaults == {}  # other flows: nothing
 
 
 def test_ops_runs_actions(proj):
@@ -72,7 +72,7 @@ def test_the_assistant_gets_a_tool_per_action(proj):
     assert t.input_schema["required"] == ["who"] and set(t.input_schema["properties"]) == {"who", "punct"}
     out = anyio.run(lambda: t.handler({"who": "world"}))
     assert out["content"][0]["text"] == "hello world! (1 steps)"
-    assert not any(x.name == "greet" for x in assistant_tools(Host(Engine(Project.open(proj.root, overrides={"pipeline": {"flow": "vlsit"}})))))
+    assert not any(x.name == "greet" for x in assistant_tools(Host(Engine(Project.open(proj.root, overrides={"pipeline": {"flow": "spec"}})))))
 
 
 def test_cli_act(proj):

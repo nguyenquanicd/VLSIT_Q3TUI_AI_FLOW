@@ -1,8 +1,8 @@
 # The FPGA flow (`fpga`) — PPA estimation on an FPGA part
 
-A built-in folder flow (`q3tui/flows/fpga/`, `pipeline.flow: fpga` or `q3tui --flow fpga`) that takes the RTL the VLSIT flow
+A built-in folder flow (`q3tui/flows/fpga/`, `pipeline.flow: fpga` or `q3tui --flow fpga`) that takes the RTL the rtl flow
 produced (`src/rtl/`, read only) and estimates area and timing on an FPGA part (the **template** picks the family and the tool, below). It is for PPA estimation and optimisation,
-not for deploying to a board. The vlsit flow is untouched; both can work in one project (their steps have different names).
+not for deploying to a board. The spec and rtl flows are untouched; all can work in one project (their steps have different names).
 
 ```
 sdc ─► fpga_synth ─► timing_util_report [gate: human] ─► ppa_optimize [gate: human]
@@ -10,17 +10,17 @@ sdc ─► fpga_synth ─► timing_util_report [gate: human] ─► ppa_optimiz
 
 | Step | Kind | Does | Writes |
 |---|---|---|---|
-| `sdc` | `fpga.sdc` | `sdc/sdc.json` → the SDC Tcl files (code only) | `sdc/{clocks,clock_groups,exceptions,io_constraints,env,sdc}.tcl` |
-| `fpga_synth` | `fpga.fpga_synth` | the template's script (code) + its tool roles: Vivado `synth_design -mode out_of_context`, or Yosys + nextpnr | `fpga/synth.tcl` (or `synth.ys`), `fpga/reports/*.rpt`, `schemas/fpga_synth.json` |
+| `sdc` | `fpga.sdc` | `constraints/sdc/sdc.json` → the SDC Tcl files (code only) | `constraints/sdc/{clocks,clock_groups,exceptions,io_constraints,env,sdc}.tcl` |
+| `fpga_synth` | `fpga.fpga_synth` | the template's script (code) + its tool roles: Vivado `synth_design -mode out_of_context`, or Yosys + nextpnr | `build/syn/fpga/synth.tcl` (or `synth.ys`), `build/syn/fpga/reports/*.rpt`, `schemas/fpga_synth.json` |
 | `timing_util_report` | `fpga.timing_util_report` | reads the reports: LUT / FF / BRAM / DSP, WNS / Fmax, worst path, unconstrained ports; verdict vs targets | `schemas/ppa_report.json` |
 | `ppa_optimize` | `fpga.ppa_optimize` | when a target is missed: one read-only LLM stage proposes fixes (below) | `schemas/ppa_plan.json` |
 
 Top module: `options.top` or `schemas/structured_spec.json` `metadata.top_module`; file list: `src/rtl/filelist.f`
 (`options.filelist`). A missing tool fails the step ("not run"), never passes it.
 
-## SDC (`sdc/`)
+## SDC (`constraints/sdc/`)
 
-`sdc/sdc.json` is the source of truth; the Tcl files are rendered from it (a changed file is backed up first):
+`constraints/sdc/sdc.json` is the source of truth; the Tcl files are rendered from it (a changed file is backed up first):
 
 | File | Holds |
 |---|---|
@@ -74,7 +74,7 @@ warning), `package` and `speed` (the open-source templates), `fpga: {…}` for t
 
 Yosys + nextpnr: Yosys maps the RTL to the family's cells and writes a JSON netlist; nextpnr places and routes it against the clock
 frequencies of the SDC (`--freq` is the fastest clock, ECP5 gets one `FREQUENCY` line per clock when there are several) and reports Fmax per
-clock. The reports of `fpga/reports/`: `utilization.rpt` (the device utilisation + Yosys `stat`), `timing.rpt` (the last Fmax line of each
+clock. The reports of `build/syn/fpga/reports/`: `utilization.rpt` (the device utilisation + Yosys `stat`), `timing.rpt` (the last Fmax line of each
 clock), `paths.rpt` (the critical path), `pnr.rpt` (nextpnr's whole log), `yosys_stat.rpt`. WNS is the target period minus 1 / Fmax; nextpnr gives no
 total negative slack and **no hold analysis** (the report says "n/a"). LUT / FF are `TRELLIS_COMB` / `TRELLIS_FF` (ECP5) and the logic cells
 (iCE40; FF from Yosys' `stat`). Numbers across templates are comparisons, not predictions for another fabric.
@@ -82,7 +82,7 @@ total negative slack and **no hold analysis** (the report says "n/a"). LUT / FF 
 ## Tools and numbers
 
 `fpga_synth` has a Vivado default (`flows/fpga/tools.json`, module `xilinx/vivado`) used by this flow only when no
-`tools.json` / `tools.roles` of the project defines the role. `options.fpga` of the step: `part` (default `xc7k325tffg900-2`), `implement`
+`config/tools.json` / `tools.roles` of the project defines the role. `options.fpga` of the step: `part` (default `xc7k325tffg900-2`), `implement`
 (adds opt / place / route), `synth_args`, `defines`, `generics`, `extra_tcl`. `implement`, `synth_args` (and, for the open-source templates, `frontend`) are also flat options of the step, editable in Settings → fpga_synth next to template / part / package / speed; the flat value wins. The `fpga_synth` step view has an **FPGA** tab with the same settings: Enter on a row picks the family, the device (a list for ECP5 / iCE40) or an option; saved to `q3tui.yaml`, then run (r). Out of context means the block alone, no pins or
 wrapper; numbers after synthesis are estimates. Setup slack is judged at every stage, hold slack only after implementation
 (before placement the tool has no routing delay: the report shows it but does not judge it).
@@ -99,15 +99,15 @@ module, `spec`: the target cannot be met by RTL changes), the change, its eviden
 Fixes naming an unknown module are dropped. It writes no RTL.
 
 **Hand-off** (`ppa_handoff`, the Fixes tab's `h` / `H` (they also move the TUI to that flow), `q3tui act ppa_handoff [ids=F1,F2]`, the assistant): each fix goes to the flow that
-owns the RTL and the spec (`options.handoff_flow`, default `vlsit`) as a change request of its step: `[rtl:<module>] PPA (<part>): …` for
+owns the RTL and the spec (`options.handoff_flow`, default `rtl`) as a change request of its step: `[rtl:<module>] PPA (<part>): …` for
 `rtl` (the scoped syntax: only that module is regenerated), a plain request for `spec`. That flow's own rules apply when you run it
-(`q3tui --flow vlsit run`: the RTL update, then the checks of its later steps). The new RTL makes this flow's synthesis, report and
+(`q3tui --flow rtl run`: the RTL update, then the checks of its later steps). The new RTL makes this flow's synthesis, report and
 `ppa_optimize` stale; they run again, the plan keeps what was tried, and after `options.max_iterations` (default 3) rounds with the
 target still missed the step fails and says so — raise the limit, or change the clock target / the spec. The count is per SDC: change
 the clock (or any constraint) and the rounds start afresh; the earlier ones stay in the plan and in the prompt as "already tried (at 250 MHz)".
 
 **At the gate.** The hand-off is offered where you decide, by the step's `follow_up` (a generic `StepDef` hook: what to offer right after
-a gate was approved). Human gate: approving with fixes pending asks "Hand N PPA fix(es) to 'vlsit' and switch to it?"; yes hands them off
+a gate was approved). Human gate: approving with fixes pending asks "Hand N PPA fix(es) to 'rtl' and switch to it?"; yes hands them off
 and moves the TUI to that flow (F does the same later), no keeps them proposed. A gate that approves itself cannot ask: in mode `auto` `on_approve` hands the *RTL* fixes off at once (the other flow is yours to run).
 In mode `auto_answer` (or `pipeline.auto_answer`) the run goes on by itself, through the generic `StepDef.unattended` hook: hand the RTL
 fixes off, run the owner flow's `rtl` step (`Engine(flow=owner).run(only="rtl", yes=True)`, its gates approved as the unattended run
@@ -117,7 +117,7 @@ it stays proposed with a warning. The owner flow's later steps (tb, sva, verify,
 
 **Function after PPA.** The fixes change the RTL, and nothing in this flow checks that it still works. When the targets are met on RTL that
 handed-off fixes changed (`options.verify_after`, default true; once per RTL), the owner flow's functional check runs on it: unattended
-(`auto_answer`) the step runs `options.verify_from` → `verify_to` (default `tb` → `verify`) there itself; at a human gate it offers to
+(`auto_answer`) the step runs `options.verify_from` → `verify_to` (default `format` → `smoke`) there itself; at a human gate it offers to
 switch to that flow (run it there with `r`). If function broke, that flow's own fix loop repairs the RTL — the PPA flow is not told and does
 not run again on the repaired RTL (the two are unrelated); the next run of this flow re-synthesizes it. A run that ends anything but complete
 (for example the owner's upstream steps are not done) leaves a warning that says so.

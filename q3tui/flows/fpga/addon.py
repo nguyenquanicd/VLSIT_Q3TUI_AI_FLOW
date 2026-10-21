@@ -8,7 +8,7 @@ from q3tui.flows.fpga.lib import sdc as sdcmod
 
 
 def _edit(ops, fn) -> str:
-    """Load sdc/sdc.json, apply `fn(cfg) -> message`, validate by rendering, save, regenerate the Tcl files."""
+    """Load constraints/sdc/sdc.json, apply `fn(cfg) -> message`, validate by rendering, save, regenerate the Tcl files."""
     from q3tui.pipeline.engine import EngineError
 
     step = next((s for s in ops.engine.steps if s.kind.endswith(".sdc")), None)  # (the ASIC flow shares this step)
@@ -16,14 +16,14 @@ def _edit(ops, fn) -> str:
         raise EngineError("this flow has no SDC step")
     cfg = sdcmod.load(ops.project)
     if cfg is None:
-        raise EngineError("sdc/sdc.json does not exist yet: run the sdc step first")
+        raise EngineError("constraints/sdc/sdc.json does not exist yet: run the sdc step first")
     msg = fn(cfg)
     ports = sdcmod.top_ports(ops.project, step.filelist(ops.engine), step.top(ops.engine))
     sdcmod.render(cfg, ports)  # validate before anything is written (a ValueError becomes the action's error)
     sdcmod.save(ops.project, cfg)
     sdcmod.write(ops.project, cfg, ports)
     notes = [n for c in cfg.clocks if (n := hints.asic_note(ops.project, c.name))]
-    return ops._log(step.name, f"SDC: {msg} (sdc/*.tcl updated; run to re-synthesize)" + (f" · {'; '.join(f'{c.name}: {n}' for c in cfg.clocks if (n := hints.asic_note(ops.project, c.name)))}" if notes else ""))
+    return ops._log(step.name, f"SDC: {msg} (constraints/sdc/*.tcl updated; run to re-synthesize)" + (f" · {'; '.join(f'{c.name}: {n}' for c in cfg.clocks if (n := hints.asic_note(ops.project, c.name)))}" if notes else ""))
 
 
 def _handoff(ops, ids: str) -> str:
@@ -42,7 +42,7 @@ def _handoff(ops, ids: str) -> str:
     todo = [f for f in plan.get("fixes", []) if not f.get("handed_off") and (not wanted or f["id"] in wanted)]
     if not todo:
         raise EngineError("no proposed fix to hand off (run ppa_optimize first, or they were handed off already)")
-    owner = flows.load_flow(str(step.options.get("handoff_flow") or "vlsit"), ops.project.root)
+    owner = flows.load_flow(str(step.options.get("handoff_flow") or "rtl"), ops.project.root)
     if owner.name == ops.engine.flow.name:
         raise EngineError("handoff_flow is this flow itself")
     ops.engine.save()  # what this process holds is on disk; the other flow's engine reads and writes the same pipeline.json
@@ -92,9 +92,9 @@ def register(api) -> None:
                 (("fail", "fail — only when a target is missed"), ("always", "always — also to improve a passing result")))
     api.setting("ppa_optimize", "goal", "Goal", "text", "What to improve, in words (\"fewer LUTs\", \"reach 250 MHz\"); empty = the missed targets.",
                 nullable=True)
-    api.setting("ppa_optimize", "handoff_flow", "Hand fixes to flow", "text", "The flow that owns the RTL and the spec (default vlsit).")
+    api.setting("ppa_optimize", "handoff_flow", "Hand fixes to flow", "text", "The flow that owns the RTL and the spec ((default rtl)).")
     api.setting("ppa_optimize", "verify_after", "Verify after PPA", "bool",
-                "Targets met on RTL the optimization changed: check its function in that flow (tb → verify).")
+                "Targets met on RTL the optimization changed: check its function in that flow (format → smoke).")
 
     @api.action("ppa_handoff", "Hand the PPA fixes ppa_optimize proposed to the flow that owns the RTL and the spec: an RTL fix becomes a "
                 "scoped change request for its rtl step, a spec fix a change request for its spec step. That flow then updates the "
@@ -110,13 +110,13 @@ def register(api) -> None:
 
 
 def register_sdc(api) -> None:
-    """The SDC actions (the ASIC flow registers the same ones: both work on `sdc/`)."""
+    """The SDC actions (the ASIC flow registers the same ones: both work on `constraints/sdc/`)."""
 
     @api.action("sdc_show", "Show the SDC settings (clocks and frequencies, I/O delay budget, resets, exceptions, clock groups, "
                 "environment) as `key | setting | value` lines.")
     def sdc_show(ops) -> str:
         cfg = sdcmod.load(ops.project)
-        return "\n".join(f"{k} | {n} | {v}" for k, n, v in sdcmod.rows(cfg)) if cfg else "no sdc/sdc.json yet: run the sdc step"
+        return "\n".join(f"{k} | {n} | {v}" for k, n, v in sdcmod.rows(cfg)) if cfg else "no constraints/sdc/sdc.json yet: run the sdc step"
 
     @api.action("sdc_set", "Change one SDC setting by its key from sdc_show (clock.i_clk.freq_mhz, clock.i_clk.period_ns, "
                 "io.input_pct, io.output_pct, resets, env.load_pf, …); the Tcl files are regenerated at once. Empty value clears an "

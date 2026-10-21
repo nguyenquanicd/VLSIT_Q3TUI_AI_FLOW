@@ -12,7 +12,7 @@ from q3tui.core.config import q3tui_home
 
 DEFAULT_TEMPLATE = Path(__file__).with_name("default_template.yaml")
 # built-in templates a flow can pick with the spec step's `options: {template: <name>}` (flows/*.yaml)
-BUILTIN_TEMPLATES = {"default": DEFAULT_TEMPLATE, "vlsit": Path(__file__).parents[2] / "flows" / "vlsit" / "spec" / "vlsit_template.yaml"}
+BUILTIN_TEMPLATES = {"default": DEFAULT_TEMPLATE, "vlsit": Path(__file__).parents[2] / "flows" / "spec" / "spec" / "vlsit_template.yaml"}
 USER_TEMPLATE_NAME = "spec_template.yaml"
 PROJECT_TEMPLATE_NAME = "template.yaml"  # inside spec/
 

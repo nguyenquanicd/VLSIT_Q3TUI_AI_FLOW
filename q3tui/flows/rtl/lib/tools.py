@@ -74,7 +74,7 @@ def smoke_tools(ts, project_root: Path, work: Path, rtl_files, tb: Path) -> list
 
     from q3tui.flows.rtl.lib import smoke
 
-    @tool("smoke_compile", "Compile your testbench (rtl/smoke/tb_smoke.sv) together with the design. Returns the compile errors (file:line message), or 'compiled'.", {})
+    @tool("smoke_compile", "Compile your testbench (src/rtl/smoke/tb_smoke.sv) together with the design. Returns the compile errors (file:line message), or 'compiled'.", {})
     async def compile_tool(args: dict) -> dict:
         if not tb.is_file():
             return _text(f"{tb.name} does not exist yet: write it first")

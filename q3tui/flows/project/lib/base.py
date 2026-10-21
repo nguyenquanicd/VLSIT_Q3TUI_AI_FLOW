@@ -11,10 +11,12 @@ from q3tui.pipeline.base import StepDef
 
 
 class ProjectStep(StepDef):
-    watched: tuple[str, ...] = (CONFIG_FILENAME,)  # files of the project root this step's report depends on
+    watched: tuple[str, ...] = (CONFIG_FILENAME,)  # files this step's report depends on: q3tui.yaml in the project root, the others in config/
 
     def inputs(self, engine) -> list[Path]:
-        return [engine.project.root / n for n in self.watched if (engine.project.root / n).is_file()]
+        p = engine.project
+        files = [p.root / n if n == CONFIG_FILENAME else p.config_dir / n for n in self.watched]
+        return [f for f in files if f.is_file()]
 
     def report_path(self, engine) -> Path:
         d = engine.project.state_dir / "project"

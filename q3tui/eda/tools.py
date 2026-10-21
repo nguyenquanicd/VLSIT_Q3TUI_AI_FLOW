@@ -32,7 +32,7 @@ def tools_file(cfg: Config, project_root: Path) -> Path | None:
             raise ToolUnavailable(f"tools file '{cfg.tools.file}' not found")
         return p
     home = Path(os.environ.get("Q3TUI_HOME") or "~/.q3tui").expanduser()
-    for base in (project_root, home):
+    for base in (project_root / cfg.project.config_dir, home):
         for name in FILE_NAMES:
             if (base / name).is_file():
                 return base / name
@@ -109,12 +109,13 @@ def presets() -> list[str]:
     return sorted(p.stem for p in PRESET_DIR.glob("*.json"))
 
 
-def write_preset(project_root: Path, preset: str = "synopsys", force: bool = False) -> Path:
-    """`tools.json` for a tool set (docs/spec/flows.md "Tools"): the project's copy to edit (modules, library paths)."""
+def write_preset(config_dir: Path, preset: str = "synopsys", force: bool = False) -> Path:
+    """`tools.json` for a tool set (docs/spec/flows.md "Tools"): the project's copy to edit (modules, library paths), in `config/`."""
     src = PRESET_DIR / f"{preset}.json"
     if not src.is_file():
         raise ToolUnavailable(f"no tools preset '{preset}' (presets: {', '.join(presets()) or 'none'})")
-    dest = project_root / "tools.json"
+    dest = config_dir / "tools.json"
+    dest.parent.mkdir(parents=True, exist_ok=True)
     if dest.exists() and not force:
         raise ToolUnavailable(f"{dest.name} exists (use --force to overwrite)")
     dest.write_text(src.read_text())

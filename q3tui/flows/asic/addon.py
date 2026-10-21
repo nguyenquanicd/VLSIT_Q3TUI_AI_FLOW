@@ -1,4 +1,4 @@
-"""Add-on of the ASIC flow (q3tui/addons.py): the SDC actions (the FPGA flow's: both work on `sdc/`), the library and target
+"""Add-on of the ASIC flow (q3tui/addons.py): the SDC actions (the FPGA flow's: both work on `constraints/sdc/`), the library and target
 settings of the synthesis, and `asic_handoff`: the ASIC port findings to the flow that owns the RTL."""
 
 from __future__ import annotations
@@ -23,7 +23,7 @@ def _handoff(ops, ids: str) -> str:
     todo = [f for f in data.get("findings", []) if not f.get("handed_off") and (not wanted or f["id"] in wanted)]
     if not todo:
         raise EngineError("no finding to hand off (run asic_port first, or they were handed off already)")
-    owner = flows.load_flow(str(step.options.get("handoff_flow") or "vlsit"), ops.project.root)
+    owner = flows.load_flow(str(step.options.get("handoff_flow") or "rtl"), ops.project.root)
     if owner.name == ops.engine.flow.name:
         raise EngineError("handoff_flow is this flow itself")
     ops.engine.save()
@@ -63,7 +63,7 @@ def register(api) -> None:
     api.setting("asic_synth", "max_area_um2", "Max area (µm²)", "float", "The review fails above this area; empty: no budget.", nullable=True)
     api.setting("asic_port", "min_mem_words", "Smallest memory worth a finding (words)", "int",
                 "Unpacked arrays of at least this many words are reported as memories without a macro.")
-    api.setting("asic_port", "handoff_flow", "Hand findings to flow", "text", "The flow that owns the RTL (default vlsit).")
+    api.setting("asic_port", "handoff_flow", "Hand findings to flow", "text", "The flow that owns the RTL ((default rtl)).")
 
     @api.action("asic_handoff", "Hand the ASIC port findings (FPGA primitives, memories without a macro, power-up values, …) to the flow that "
                 "owns the RTL as scoped change requests for its rtl step. That flow then updates the RTL (run it); this flow's checks "

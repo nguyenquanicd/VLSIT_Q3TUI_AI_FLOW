@@ -14,10 +14,10 @@ PPA_JSON = "ppa_report.json"  # schemas/: utilization + timing + verdict against
 
 
 class FpgaStep(StepDef):
-    """Base of the FPGA flow's steps. The RTL is the VLSIT flow's result (`src/rtl/`, read only); the constraints are `sdc/`."""
+    """Base of the FPGA flow's steps. The RTL is the VLSIT flow's result (`src/rtl/`, read only); the constraints are `constraints/sdc/`."""
 
     def rtl_dir(self, engine) -> Path:
-        return engine.project.src_dir / "rtl"
+        return engine.project.rtl_dir
 
     def filelist(self, engine) -> Path:
         return engine.project.root / (self.options.get("filelist") or str(self.rtl_dir(engine).relative_to(engine.project.root) / "filelist.f"))
@@ -53,7 +53,7 @@ class FpgaStep(StepDef):
         return d
 
     def reports_dir(self, engine) -> Path:
-        return engine.project.root / "fpga" / "reports"
+        return engine.project.fpga_dir / "reports"
 
     def sdc_inputs(self, engine) -> list[Path]:
         d = sdcmod.sdc_dir(engine.project)

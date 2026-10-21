@@ -64,8 +64,8 @@ def proj(tmp_path):
     (tmp_path / "schemas" / "structured_spec.json").write_text(json.dumps({"metadata": {"top_module": "blk"}}))
     (tmp_path / "spec").mkdir()
     (tmp_path / "spec" / "spec.md").write_text("The block has two asynchronous clocks.\n")
-    (tmp_path / "sdc").mkdir()
-    (tmp_path / "sdc" / "sdc.tcl").write_text(USER_SDC)  # (a hand-written SDC: no sdc.json)
+    (tmp_path / "constraints" / "sdc").mkdir(parents=True)
+    (tmp_path / "constraints" / "sdc" / "sdc.tcl").write_text(USER_SDC)  # (a hand-written SDC: no sdc.json)
     _tools(tmp_path)
     return Project.open(tmp_path)
 
@@ -133,9 +133,9 @@ def test_the_real_reports_are_read():
 
 
 def test_the_script_reads_the_shared_sdc(tmp_path):
-    t = script.text("cdc", "blk", tmp_path, tmp_path / "f.f", tmp_path / "w", tmp_path / "sdc" / "sdc.tcl",
+    t = script.text("cdc", "blk", tmp_path, tmp_path / "f.f", tmp_path / "w", tmp_path / "constraints" / "sdc" / "sdc.tcl",
                     {"clocks": [{"name": "A"}, {"name": "B"}], "resets": ["i_rst_n", "i_rst"]}, "set_app_var x 1")
-    assert t.index("elaborate blk") < t.index(f"read_sdc {tmp_path / 'sdc' / 'sdc.tcl'}") < t.index("create_reset -sense low i_rst_n")
+    assert t.index("elaborate blk") < t.index(f"read_sdc {tmp_path / 'constraints' / 'sdc' / 'sdc.tcl'}") < t.index("create_reset -sense low i_rst_n")
     assert "create_reset -sense high i_rst\n" in t and "set_clock_groups -asynchronous -group {A} -group {B}" in t
     assert t.index("set_app_var x 1") < t.index("check_cdc") < t.index("report_violations -app CDC -verbose")
     assert "source" not in t.split("check_cdc")[1]  # (no waivers in the analysis run)
@@ -160,11 +160,11 @@ def test_the_table_has_the_columns_a_review_needs():
     report = {"top": "blk", "violations": [{"id": "V1", "tag": "CDC_UNSYNC_CTRL", "severity": "error", "message": "a | b\nc"},
                                            {"id": "V2", "tag": "SETUP_X", "severity": "warning", "message": "w"}]}
     plan = {"items": [{"id": "V1", "action": "waive", "rule": "K2", "reason": "static CSR"},
-                      {"id": "V2", "action": "fix_rtl", "module": "blk", "change": "add a synchronizer", "handed_off": {"flow": "vlsit", "step": "rtl"}}]}
+                      {"id": "V2", "action": "fix_rtl", "module": "blk", "change": "add a synchronizer", "handed_off": {"flow": "rtl", "step": "rtl"}}]}
     assert table.COLUMNS == ("No.", "Name", "Severity", "Description", "Waived", "Comment")
     rows = table.rows(report, plan)
     assert rows[0] == ["V1", "CDC_UNSYNC_CTRL", "Error", "a | b\nc", "Yes", "K2: static CSR"]
-    assert rows[1][2:5] == ["Warning", "w", "No"] and "handed off to vlsit:rtl" in rows[1][5]
+    assert rows[1][2:5] == ["Warning", "w", "No"] and "handed off to rtl:rtl" in rows[1][5]
     md = table.markdown("cdc", report, plan)
     assert "| No. | Name | Severity | Description | Waived | Comment |" in md and "a \\| b c" in md and "1 violation(s)" not in md and "2 violation(s), 1 waived, 1 open" in md
     assert "(not reviewed yet)" in table.markdown("cdc", report, None)
@@ -179,12 +179,12 @@ async def test_a_run_without_waivers_writes_the_report_and_the_table(proj):
     rep = json.loads((proj.schemas_dir / "cdc_report.json").read_text())
     assert rep["status"] == "violations" and [v["id"] for v in rep["violations"]] == ["V1", "V2", "V3"] and rep["top"] == "blk"
     assert rep["violations"][0]["fields"]["SrcObject"] == "u_a/reg_req/Q"
-    setup = (proj.root / "sanity" / "cdc_setup.tcl").read_text()
-    assert "read_sdc " + str(proj.root / "sdc" / "sdc.tcl") in setup and "create_reset -sense low i_rst_n" in setup  # (the reset is read from the RTL)
-    md = (proj.root / "sanity" / "cdc_report.md").read_text()
+    setup = (proj.root / "build" / "sanity" / "cdc_setup.tcl").read_text()
+    assert "read_sdc " + str(proj.root / "constraints" / "sdc" / "sdc.tcl") in setup and "create_reset -sense low i_rst_n" in setup  # (the reset is read from the RTL)
+    md = (proj.root / "reports" / "cdc_report.md").read_text()
     assert "| V1 | CDC_UNSYNC_CTRL | Error |" in md and md.count("| No |") == 3 and "(not reviewed yet)" in md
-    assert (proj.root / "sanity" / "cdc_report.csv").read_text().splitlines()[0] == "No.,Name,Severity,Description,Waived,Comment"
-    assert (proj.root / "sdc" / "sdc.tcl").read_text() == USER_SDC and not (proj.root / "sdc" / "sdc.json").exists()  # the SDC is yours: untouched
+    assert (proj.root / "reports" / "cdc_report.csv").read_text().splitlines()[0] == "No.,Name,Severity,Description,Waived,Comment"
+    assert (proj.root / "constraints" / "sdc" / "sdc.tcl").read_text() == USER_SDC and not (proj.root / "constraints" / "sdc" / "sdc.json").exists()  # the SDC is yours: untouched
 
 
 async def test_a_missing_tool_is_a_failed_step_not_a_clean_one(proj):
@@ -211,7 +211,7 @@ async def test_the_review_decides_every_violation_and_the_table_follows(proj, mo
     assert [(i["id"], i["action"]) for i in plan["items"]] == [("V1", "waive"), ("V2", "fix_rtl"), ("V3", "sdc")]
     rows = table.rows(json.loads((proj.schemas_dir / "cdc_report.json").read_text()), plan)
     assert [r[4] for r in rows] == ["Yes", "No", "No"] and rows[0][5].startswith("K1:") and "SDC update needed" in rows[2][5] and "set_input_delay" in rows[2][5]
-    assert "2 open" in (proj.root / "sanity" / "cdc_report.md").read_text()
+    assert "2 open" in (proj.root / "reports" / "cdc_report.md").read_text()
 
 
 async def test_the_sdc_request_is_a_question_for_the_user(proj, monkeypatch):
@@ -229,7 +229,7 @@ async def test_the_sdc_request_is_a_question_for_the_user(proj, monkeypatch):
     with pytest.raises(EngineError, match="not reviewed"):
         eng.approve("cdc_waivers")  # an open question holds the gate
     Ops(eng).answer(qs[0]["id"], "No SDC change: decide again")
-    assert json.loads((proj.root / "sanity" / "cdc_answers.json").read_text()) == {qs[0]["id"]: "No SDC change: decide again"}
+    assert json.loads((proj.root / "reviews" / "cdc_answers.json").read_text()) == {qs[0]["id"]: "No SDC change: decide again"}
     assert {v.name: v.status for v in Engine(proj).status()}["cdc_waivers"] == "stale"  # the answer is an input
     assert eng.by_name["cdc_waivers"].open_questions(eng) == 0
 
@@ -273,9 +273,9 @@ async def test_the_check_runs_the_tool_again_with_the_waivers(proj, monkeypatch)
     assert st["cdc_check"].status == "done" and st["rdc_check"].status == "done"
     chk = json.loads((proj.schemas_dir / "cdc_check.json").read_text())
     assert chk["total"] == 3 and chk["waived"] == 1 and chk["open"] == 2 and chk["expected_open"] == 2 and chk["ok"] is True
-    assert "waive_cdc -add W_V1 -tag CDC_UNSYNC_CTRL -from {u_a/reg_req/Q} -to {u_b/reg_sync_0/Q}" in (proj.root / "sanity" / "cdc_waive.tcl").read_text()
-    assert "source " + str(proj.root / "sanity" / "cdc_waive.tcl") in (proj.root / ".q3tui" / "sanity" / "cdc_check" / "cdc_waive_setup.tcl").read_text()
-    assert (proj.root / "sanity" / "cdc_report.md").read_text().count("| Yes |") == 1  # (the analysis report itself stays the run without waivers)
+    assert "waive_cdc -add W_V1 -tag CDC_UNSYNC_CTRL -from {u_a/reg_req/Q} -to {u_b/reg_sync_0/Q}" in (proj.root / "build" / "sanity" / "cdc_waive.tcl").read_text()
+    assert "source " + str(proj.root / "build" / "sanity" / "cdc_waive.tcl") in (proj.root / ".q3tui" / "sanity" / "cdc_check" / "cdc_waive_setup.tcl").read_text()
+    assert (proj.root / "reports" / "cdc_report.md").read_text().count("| Yes |") == 1  # (the analysis report itself stays the run without waivers)
 
 
 async def test_the_check_runs_the_script_of_the_analysis_with_its_extra_tcl(proj, monkeypatch):
@@ -286,7 +286,7 @@ async def test_the_check_runs_the_script_of_the_analysis_with_its_extra_tcl(proj
     eng = Engine(Project.open(proj.root))
     await eng.run(yes=True)
     line = "set_input_delay -clock A 1"  # (set on the analysis step only: the check must run the same script)
-    assert line in (proj.root / "sanity" / "cdc_setup.tcl").read_text()
+    assert line in (proj.root / "build" / "sanity" / "cdc_setup.tcl").read_text()
     assert line in (proj.root / ".q3tui" / "sanity" / "cdc_check" / "cdc_waive_setup.tcl").read_text()
 
 
@@ -317,10 +317,10 @@ async def test_a_clean_analysis_needs_no_llm(proj, monkeypatch):
 
 
 async def test_an_sdc_json_is_rendered_like_the_other_flows(proj):
-    (proj.root / "sdc" / "sdc.tcl").unlink()
+    (proj.root / "constraints" / "sdc" / "sdc.tcl").unlink()
     eng = Engine(proj)
     await eng.run(yes=True, stop="cdc")
-    assert (proj.root / "sdc" / "sdc.json").is_file() and (proj.root / "sdc" / "sdc.tcl").is_file()  # (the FPGA flow's SDC step)
+    assert (proj.root / "constraints" / "sdc" / "sdc.json").is_file() and (proj.root / "constraints" / "sdc" / "sdc.tcl").is_file()  # (the FPGA flow's SDC step)
     Ops(eng).run_action("sdc_set", key="clock.i_clk_a.freq_mhz", value="200")
     st = {v.name: v.status for v in Engine(proj).status()}
     assert st["cdc"] == "stale"  # a changed constraint makes the analysis run again
@@ -348,7 +348,7 @@ async def test_handoff_sends_the_fixes_to_the_owning_flow_but_not_the_sdc_reques
         ops.run_action("sanity_handoff")  # (the SDC request is not a fix for another flow; V2 is sent)
     plan = json.loads((proj.schemas_dir / "cdc_waivers.json").read_text())
     assert plan["items"][1]["handed_off"]["flow"] == "owner" and plan["items"][2].get("handed_off") is None
-    assert "handed off to owner:rtl" in (proj.root / "sanity" / "cdc_report.md").read_text()
+    assert "handed off to owner:rtl" in (proj.root / "reports" / "cdc_report.md").read_text()
     assert {v.name: v for v in Engine(Project.open(proj.root)).status()}["cdc_waivers"].edited == []  # recording the hand-off is not a user edit
 
 
@@ -359,4 +359,4 @@ async def test_a_gate_offers_the_handoff(proj, monkeypatch):
     eng = Engine(proj)
     await eng.run(yes=True, stop="cdc_waivers")
     offer = eng.by_name["cdc_waivers"].follow_up(eng)
-    assert offer["action"] == "sanity_handoff" and offer["switch"] == "vlsit" and "V2" in offer["detail"] and "V3" not in offer["detail"]
+    assert offer["action"] == "sanity_handoff" and offer["switch"] == "rtl" and "V2" in offer["detail"] and "V3" not in offer["detail"]

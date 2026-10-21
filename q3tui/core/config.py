@@ -121,7 +121,7 @@ class ToolRole(_Strict):
 
 
 class ToolsConfig(_Strict):
-    file: str | None = None  # tools.json / tools.yaml (default: <project>/tools.json|yaml, then $Q3TUI_HOME/)
+    file: str | None = None  # tools.json / tools.yaml (default: <project>/config/tools.json|yaml, then $Q3TUI_HOME/)
     roles: dict[str, ToolRole] = Field(default_factory=dict)  # inline roles (override the file's)
     syntax: ToolBinding = ToolBinding(adapter="slang")
     simulator: ToolBinding = ToolBinding(adapter="vcs", bin="vcs")
@@ -134,18 +134,25 @@ class ToolsConfig(_Strict):
 
 
 class ProjectConfig(_Strict):
-    spec_dir: str = "spec"
+    """Folder names of a project (docs/spec/project-layout.md); all relative to the project root."""
+
+    spec_dir: str = "spec"  # your spec documents, intent.md, template.yaml, spec.md, ref/
+    config_dir: str = "config"  # tools.json, pdks.json, rtl_rules.md, skills/, sanity/<role>_knowledge.md
+    constraints_dir: str = "constraints"  # constraints/sdc/ (more kinds when a flow writes them)
+    schemas_dir: str = "schemas"  # generated JSON artifacts, questions/<step>.*
+    reviews_dir: str = "reviews"  # yours: reviews and sign-offs, kept on reset
+    reports_dir: str = "reports"  # readable results rendered by code
+    docs_dir: str = "docs"  # the final specification only
+    src_dir: str = "src"
+    rtl_dir: str = "src/rtl"
+    tb_dir: str = "src/tb"
+    build_dir: str = "build"  # disposable tool output
+    syn_dir: str = "build/syn"  # build/syn/{fpga,asic}
+    sim_dir: str = "build/sim"
+    state_dir: str = ".q3tui"
     req_dir: str = "req"
     arch_dir: str = "arch"
     model_dir: str = "model"
-    rtl_dir: str = "rtl"
-    tb_dir: str = "tb"
-    sim_dir: str = "sim"
-    state_dir: str = ".q3tui"
-    # the VLSIT flow's layout (flows/vlsit/): JSON artifacts, src/{rtl,sva,tb}, generated documents
-    schemas_dir: str = "schemas"
-    src_dir: str = "src"
-    docs_dir: str = "docs"
 
 
 class PipelineConfig(_Strict):
@@ -158,7 +165,7 @@ class PipelineConfig(_Strict):
     escalate_after_repeats: int = Field(2, ge=1, le=10)
     # A flow name (built-in `vlsit`, or a file in <project>/flows/ or ~/.q3tui/flows/) or a path to a flow file
     # (docs/spec/flows.md).
-    flow: str = "vlsit"
+    flow: str = "spec"
     # LLM sessions: null = the flow's (`session:` in the flow file); "flow" = one persistent session for the whole flow
     # (like one Claude Code conversation), "fresh" = a session per stage
     session: Literal["flow", "fresh"] | None = None

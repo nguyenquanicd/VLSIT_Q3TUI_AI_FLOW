@@ -64,7 +64,7 @@ class Step(FpgaStep):
                  "Worst path: " + ", ".join(f"{k} {v}" for k, v in (ppa.get("critical_path") or {}).items()),
                  "Unconstrained: " + (str(ppa.get("unconstrained") or "none")),
                  "\n## RTL modules (read src/rtl/<module>.sv)", ", ".join(modules),
-                 "\nThe reports are in fpga/reports/ (paths.rpt has the worst paths in full: read it)."]
+                 "\nThe reports are in build/syn/fpga/reports/ (paths.rpt has the worst paths in full: read it)."]
         if history:
             lines += ["\n## Already tried in earlier rounds (do not repeat)"]
             for h in history:
@@ -146,11 +146,11 @@ class Step(FpgaStep):
     def follow_up(self, engine):
         """Human gate, fixes proposed: offer to hand them off and move to the flow that owns the RTL."""
         pending = self._pending(engine)
-        owner = str(self.options.get("handoff_flow") or "vlsit")
+        owner = str(self.options.get("handoff_flow") or "rtl")
         if not pending and self._needs_verify(engine):
             return {"title": f"PPA targets met on changed RTL. Verify it in '{owner}'?",
                     "detail": f"The optimization changed the RTL; nothing has checked its function yet. Switch to {owner} and run "
-                              f"{self.options.get('verify_from') or 'tb'} → {self.options.get('verify_to') or 'verify'} (r): its own fix loop "
+                              f"{self.options.get('verify_from') or 'format'} → {self.options.get('verify_to') or 'smoke'} (r): its own fix loop "
                               "repairs the RTL if function broke — PPA is not involved. No stays here.",
                     "switch": owner}
         if not pending:
@@ -207,7 +207,7 @@ class Step(FpgaStep):
             _handoff(Ops(engine), ",".join(ids))
             plan = self.read(engine, PLAN_JSON, {}) or {}
             steps = sorted({f["handed_off"]["step"] for f in plan.get("fixes", []) if f["id"] in ids and f.get("handed_off")})
-            owner = flows.load_flow(str(self.options.get("handoff_flow") or "vlsit"), engine.project.root)
+            owner = flows.load_flow(str(self.options.get("handoff_flow") or "rtl"), engine.project.root)
             for name in steps:
                 engine.bus.emit("log", self.name, message=f"PPA: running {owner.name}:{name} for the handed-off fixes…")
                 other = Engine(engine.project, engine.bus, flow=owner)
@@ -224,13 +224,13 @@ class Step(FpgaStep):
         return True
 
     async def _verify(self, engine) -> None:
-        """The targets are met on RTL the optimization changed: run the owner flow's functional check on it (tb → verify). If function
+        """The targets are met on RTL the optimization changed: run the owner flow's functional check on it (format → smoke). If function
         broke, that flow's own fix loop repairs the RTL; PPA is not told — the two are not related. Once per RTL."""
         from q3tui import flows
         from q3tui.pipeline.engine import Engine
 
-        owner = flows.load_flow(str(self.options.get("handoff_flow") or "vlsit"), engine.project.root)
-        first, last = str(self.options.get("verify_from") or "tb"), str(self.options.get("verify_to") or "verify")
+        owner = flows.load_flow(str(self.options.get("handoff_flow") or "rtl"), engine.project.root)
+        first, last = str(self.options.get("verify_from") or "format"), str(self.options.get("verify_to") or "smoke")
         plan = self.read(engine, PLAN_JSON, {}) or {}
         plan["verified_rtl"] = self._rtl_hash(engine)  # (once per RTL, whatever the result: a failure is yours to look at)
         self.write(engine, PLAN_JSON, plan)

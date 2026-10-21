@@ -1,18 +1,18 @@
 # Flows — pipelines as data, tools by role, the picker
 
 Q3TUI's pipeline is a **flow**: a YAML / JSON file listing the steps (by *kind*), their order and dependencies and
-which review gates stop for a human. The built-in flows are the **VLSIT flow** (`vlsit`, the default;
-docs/spec/vlsit-flow.md), the **FPGA flow** (`fpga`, docs/spec/fpga-flow.md), the **ASIC flow** (`asic`, docs/spec/asic-flow.md), the **Sanity flow** (`sanity`, docs/spec/sanity-flow.md), the **project settings flow** (`project`, docs/spec/project-flow.md), the **RTL flow** (`rtl`, docs/spec/rtl-flow.md: rules → Verible flags, RTL, CSR from a generator, format, style lint, smoke test) and `example` (a minimal folder flow, spec → parse, to copy); users can write their own. The TUI,
+which review gates stop for a human. The built-in flows are the **spec flow** (`spec`, the default;
+docs/spec/spec-flow.md: spec → parse → config), the **FPGA flow** (`fpga`, docs/spec/fpga-flow.md), the **ASIC flow** (`asic`, docs/spec/asic-flow.md), the **Sanity flow** (`sanity`, docs/spec/sanity-flow.md), the **project settings flow** (`project`, docs/spec/project-flow.md), the **RTL flow** (`rtl`, docs/spec/rtl-flow.md: rules → Verible flags, RTL, CSR from a generator, format, style lint, smoke test) and `example` (a minimal folder flow, spec → parse, to copy); users can write their own. The TUI,
 `ops`, the assistant, the event bus, staleness, gates, questions and reset are the same for every flow.
 
 ## Flow files
 
 Found by name in `<project>/flows/`, `~/.q3tui/flows/` (`$Q3TUI_HOME`), then the built-in
-`q3tui/flows/` (first hit wins), or by path. Selected with `pipeline.flow: <name | path>` or `q3tui --flow`. The default is `vlsit`.
+`q3tui/flows/` (first hit wins), or by path. Selected with `pipeline.flow: <name | path>` or `q3tui --flow`. The default is `spec`.
 
 ```yaml
-name: vlsit
-title: VLSIT RTL generator flow
+name: spec
+title: Spec flow
 version: 1
 gap_targets: {spec_gap: spec, req_gap: parse}   # question kind -> the step that owns the answer (built in: spec_gap -> spec)
 sees: {tb: [spec, parse, config]}               # step -> steps whose settled decisions it may receive (independence)
@@ -21,9 +21,9 @@ steps:
   - {id: spec,  kind: spec,        label: "0", gate: human}
   - {id: parse, kind: vlsit_parse, label: "1", gate: human, deps: [spec]}
   - id: rtl
-    kind: vlsit_rtl
+    kind: rtl_gen     # (a kind registered by a flow or an extension; the rtl flow's own is `rtl.rtl`, a step.py)
     deps: [config]
-    options: {rules: [rtl_rule.md, vlsit_rtl_rule_default.md], lint_max_warnings: 0}
+    options: {rules: [rtl_rule.md, rtl_rule_default.md], lint_max_warnings: 0}
 ```
 
 | Key (step) | Meaning |
@@ -41,12 +41,11 @@ duplicate ids, unknown kinds / deps / gap targets, cycles, and the tool roles it
 A flow combines existing kinds and sets their gates, options, prompts and tools. A genuinely new kind of work is a
 Python `StepDef` registered with `register_kind` — a flow file is not a scripting layer.
 
-Kinds: `spec` (q3tui/steps/spec) and, for the VLSIT flow, `vlsit_parse vlsit_config vlsit_rtl vlsit_tb vlsit_sva
-vlsit_verify vlsit_doc` (q3tui/flows/vlsit/*, docs/spec/vlsit-flow.md).
+Kinds: `spec` (q3tui/steps/spec) and, for the spec flow, `vlsit_parse vlsit_config` (q3tui/flows/spec/*, docs/spec/spec-flow.md); the rtl flow's steps are its own `step.py` kinds (`rtl.rtl`, …).
 
 ## Flow folders
 
-A flow can be a **folder** `<name>/` (same search path; built-in: `q3tui/flows/vlsit/`, template: `flows/example/`),
+A flow can be a **folder** `<name>/` (same search path; built-in: `q3tui/flows/spec/`, template: `flows/example/`),
 one folder per step:
 
 ```
@@ -56,15 +55,15 @@ one folder per step:
 <name>/<step>/task.py         assembles the per-task input (data → text); no prompt text lives in code
 <name>/prompts/<id>.md        optional: system-prompt override of a step / stage (mode: append | replace), see Prompts
 <name>/<step>/step.py         the step's code: class `Step(StepDef)` (a kind of this flow when skill.md names no `kind`;
-                              the built-in vlsit steps are registered kinds, their step.py holds the real code)
+                              the spec flow's parse and config steps are registered kinds, their step.py holds the real code)
 <name>/<step>/rules/          optional: rule files (options.rules)
 <name>/<step>/schemas/        optional: JSON schemas
-<name>/<step>/scripts/        optional: helper scripts the step runs (vlsit/doc/scripts/md_to_pdf.py)
+<name>/<step>/scripts/        optional: helper scripts the step runs
 ```
 
-The built-in `flows/` directory is a Python package (`q3tui.flows`, the flow loader in `__init__.py`); `flows/vlsit/<step>/`
-holds each VLSIT step's `step.py` and its private modules (`task.py`, `check.py`, `plan.py`, `gen.py`…). Helpers shared by several
-steps stay in `q3tui/steps/vlsit/` (`base`, `artifacts`, `rtm`, `mutation`, `simenv`, `simlog`, `synth`, `rules_check`, `constraints`).
+The built-in `flows/` directory is a Python package (`q3tui.flows`, the flow loader in `__init__.py`); `flows/spec/<step>/`
+holds each spec step's `step.py` and its private modules (`task.py`, `check.py`, `plan.py`, `gen.py`…). Helpers shared by several
+steps stay in `q3tui/flows/spec/lib/` (`base`, `artifacts`, `constraints`; the rtl flow imports them) and, for the rtl flow, in `q3tui/flows/rtl/lib/` (`rules_check`, `synth`, …).
 
 | Step key | Meaning |
 |---|---|
@@ -87,7 +86,7 @@ add-on files.
 |---|---|
 | `inputs` / `outputs` / `missing_input` / `run` | what it reads, writes, needs, does (staleness is the hash of the inputs) |
 | `on_approve(engine)` | its gate was approved (a gate that approves itself also calls it) |
-| `follow_up(engine)` | right after a human approval: `{title, detail, action, switch}` — the TUI asks, yes runs the flow's action and moves to flow `switch` (fpga: hand the PPA fixes to vlsit) |
+| `follow_up(engine)` | right after a human approval: `{title, detail, action, switch}` — the TUI asks, yes runs the flow's action and moves to flow `switch` (fpga: hand the PPA fixes to rtl) |
 | `unattended(engine)` (async) | an unattended run (`auto_answer`) passed this step's gate: do what a person would do next; True runs the flow again from its start (bounded by the step's own limits) |
 | `on_reset` / `on_rebase` / `reset_files` / `refresh_reports` | after a reset, when the flow's files moved, what a reset deletes, reports re-derived from outputs |
 | `pending_reviews` / `open_questions` / `default_to_apply` | the step's reviewable items and questions |
@@ -111,7 +110,7 @@ flow must not be needed by core: the FPGA flow's SDC editor (docs/spec/fpga-flow
 
 Not to be confused with a step's `md/skill.md` (its prompts and settings). A flow folder may bring `skills/<name>/SKILL.md` playbooks (front matter
 `name`, `description`): an LLM stage's prompt lists them and the LLM reads the ones it needs, using its own judgment — Q3TUI gives the tools and
-checks the result, it does not script the steps. A project adds or replaces one with `<project>/skills/<name>/SKILL.md` (also `~/.q3tui/skills/`).
+checks the result, it does not script the steps. A project adds or replaces one with `<project>/config/skills/<name>/SKILL.md` (also `~/.q3tui/skills/`).
 `flows/rtl/lib/skills.py` is the loader; the RTL flow uses them (docs/spec/rtl-flow.md "Skills").
 
 ## Skill editor (TUI)
@@ -134,18 +133,18 @@ replaced by a markdown file `<project>/prompts/<step id or stage name>.md` (also
 `mode: append|replace`, default append; the step's file applies to all its stages, then the stage's own). The built-in prompt of each stage
 is recorded in `.q3tui/prompts/<step>.md` when it runs, and shown read-only next to the override. Applied in `StepContext.llm`
 (`q3tui/llm/prompts.py`), so it works the same in fresh, team and flow sessions. Not covered: the team roles' charters (`llm/roles.py`)
-and the VLSIT rule files (those are `options.rules` of the rtl step: a project path wins over the shipped one).
+and the RTL rule files (those are `options.rules` of the rtl step: a project path wins over the shipped one).
 
 ## Sessions
 
 `session:` in the flow file (or `pipeline.session`): `fresh` (the default when a flow names none; every LLM stage its own
-session, where team mode may group them by role, docs/spec/team.md) or `flow` (the VLSIT flow's): **one persistent Claude session for the whole flow**, like the original
-VLSIT's single Claude Code conversation. In `flow` mode every stage of every step is a task (`# Task: <stage>`) in that
+session, where team mode may group them by role, docs/spec/team.md) or `flow`: **one persistent Claude session for the whole flow**, like the original
+VLSIT's single Claude Code conversation (no built-in flow uses it now; set `session: flow` in a flow file or `pipeline.session`). In `flow` mode every stage of every step is a task (`# Task: <stage>`) in that
 session (role `flow`, `llm/roles.py`; kept in `.q3tui/team/roles.json`, notes in `schemas/NOTES.md`, `q3tui team reset`
 starts over), tasks run one at a time, and Claude compacts the session itself when it grows. Reviewers (stages named
 `*review*`, `roles.FLOW_FRESH`, e.g. `spec_review`) still get a fresh session: fresh eyes, and the flow's session does not
 grow by the whole document they read. `fresh_steps: [<step ids>]` in the flow file runs every stage of those steps fresh
-too (vlsit: `spec`, `parse`, `config` — their prompts carry the spec, answers and settled decisions, so the shared session
+too (a spec-flow copy with `session: flow` would list `spec`, `parse`, `config` — their prompts carry the spec, answers and settled decisions, so the shared session
 only grew: 950k tokens and a compaction by the parse step); `q3tui flow check` reports an unknown id. Each task still carries its own
 file confinement (`deny_dirs` / `write_files`), but the session remembers what it saw — a testbench written in the flow
 session is no longer independent of the RTL (that is the original's behaviour; use `session: fresh` for independence).
@@ -168,12 +167,12 @@ switches on top. Change a mode: `q3tui gate STEP MODE`, TUI `/gate STEP MODE` (o
 
 ## Tools by role
 
-No tool file anywhere (no `tools.json` in the project or `~/.q3tui/`, no `tools.roles`)? The built-in **Synopsys preset**
+No tool file anywhere (no `config/tools.json` in the project, none in `~/.q3tui/`, no `tools.roles`)? The built-in **Synopsys preset**
 (VCS lint / compile / run, Design Compiler; `q3tui/eda/presets/synopsys.json`) is used, so a Synopsys site needs no setup;
 `q3tui tools init` copies it into the project to edit, and `q3tui tools check` shows what is used. Any tool file or inline role
-replaces it completely (it is not merged), so another tool set just writes its own `tools.json`.
+replaces it completely (it is not merged), so another tool set just writes its own `config/tools.json`.
 
-A tools file (`tools.json` / `tools.yaml` in the project root, `tools.file`, or `~/.q3tui/`) — or `tools.roles:` in
+A tools file (`tools.json` / `tools.yaml` in the project's `config/`, `tools.file`, or `~/.q3tui/`) — or `tools.roles:` in
 `q3tui.yaml` — maps a *role* to a command; steps call roles, never binaries:
 
 ```json
@@ -212,7 +211,7 @@ Other. The answer still goes through `Ops.answer`.
 
 The pipeline list and each step's panel come from the flow. A step kind registers a panel builder
 (`tui/panels.py: register_panel(kind, builder)`) returning the tabs to show; a kind without one gets the default panel
-(its output files, Questions, Log). `spec` has the Sections panel; the VLSIT kinds add tables over their JSON artifacts
+(its output files, Questions, Log). `spec` has the Sections panel; the spec flow's kinds add tables over their JSON artifacts
 (`tui/vlsit_panels.py`, docs/spec/tui.md).
 
 ## Questions always come with options

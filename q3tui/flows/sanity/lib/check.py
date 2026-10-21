@@ -54,7 +54,7 @@ class CheckStep(AnalysisStep):
         report, plan = self.read(engine, report_json(role), {}) or {}, self.read(engine, waivers_json(role), {}) or {}
         if not report or not plan:
             raise StepFailed(f"run {role} and {role}_waivers first: there is nothing to apply")
-        base = {"role": role, "waivers": f"sanity/{role}_waive.tcl", "rtl": plan.get("rtl", ""), "runtime_s": 0, "total": len(report.get("violations", []))}
+        base = {"role": role, "waivers": project.rel(self.waive_script(engine)), "rtl": plan.get("rtl", ""), "runtime_s": 0, "total": len(report.get("violations", []))}
         if not report.get("violations"):  # (a clean analysis: nothing to waive, nothing may be left)
             out = {**base, "waived": 0, "open": 0, "expected_open": 0, "not_expressed": [], "still_open_but_waived": [], "waived_but_not_applied": [], "ok": True}
             self.write(engine, check_json(role), out)

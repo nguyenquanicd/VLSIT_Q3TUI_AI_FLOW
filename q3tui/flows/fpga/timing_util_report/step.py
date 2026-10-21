@@ -58,7 +58,7 @@ class Step(FpgaStep):
             if re.search(r"^\s*NA(\s+NA)+\s*$", text("timing.rpt"), re.M):  # the summary is all NA: no clock reached anything
                 raise StepFailed("Vivado reported no timing (WNS NA): no clock constraint matched the design — check the clock / reset "
                                  "ports of the SDC against the top module (the critical warnings are in schemas/fpga_synth.json)")
-            raise StepFailed("could not read the reports in fpga/reports/ (utilization.rpt / timing.rpt)")
+            raise StepFailed("could not read the reports in build/syn/fpga/reports/ (utilization.rpt / timing.rpt)")
         sdc = sdcmod.load(project)
         clocks = [{"name": c.name, "period_ns": c.period_ns, "freq_mhz": c.freq_mhz} for c in (sdc.clocks if sdc else [])]
         if clocks and synth.get("backend") != "yosys":  # (nextpnr gives its own Fmax)

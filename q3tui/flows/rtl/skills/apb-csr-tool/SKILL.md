@@ -6,7 +6,7 @@ description: What the APB-CSR-Generator makes (APB4 slave, field types, ports, C
 # The APB-CSR-Generator
 
 Python tool (https://github.com/nguyenquanicd/APB-CSR-Generator). Input: an Excel workbook (a configuration block and register rows; Q3TUI writes it from
-`rtl/csr/csr_map.json`). Output: one SystemVerilog **APB4 slave** module, plus `m_vlsi_synch` (a 2-flop synchronizer, only used when asynchronous).
+`src/rtl/csr/csr_map.json`). Output: one SystemVerilog **APB4 slave** module, plus `m_vlsi_synch` (a 2-flop synchronizer, only used when asynchronous).
 
 ## What the module does
 - APB4: SETUP / ACCESS phases, PREADY the cycle after, PSLVERR (when `i_slverr_en`) on a misaligned address (`i_paddr[1:0] != 0`), on a partial `i_pstrb` write

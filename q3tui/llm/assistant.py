@@ -27,8 +27,9 @@ independent of the project's `tui.language` setting, which only covers the TUI's
 steps' generated content, never this conversation.
 
 You are the Q3TUI assistant inside the Q3TUI TUI. Q3TUI takes a hardware \
-block from its spec to verified RTL through a flow of steps (the default, VLSIT: spec → parse \
-(requirements) → config → rtl ∥ tb → sva → verify → doc; pipeline_status lists the project's steps).
+block from its spec to RTL through flows of steps (the default, spec: spec → parse \
+(requirements) → config; the rtl flow adds the rules, CSR, RTL, format, style lint and a smoke test; \
+pipeline_status lists the project's steps).
 
 The user drives the project by prompting you. Everything they could do with keys or \
 commands you can do with your tools, so act instead of explaining how:
@@ -42,7 +43,7 @@ run_steps, which regenerates with the LLM spec writer.
 content now, write_section.
 - Intent: set_intent / append_intent. Questions: list_questions, answer_question. \
 Review: mark_reviewed (spec sections), approve, and the per-item reviews of the steps \
-(review_parse_requirement, review_config_parameter, review_property, sign_requirement). \
+(review_parse_requirement, review_config_parameter). \
 Pipeline: run_steps, stop_run, reset_step. Settings: get_settings / set_settings \
 (everything in the settings dialog: general, llm, per step), set_model, show_cost, reset_cost, \
 reset_stats. Bring your own spec / RTL / tests / whole project folder: import_file (kind all for a folder).
@@ -51,14 +52,10 @@ in an editor); prefer the dedicated tools when one fits. You cannot modify Q3TUI
 - Changes to a step's result: request_change(step=..., ...) then run_steps.
 
 Where things are (read the files of the step the user asks about, not just the spec):
-- spec: spec/*.md (sections), spec/intent.md, spec/questions.json; section structure: get_template
+- spec: spec/*.md (sections), spec/intent.md, schemas/questions/spec.json; section structure: get_template
 - parse: schemas/structured_spec.json (requirements REQ-nnn, parameters, module map)
 - config: schemas/final_config.json (resolved parameter values)
-- rtl: src/rtl/*.sv, src/rtl/filelist.f; schemas/synth_report.json
-- tb: src/tb/*.sv, src/tb/filelist.f; schemas/selected_testplan.json
-- sva: src/sva/*.sv, the bind file, src/sva/GATE3_REVIEW.md
-- verify: schemas/verification_report.json; schemas/rtm.json (the requirements traceability matrix)
-- doc: docs/specification.md (.pdf)
+- rtl (rtl flow): src/rtl/*.sv, src/rtl/filelist.f; schemas/synth_report.json
 - questions of any step: list_questions; step states: pipeline_status
 Each message starts with a [TUI context] line saying which step/tab the user is looking \
 at and what is selected. "This", "it", "the requirements" etc. refer to that view.
@@ -358,22 +355,6 @@ def assistant_tools(host: AssistantHost) -> list[SdkMcpTool]:
         answers = await host.ask_user(qs)
         return "\n".join(f"{q.get('header') or q['question']}: {ans}" for q, ans in zip(qs, answers))
 
-    @add("list_properties", "VLSIT flow: the SVA properties with their NL text, vacuity and review status (pending|confirmed|rejected).", none)
-    async def _props(a):
-        return json.dumps(ops.properties(), indent=1, default=str)
-
-    @add("review_property", "VLSIT flow: confirm / reject (with a reason) / reset an assertion; only what the user asked. "
-         "Rejected ones are rewritten by the sva step.",
-         _schema({"label": ("string", "assertion label, e.g. a_no_x_on_pc"), "status": ("string", "confirmed|rejected|pending"),
-                  "note": ("string", "reason (for rejected)")}, ["label", "status"]), scope=lambda a: ("sva", "review assertions of"))
-    async def _review_prop(a):
-        return ops.review_property(a["label"], a["status"], a.get("note", ""))
-
-    @add("confirm_all_properties", "VLSIT flow: confirm every pending assertion (vacuous ones stay pending unless include_vacuous); only when "
-         "the user asks to confirm them all.", _schema({"include_vacuous": ("boolean", "")}, []), scope=lambda a: ("sva", "review assertions of"))
-    async def _confirm_props(a):
-        return ops.confirm_properties(bool(a.get("include_vacuous")))
-
     @add("review_parse_requirement", "VLSIT flow (parse, Gate 1): confirm a flagged requirement as read, or take it back to pending; only "
          "what the user asked. A requirement needing a decision (red) is a blocking question instead — answer it with answer_question.",
          _schema({"req_id": ("string", "REQ-nnn"), "confirmed": ("boolean", "")}, ["req_id", "confirmed"]),
@@ -397,23 +378,6 @@ def assistant_tools(host: AssistantHost) -> list[SdkMcpTool]:
          "reviewed; only when the user asks to confirm them all.", none, scope=lambda a: ("config", "review parameters of"))
     async def _confirm_params(a):
         return ops.confirm_parameters()
-
-    @add("rtm_status", "VLSIT flow: the requirements traceability matrix — the six sign-off conditions per requirement.", none)
-    async def _rtm(a):
-        return json.dumps(ops.rtm(), indent=1, default=str)
-
-    @add("sign_requirement", "VLSIT flow: sign a requirement off in the RTM (only when the user says so; refused unless RTL, SVA, TC, "
-         "simulation and mutation hold; signed=false withdraws it).",
-         _schema({"req_id": ("string", "REQ-nnn"), "signed": ("boolean", "default true"), "note": ("string", "")}, ["req_id"]),
-         scope=lambda a: ("verify", "sign off requirements in"))
-    async def _sign_req(a):
-        return ops.sign_req(a["req_id"], a.get("signed", True), a.get("note", ""))
-
-    @add("sign_all_ready_requirements", "VLSIT flow: sign off every requirement whose conditions already hold (RTL, SVA, TC, "
-         "simulation and mutation) — \"approve all\" at Gate 5; only when the user asks to sign them all. Requirements that are "
-         "not ready are left alone.", _schema({"note": ("string", "")}, []), scope=lambda a: ("verify", "sign off requirements in"))
-    async def _sign_all(a):
-        return ops.sign_all_ready(a.get("note", ""))
 
     # -- settings ---------------------------------------------------------------------------------
     @add("set_model", "Change the LLM model/effort for the next stages; save=true writes the project q3tui.yaml.",

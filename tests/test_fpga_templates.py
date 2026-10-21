@@ -123,9 +123,9 @@ async def test_ecp5_runs_through_the_same_steps(proj):
     assert st["fpga_synth"].status == "done" and st["timing_util_report"].status == "done", [(v.name, v.status, v.detail) for v in eng.status()]
     s = json.loads((proj.schemas_dir / "fpga_synth.json").read_text())
     assert s["template"] == "ecp5" and s["backend"] == "yosys" and s["part"] == "ECP5 85k CABGA381 -6" and s["tool"] == "Yosys 0.58+35 + nextpnr"
-    rep = proj.root / "fpga" / "reports"
+    rep = proj.root / "build" / "syn" / "fpga" / "reports"
     assert {"utilization.rpt", "timing.rpt", "paths.rpt", "pnr.rpt", "yosys_stat.rpt"} <= {f.name for f in rep.iterdir()}
-    assert (proj.root / "fpga" / "synth.ys").is_file() and not (proj.root / "fpga" / "synth.tcl").exists()
+    assert (proj.root / "build" / "syn" / "fpga" / "synth.ys").is_file() and not (proj.root / "build" / "syn" / "fpga" / "synth.tcl").exists()
     args = (proj.state_dir / "fpga" / "fpga_synth" / "args.txt").read_text()
     assert args.startswith("--85k --package CABGA381 --speed 6 --out-of-context") and "--freq 300" in args  # the spec's 300 MHz
     ppa = json.loads((proj.schemas_dir / "ppa_report.json").read_text())

@@ -1,5 +1,5 @@
 """The Tcl script of a VC Static run (after the examples of `doc/vcst/examples/CDC` and `RDC`): analyze, elaborate, the shared SDC, the
-resets, the check and the reports. Written by code each run (`sanity/<role>_setup.tcl`); `options.extra_tcl` adds lines of your own after the SDC."""
+resets, the check and the reports. Written by code each run (`build/sanity/<role>_setup.tcl`); `options.extra_tcl` adds lines of your own after the SDC."""
 
 from __future__ import annotations
 
@@ -25,12 +25,12 @@ _LOW = re.compile(r"(^|_)(n|b)$|rst_?n|resetn|^n_", re.I)
 
 
 def reset_lines(resets: list[str]) -> str:
-    """`create_reset` for the resets of sdc/sdc.json: low-active when the name says so."""
+    """`create_reset` for the resets of constraints/sdc/sdc.json: low-active when the name says so."""
     return "".join(f"create_reset -sense {'low' if _LOW.search(r) else 'high'} {r}\n" for r in resets)
 
 
 def group_lines(sdc: dict) -> str:
-    """Every clock of sdc/sdc.json its own asynchronous group (what a CDC check needs), unless the SDC groups them already."""
+    """Every clock of constraints/sdc/sdc.json its own asynchronous group (what a CDC check needs), unless the SDC groups them already."""
     names = [c["name"] for c in sdc.get("clocks") or []]
     if sdc.get("clock_groups") or len(names) < 2:
         return ""

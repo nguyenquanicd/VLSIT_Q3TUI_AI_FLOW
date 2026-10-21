@@ -2,7 +2,7 @@
 (`lib/templates.py`): Xilinx 7-series with Vivado (tool role `fpga_synth`, the default), or Lattice ECP5 / iCE40 with Yosys and
 nextpnr (roles `fpga_yosys`, `fpga_pnr_ecp5` / `fpga_pnr_ice40`: no licence).
 
-The scripts are written by code (`lib/vivado.py`, `lib/oss.py`); the reports go to `fpga/reports/` with the same names for every
+The scripts are written by code (`lib/vivado.py`, `lib/oss.py`); the reports go to `build/syn/fpga/reports/` with the same names for every
 template (utilization / timing / paths), a summary of the run to `schemas/fpga_synth.json`. A tool that is not there is a failed
 step, never a pass."""
 
@@ -45,7 +45,7 @@ class Step(FpgaStep):
     def outputs(self, engine) -> list[Path]:
         rep = self.reports_dir(engine)
         files = [rep / n for n in REPORTS if (rep / n).is_file()]
-        script = engine.project.root / "fpga" / "synth.tcl"
+        script = engine.project.fpga_dir / "synth.tcl"
         return [*([script] if script.is_file() else []), *files, *([self.artifact(engine, SYNTH_JSON)] if self.artifact(engine, SYNTH_JSON).is_file() else [])]
 
     def reset_files(self, engine) -> list[Path]:
@@ -123,10 +123,10 @@ class Step(FpgaStep):
         part, note = self.part()
         if note:
             ctx.emit("warning", message=note)
-        script = project.root / "fpga" / "synth.tcl"
+        script = project.fpga_dir / "synth.tcl"
         script.parent.mkdir(parents=True, exist_ok=True)
         project.backup([script])
-        script.write_text(vivado.script_text(self.rtl_files(engine), top, project.root / "sdc", work, {**self.options, "fpga": {**self._fpga_cfg(), "part": part}}))
+        script.write_text(vivado.script_text(self.rtl_files(engine), top, project.sdc_dir, work, {**self.options, "fpga": {**self._fpga_cfg(), "part": part}}))
         ctx.emit("log", message=f"synthesizing {top} for {part} (out of context)…")
         t0 = time.monotonic()
         res = await self._watched(ctx, tools, "fpga_synth", {"script": script, "top": top, "filelist": self.filelist(engine), "files": self.rtl_files(engine),
@@ -153,7 +153,7 @@ class Step(FpgaStep):
                                         "runtime_s": round(time.monotonic() - t0, 1), "log": project.rel(Path(res.log_path)),
                                         "warnings": sum(d.severity == "warning" for d in res.diagnostics) - crit,
                                         "critical_warnings": crit, "critical_warning_messages": list(dict.fromkeys(critical))[:10], "reports": got})
-        ctx.emit("log", message=f"synthesis done in {time.monotonic() - t0:.0f} s ({crit} critical warning(s)); reports in fpga/reports/")
+        ctx.emit("log", message=f"synthesis done in {time.monotonic() - t0:.0f} s ({crit} critical warning(s)); reports in build/syn/fpga/reports/")
 
     async def _run_oss(self, ctx: StepContext, tpl) -> None:
         """Yosys (synthesis to the family's cells) then nextpnr (place and route, out of context): the same reports as Vivado's."""
@@ -173,7 +173,7 @@ class Step(FpgaStep):
         clocks = [{"name": c.name, "port": c.port, "period_ns": c.period_ns} for c in (sdc.clocks if sdc else [])]
         if not clocks:
             raise StepFailed("no clock in the SDC: nextpnr needs a target frequency (run the sdc step)")
-        script = project.root / "fpga" / "synth.ys"
+        script = project.fpga_dir / "synth.ys"
         script.parent.mkdir(parents=True, exist_ok=True)
         project.backup([script])
         js, stat = work / "out.json", work / "stat.rpt"
@@ -212,4 +212,4 @@ class Step(FpgaStep):
                                         "template": tpl.id, "backend": "yosys", "family": tpl.family, "part": label, "device": device, "package": package, "speed": speed,
                                         "top": top, "mode": "out_of_context", "implemented": True, "status": "pass", "runtime_s": round(time.monotonic() - t0, 1),
                                         "log": project.rel(work / "pnr.log"), "warnings": warnings, "critical_warnings": 0, "critical_warning_messages": [], "reports": list(files)})
-        ctx.emit("log", message=f"synthesis, place and route done in {time.monotonic() - t0:.0f} s; reports in fpga/reports/")
+        ctx.emit("log", message=f"synthesis, place and route done in {time.monotonic() - t0:.0f} s; reports in build/syn/fpga/reports/")

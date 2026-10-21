@@ -24,7 +24,7 @@ err_console = Console(stderr=True)
 
 ExistingFile = click.Path(exists=True, dir_okay=False, path_type=Path)
 # the default flow's steps (shell completion; a project's flow may have others)
-STEP_NAMES = ["spec", "parse", "config", "rtl", "tb", "sva", "verify", "doc"]
+STEP_NAMES = ["spec", "parse", "config", "rtl"]
 
 
 class StepParam(click.ParamType):
@@ -273,7 +273,7 @@ def init(c: Ctx, with_template: bool, force: bool) -> None:
     from q3tui.steps.spec.template import ensure_project_template, intent_skeleton, load_template
 
     project = c.project
-    flow_template = c.engine().spec_template()  # (the flow's: vlsit → the VLSIT layout)
+    flow_template = c.engine().spec_template()  # (the flow's: spec → the VLSIT template)
     template, source = load_template(project.spec_dir, flow_template)
     intent = project.spec_dir / "intent.md"
     if intent.exists() and not force:
@@ -286,6 +286,10 @@ def init(c: Ctx, with_template: bool, force: bool) -> None:
         console.print(f"[green]✔[/green] {project.rel(ensure_project_template(project.spec_dir, flow_template))} — add/remove/reorder sections here")
     else:
         console.print(f"[dim]spec sections come from {source} (`q3tui init --template` to customise per project)[/dim]")
+    ignore = project.root / ".gitignore"
+    if not ignore.exists():  # (the disposable folders: tool output and Q3TUI's internal state)
+        ignore.write_text(f"{project.cfg.project.build_dir}/\n{project.cfg.project.state_dir}/\n")
+        console.print(f"[green]✔[/green] wrote {project.rel(ignore)} ({project.cfg.project.build_dir}/ and {project.cfg.project.state_dir}/ are not for version control)")
     console.print("next: edit the intent, then `q3tui run` (or `q3tui` for the TUI)")
 
 
@@ -538,7 +542,7 @@ def tools_init(c: Ctx, preset: str, force: bool) -> None:
     from q3tui.eda import tools as T
 
     try:
-        dest = T.write_preset(c.project.root, preset, force)
+        dest = T.write_preset(c.project.config_dir, preset, force)
     except T.ToolUnavailable as exc:
         raise click.ClickException(str(exc))
     console.print(f"[green]✔[/green] wrote {c.project.rel(dest)} — set `modules` / the Design Compiler library for your site")
@@ -569,45 +573,6 @@ def tools_check(c: Ctx) -> None:
             console.print(f"[green]✔[/green] {role}: {T.binary_of(ts.roles[role])}")
     if bad:
         console.print("[dim]`q3tui tools init` writes a tools.json to start from[/dim]")
-        raise SystemExit(1)
-
-
-@main.command("confirm-properties")
-@click.option("--include-vacuous", is_flag=True, help="Also confirm assertions that never fired in the smoke run.")
-@pass_ctx
-def confirm_properties_cmd(c: Ctx, include_vacuous: bool) -> None:
-    """VLSIT flow: confirm every pending SVA assertion at once (the review of Gate 3b, in bulk)."""
-    from q3tui.core.ops import Ops
-
-    console.print(Ops(c.engine()).confirm_properties(include_vacuous))
-
-
-@main.command("sign")
-@click.argument("reqs", nargs=-1)
-@click.option("--all-ready", is_flag=True, help="Sign every requirement whose conditions 1–5 hold (what the RTM calls `pending`).")
-@click.option("--withdraw", is_flag=True, help="Withdraw the sign-off instead.")
-@click.option("-m", "--note", default="", help="A note recorded with each sign-off.")
-@pass_ctx
-def sign_cmd(c: Ctx, reqs: tuple[str, ...], all_ready: bool, withdraw: bool, note: str) -> None:
-    """VLSIT flow: sign requirements off in the RTM (a human action — typing this command is the signature).
-
-    `q3tui sign REQ-001 REQ-002`, or `q3tui sign --all-ready`. A requirement that is not ready is refused with its reasons."""
-    from q3tui.core.ops import Ops
-
-    ops = Ops(c.engine())
-    names = list(reqs)
-    if all_ready:
-        names += [r["req_id"] for r in ops.rtm() if r["status"] == "pending"]
-    if not names:
-        raise click.UsageError("name requirements (REQ-001 …) or use --all-ready (none is ready right now)" if all_ready else "name requirements (REQ-001 …) or use --all-ready")
-    failed = 0
-    for rid in names:
-        try:
-            console.print(ops.sign_req(rid, not withdraw, note))
-        except Exception as exc:  # noqa: BLE001 - one refused requirement must not hide the others
-            failed += 1
-            err_console.print(f"[red]✖[/red] {rid}: {exc}")
-    if failed:
         raise SystemExit(1)
 
 

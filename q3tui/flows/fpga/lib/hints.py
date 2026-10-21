@@ -31,7 +31,7 @@ def asic_library(project) -> str:
 
 def rtl_sha(project) -> str:
     """A fingerprint of the RTL files (src/rtl/*.sv, *.v): what an ASIC run was made from."""
-    d = project.src_dir / "rtl"
+    d = project.rtl_dir
     files = sorted(d.glob("*.sv")) + sorted(d.glob("*.v")) if d.is_dir() else []
     return sha256_json({f.name: f.read_text(errors="replace") for f in files})[:12]
 

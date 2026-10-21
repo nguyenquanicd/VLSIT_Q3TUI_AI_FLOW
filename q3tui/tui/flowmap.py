@@ -76,10 +76,10 @@ class FlowMapScreen(ModalScreen[str | None]):
         with Vertical(id="map-box"):
             yield Static("Flows", id="map-title")
             with VerticalScroll():
-                with self._g("Spec", "vlsit"):
+                with self._g("Spec", "spec"):
                     yield Static(" ".join(f"[{s}]" for s in SPEC_SECTIONS), classes="chips", markup=False)
                 yield Static("▼", classes="arrow")
-                with self._g("RTL gen", "vlsit"):
+                with self._g("RTL gen", "rtl"):
                     yield Box(stage("RTL", "Spec"))
                     yield Box(stage("Compile", "RTL"))
                     with Horizontal(classes="row"):

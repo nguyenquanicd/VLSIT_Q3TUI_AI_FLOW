@@ -1,4 +1,4 @@
-"""Add-on of the Sanity flow (q3tui/addons.py): the SDC actions (the FPGA flow's: both work on `sdc/`), and `sanity_handoff`: the review's RTL fixes and
+"""Add-on of the Sanity flow (q3tui/addons.py): the SDC actions (the FPGA flow's: both work on `constraints/sdc/`), and `sanity_handoff`: the review's RTL fixes and
 spec questions to the flow that owns them, as the ASIC flow's `asic_handoff` does."""
 
 from __future__ import annotations
@@ -24,7 +24,7 @@ def _handoff(ops, ids: str) -> str:
     others: dict[str, Engine] = {}  # one engine per owner flow: each review hands off to its own handoff_flow
     sent = []
     for step in steps:
-        name = str(step.options.get("handoff_flow") or "vlsit")
+        name = str(step.options.get("handoff_flow") or "rtl")
         if name == ops.engine.flow.name:
             raise EngineError("handoff_flow is this flow itself")
         if name not in others:
@@ -68,6 +68,6 @@ def register(api) -> None:
 
     api.setting("cdc", "extra_tcl", "CDC extra Tcl", "text", "Lines for the CDC script after the SDC (configure_cdc_*, set_app_var, …).")
     api.setting("rdc", "extra_tcl", "RDC extra Tcl", "text", "Lines for the RDC script after the SDC.")
-    api.setting("cdc_waivers", "handoff_flow", "Hand CDC fixes to flow", "text", "The flow that owns the RTL and the spec (default vlsit).")
-    api.setting("rdc_waivers", "handoff_flow", "Hand RDC fixes to flow", "text", "The flow that owns the RTL and the spec (default vlsit).")
+    api.setting("cdc_waivers", "handoff_flow", "Hand CDC fixes to flow", "text", "The flow that owns the RTL and the spec ((default rtl)).")
+    api.setting("rdc_waivers", "handoff_flow", "Hand RDC fixes to flow", "text", "The flow that owns the RTL and the spec ((default rtl)).")
     fpga_addon.register_sdc(api)

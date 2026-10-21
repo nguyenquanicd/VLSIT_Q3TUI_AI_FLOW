@@ -4,10 +4,10 @@ title: Style rules → Verible flags
 deps: []
 gate: none
 options: {}
-view: [rtl/style_lint/*.flags, rtl/style_lint/rules_check.json]
+view: [src/rtl/style_lint/*.flags, src/rtl/style_lint/rules_check.json]
 ---
-Reads the rule stack (your `rules/rtl_rules.md` over Q3TUI's default rules), checks it for contradictions before any RTL is written, and writes the
-Verible flags (`rtl/style_lint/verible.flags` for lint, `format.flags` for the formatter) that enforce it. Skills: verible-flags, rule-consistency.
+Reads the rule stack (your `config/rtl_rules.md` over Q3TUI's default rules), checks it for contradictions before any RTL is written, and writes the
+Verible flags (`src/rtl/style_lint/verible.flags` for lint, `format.flags` for the formatter) that enforce it. Skills: verible-flags, rule-consistency.
 
 <!-- SYSTEM -->
 You are the style-rules engineer of Q3TUI's RTL flow. The RTL rules reach three readers: the RTL generator, Verible (through flags you write) and a

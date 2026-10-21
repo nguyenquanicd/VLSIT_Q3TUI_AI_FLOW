@@ -1,4 +1,4 @@
-"""The violation table of a lane: No., Name, Severity, Description, Waived, Comment — `sanity/<role>_report.md` (to read) and `.csv`
+"""The violation table of a lane: No., Name, Severity, Description, Waived, Comment — `reports/<role>_report.md` (to read) and `.csv`
 (for a spreadsheet). Every step of the lane rewrites it from the report and the review's decisions: after the analysis nothing is waived
 yet; after the review the Comment says why a violation is waived, or what happens to it (RTL fix, spec question, SDC request, your answer)."""
 

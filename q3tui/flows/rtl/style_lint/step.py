@@ -57,7 +57,7 @@ class Step(RtlFlowStep):
         if not self.rtl_files(engine):
             return f"the RTL is needed first ({engine.project.rel(self.rtl_dir(engine))}/: step rtl)"
         if not self._flags_file(engine).is_file():
-            return "the Verible flags are needed first (step rules: rtl/style_lint/verible.flags)"
+            return "the Verible flags are needed first (step rules: src/rtl/style_lint/verible.flags)"
         return self.tool_problem(engine, "verible_lint")
 
     def max_rounds(self, cfg) -> int:
@@ -94,7 +94,7 @@ class Step(RtlFlowStep):
             await self._dispatch(ctx, rounds, limit, [Fix(module=Path(e.split(":")[0]).stem, request=f"fix the syntax error: {e}") for e in syntax], [])
             write_json(self._report(engine), {**report, "status": "syntax errors handed back"})
             return
-        skills = skillmod.discover(project.root, engine.flow.path, SKILLS)
+        skills = skillmod.discover(project.config_dir, engine.flow.path, SKILLS)
         stage = Stage(name="style_triage", system_prompt=SYSTEM, prompt=self._prompt(ctx, todo, flags, skillmod.index(skills, project.root)),
                       cwd=project.root, builtin_tools=["Read", "Grep", "Glob"],
                       sdk_tools=verible_tools(ts, work, project.root, lambda: self.rtl_files(engine), self._flags_file(engine)),

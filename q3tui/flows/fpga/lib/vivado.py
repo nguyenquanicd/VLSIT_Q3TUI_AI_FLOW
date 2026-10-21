@@ -1,6 +1,6 @@
 """Vivado for the FPGA flow: the out-of-context synthesis script (code) and the report readers (code).
 
-The script reads the RTL and the SDC files of `sdc/`, runs `synth_design -mode out_of_context` (no pins, no wrapper: the block
+The script reads the RTL and the SDC files of `constraints/sdc/`, runs `synth_design -mode out_of_context` (no pins, no wrapper: the block
 alone) and writes `utilization.rpt` / `timing.rpt` / `check_timing.rpt` next to itself; `parse_utilization` and
 `parse_timing` turn those reports into numbers. Estimates after synthesis: placement can still change LUT counts and
 delays — `options.fpga.implement: true` adds opt_design / place_design / route_design for numbers closer to the board."""

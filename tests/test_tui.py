@@ -653,7 +653,7 @@ async def test_skill_editor_forks_the_builtin_flow_and_saves(tmp_path, monkeypat
     from q3tui.tui.app import Q3TUIApp
     from q3tui.tui.screens import SkillScreen
 
-    (tmp_path / "q3tui.yaml").write_text("llm: {model: claude-haiku-4-5}\npipeline: {flow: vlsit}\n")
+    (tmp_path / "q3tui.yaml").write_text("llm: {model: claude-haiku-4-5}\npipeline: {flow: spec}\n")
     app = Q3TUIApp(Project.open(tmp_path))
     async with app.run_test(size=(140, 45)) as pilot:
         await pilot.press("K")
@@ -664,7 +664,7 @@ async def test_skill_editor_forks_the_builtin_flow_and_saves(tmp_path, monkeypat
         await pilot.press("ctrl+s")
         await pilot.pause()
         step = app.screen.current
-        assert "Always answer briefly." in (tmp_path / "flows" / "vlsit" / step / "md" / "skill.md").read_text()
+        assert "Always answer briefly." in (tmp_path / "flows" / "spec" / step / "md" / "skill.md").read_text()
         assert app.engine.flow.spec(step).notes.endswith("Always answer briefly.")
 
 
