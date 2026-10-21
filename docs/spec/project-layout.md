@@ -31,9 +31,8 @@ it any time). Internal state lives in `.q3tui/`. A step names no folder: it asks
 │                             fpga_synth / ppa / asic_* / cdc_* / rdc_* …; structured_spec.md;
 │                             questions/<step>.{json,answers.json,md} for every step, the spec step included; NOTES.md (flow session)
 ├── reviews/                ← what you decided: parse_reviews.json, config_reviews.json,                     yours, kept on reset
-│                             <role>_answers.json (sanity), later the SVA reviews and RTM sign-offs
-├── reports/                ← readable results rendered by code (sanity <role>_report.md / .csv; later        generated
-│                             RTM, verification, PPA)
+│                             <role>_answers.json (sanity)
+├── reports/                ← readable results rendered by code (sanity <role>_report.md / .csv)             generated
 ├── docs/                   ← the final specification only (specification.md / .pdf; no flow writes it now)  generated
 ├── build/                  ← tool output, safe to delete                                                    disposable
 │   ├── syn/fpga/  syn/asic/    synth.tcl / synth.ys / lec.tcl, reports/*.rpt, netlist/ (.v, .ddc, .svf), sdc/ (the ASIC's own)
@@ -53,8 +52,10 @@ it any time). Internal state lives in `.q3tui/`. A step names no folder: it asks
 
 The rtl flow keeps its own working files inside the RTL folder: `src/rtl/csr/` (register map, report, provided modules),
 `src/rtl/style_lint/` (Verible flags, findings) and `src/rtl/smoke/` (the smoke testbench and its report); see
-[rtl-flow.md](rtl-flow.md) "Layout". The steps that wrote `src/tb`, `src/sva`, `selected_testplan.json`, `rtm.json`,
-`verification_report.json` and `docs/specification.md` were removed: those outputs do not exist until a flow brings them back.
+[rtl-flow.md](rtl-flow.md) "Layout". The tb, sva, verify and doc steps were removed with their outputs (`src/tb`, `src/sva`, `selected_testplan.json`, `rtm.json`,
+`verification_report.json`, `docs/specification.md`): `src/` holds only `rtl/`. `reviews/`, `reports/` and `docs/` are in the layout but mostly
+empty: `reviews/` and `reports/` hold only what is listed above, and `docs/` is reserved for a final specification that no built-in
+flow writes now.
 
 `build/` is the one place where tool output is meant to be read (by you and by the stages that ask for a report); the
 per-step scratch of a run stays in `.q3tui/`. Folder names are configurable (`project.*` in config); these are the defaults.
@@ -87,9 +88,9 @@ A file you provide counts as the output of its step. That step is marked
 |---|---|---|
 | an idea | `--intent "..."`, `--intent-file F` or `spec/intent.md` | spec |
 | a spec | `--spec my_spec.pdf` (copied into `spec/`) | parse |
-| a project (spec documents, RTL, testbench / tests, SVA) | `q3tui import DIR` / `run --import DIR` | spec: the documents (in `spec/ref/`) are ported into the template's sections; RTL is checked and conformed by the rtl flow; tests and SVA are reported as not imported until a flow has a step for them ([spec-flow.md](spec-flow.md) "Importing") |
+| a project (spec documents, RTL) | `q3tui import DIR` / `run --import DIR` | spec: the documents (in `spec/ref/`) are ported into the template's sections; RTL is checked and conformed by the rtl flow; testbench, SVA and scripts are left out ([spec-flow.md](spec-flow.md) "Importing") |
 
-The assistant's `import_file` does the same (a file or a folder; kind `all | spec | rtl | tb | sva`). What each import
+The assistant's `import_file` does the same (a file or a folder; kind `all | spec | rtl`). What each import
 brought in is recorded in `.q3tui/imports/<kind>.json` (source, files and hashes; for RTL the module hierarchy): steps
 list it as an input, so a re-import makes them stale.
 

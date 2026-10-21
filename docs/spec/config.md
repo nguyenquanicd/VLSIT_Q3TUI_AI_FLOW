@@ -48,12 +48,11 @@ project:                          # folder names inside the project (docs/spec/p
   config_dir: config              # tools.json, pdks.json, rtl_rules.md, skills/, sanity/<role>_knowledge.md
   constraints_dir: constraints    # constraints/sdc/ (sdc.json and the rendered Tcl files)
   schemas_dir: schemas            # generated JSON artifacts (structured_spec.json, final_config.json, …), questions/<step>.*
-  reviews_dir: reviews            # yours, kept on reset: parse / config reviews, sanity answers, later sign-offs
+  reviews_dir: reviews            # yours, kept on reset: parse / config reviews, sanity answers
   reports_dir: reports            # readable results rendered by code
   docs_dir: docs                  # the final specification only
-  src_dir: src                    #   src/sva (src/rtl and src/tb: rtl_dir, tb_dir)
+  src_dir: src                    # src/ holds rtl/ only
   rtl_dir: src/rtl                # where the rtl flow writes (its csr/, style_lint/, smoke/ are inside)
-  tb_dir: src/tb
   build_dir: build                # disposable tool output; gitignored by `q3tui init`
   syn_dir: build/syn              #   build/syn/fpga, build/syn/asic
   sim_dir: build/sim              #   lint / synthesis / simulation logs

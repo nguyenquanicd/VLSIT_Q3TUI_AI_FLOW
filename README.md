@@ -13,7 +13,7 @@ Q3TUI runs the **spec flow** (`spec → parse (requirements) → config (paramet
 (rules, CSR, RTL, format, style lint, smoke test). Every phase that needs a human decision
 stops at a **gate**; everything else — naming-rule compliance, lint, formatting, the smoke simulation —
 is checked deterministically by code, not trusted to the model's word. The testbench, SVA, verification (simulation, mutation, sign-off) and document
-steps of the former VLSIT flow were removed and are to come back as their own flows. You can drive the
+steps of the former VLSIT flow were removed. You can drive the
 whole thing from the **TUI** (`q3tui`), the **CLI** (`q3tui run`, `q3tui status`, …), or by chatting with the
 built-in assistant, which has a tool for every action a key or command has.
 

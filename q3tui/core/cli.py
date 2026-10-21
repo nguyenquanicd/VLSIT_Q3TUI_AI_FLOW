@@ -204,7 +204,7 @@ def _answer_interactive(engine: Engine, step: str | None = None) -> None:
 @click.option("--intent-file", type=ExistingFile, help="File with the intent.")
 @click.option("--spec", "specs", multiple=True, type=ExistingFile, help="Your spec document(s) (starts at parse).")
 @click.option("--import", "imports", multiple=True, type=click.Path(exists=True, path_type=Path),
-              help="Your own project folder (or file): spec documents, RTL, testbench / tests, SVA (see `q3tui import`).")
+              help="Your own project folder (or file): spec documents and RTL (see `q3tui import`).")
 @click.option("--from", "start", type=STEP, help="First step to run.")
 @click.option("--to", "stop", type=STEP, help="Last step to run.")
 @click.option("--only", type=STEP, help="Run just this step.")
@@ -372,13 +372,13 @@ def approve(c: Ctx, step: str, force: bool) -> None:
 
 @main.command("import")
 @click.argument("path", type=click.Path(exists=True, path_type=Path))
-@click.option("--kind", type=click.Choice(["all", "spec", "rtl", "tb", "sva"]), default="all", show_default=True,
+@click.option("--kind", type=click.Choice(["all", "spec", "rtl"]), default="all", show_default=True,
               help="Import only this kind.")
 @pass_ctx
 def import_cmd(c: Ctx, path: Path, kind: str) -> None:
     """Import your own files: a folder (a whole reference project) or a file. Code sorts them into spec documents,
-    RTL (checked against the flow's RTL rules and updated where it does not follow them), testbench / tests and SVA
-    (ported by the tb / sva steps into the flow's format). Nothing runs: `q3tui run` next."""
+    RTL (checked against the flow's RTL rules and updated where it does not follow them); testbench, SVA, scripts and
+    filelists are left out. Nothing runs: `q3tui run` next."""
     from q3tui.core.ops import Ops
 
     console.print(escape(Ops(c.engine()).import_files(kind, str(path.resolve()))))

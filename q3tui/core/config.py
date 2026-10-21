@@ -141,7 +141,6 @@ class ProjectConfig(_Strict):
     docs_dir: str = "docs"  # the final specification only
     src_dir: str = "src"
     rtl_dir: str = "src/rtl"
-    tb_dir: str = "src/tb"
     build_dir: str = "build"  # disposable tool output
     syn_dir: str = "build/syn"  # build/syn/{fpga,asic}
     sim_dir: str = "build/sim"

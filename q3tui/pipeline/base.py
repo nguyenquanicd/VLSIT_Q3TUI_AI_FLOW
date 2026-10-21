@@ -182,7 +182,7 @@ class StepDef:
         return 0
 
     def pending_reviews(self, engine: "Engine") -> list[str]:
-        """Ids of this step's own reviewable items (an SVA assertion, a flagged requirement, …) you have not yet
+        """Ids of this step's own reviewable items (a flagged requirement, a changed parameter, …) you have not yet
         confirmed or rejected — distinct from blocking questions (a gap only you can decide). Non-empty: `approve()`
         refuses the gate unless forced or the project runs unattended (`engine.auto_reviews()`)."""
         return []
@@ -201,9 +201,9 @@ class StepDef:
         """Called after a reset deleted this step's files (a step that moved your documents aside puts them back)."""
 
     def import_dir(self, engine: "Engine", kind: str) -> Path | None:
-        """Where this step takes imported files of `kind` (rtl | tb | sva; core/importer.py), None: it takes none.
+        """Where this step takes imported files of `kind` (spec | rtl; core/importer.py), None: it takes none.
         Files imported into the step's own output folder are its starting point (it checks them and updates what does
-        not follow its rules); a sub-folder of its own (e.g. src/tb/imported/) holds references it ports from."""
+        not follow its rules); a sub-folder of its own (e.g. spec/ref/) holds references it ports from."""
         return None
 
     def on_import(self, engine: "Engine", kind: str, files: list[Path]) -> None:

@@ -2,7 +2,7 @@
 
 This inventory reflects the current source as of **2026-10** (version 0.1.0, Beta) and focuses on the
 **spec flow** (`spec → parse → config`), the flow this product ships with
-by default, and the **rtl flow** that builds on it. The testbench, SVA, verification and document steps of the former VLSIT flow were removed and come back as their own flows. See the [User guide](user_guide/) for how to use everything listed here, and [spec/](spec/) for
+by default, and the **rtl flow** that builds on it. The testbench, SVA, verification and document steps of the former VLSIT flow were removed. See the [User guide](user_guide/) for how to use everything listed here, and [spec/](spec/) for
 the architecture reference.
 
 ## 1. Pipeline engine
@@ -61,7 +61,7 @@ flowchart LR
 
 ## 4. Removed: traceability, verification, document
 
-The testbench, SVA, verification (simulation, mutation testing, the six-condition requirements traceability matrix with your sign-off) and the specification document (Markdown + PDF) were steps of the former VLSIT flow. They are removed and come back as their own flows; nothing in this inventory describes them any more.
+The testbench, SVA, verification (simulation, mutation testing, the six-condition requirements traceability matrix with your sign-off) and the specification document (Markdown + PDF) were steps of the former VLSIT flow. They are removed; nothing in this inventory describes them any more.
 
 ## 5. RTL coding rule enforcement
 

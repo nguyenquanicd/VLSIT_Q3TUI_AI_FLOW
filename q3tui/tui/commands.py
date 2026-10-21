@@ -35,8 +35,7 @@ COMMANDS: dict[str, Command] = {
                     ("step", ("view", "pass", "notes"), ("--session",))),
     "act": Command("<action> [key=value …]", "run an action of the flow's add-on (e.g. fpga: sdc_set key=clock.i_clk.freq_mhz value=200)", ("action",)),
     "gates": Command("", "every review gate with its mode and state"),
-    "import": Command("<path> [all|spec|rtl|tb|sva]", "import your own files: a folder (spec documents, RTL, testbench / tests, "
-                      "SVA, sorted by code) or one file", ("file", ("all", "spec", "rtl", "tb", "sva"))),
+    "import": Command("<path> [all|spec|rtl]", "import your own files: a folder (spec documents and RTL, sorted by code) or one file", ("file", ("all", "spec", "rtl"))),
     "reset": Command("<step>|all [--only]", "clear a step's outputs (and the steps after it), or everything", ("step_all", ("--only",))),
     "model": Command("[id] [--save]", "switch the LLM model (no id: the settings' LLM tab)", ("model", ("--save",))),
     "effort": Command("<level>|none [--save]", "set the reasoning effort", ("effort", ("--save",))),
@@ -49,7 +48,7 @@ COMMANDS: dict[str, Command] = {
     "open": Command("<file>", "show a file in the step view", ("file",)),
     "cost": Command("[reset]", "show (or clear) the LLM cost", (("reset",),)),
     "settings": Command("[tab]", "settings dialog: general, gates, llm, models (per step), spec, rtl, tb",
-                        (("general", "gates", "llm", "models", "spec", "rtl", "tb"),)),
+                        (("general", "gates", "llm", "models", "spec", "rtl"),)),
     "stats": Command("[reset]", "usage statistics: tokens per model / step / stage, cost, time (reset: start over)",
                      (("reset",),)),
     "newchat": Command("", "start a new assistant conversation"),

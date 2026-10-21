@@ -15,7 +15,7 @@ name: spec
 title: Spec flow
 version: 1
 gap_targets: {spec_gap: spec, req_gap: parse}   # question kind -> the step that owns the answer (built in: spec_gap -> spec)
-sees: {tb: [spec, parse, config]}               # step -> steps whose settled decisions it may receive (independence)
+sees: {smoke: [spec, parse, config]}            # step -> steps whose settled decisions it may receive (independence)
 tools: [lint, synth, sim]    # roles the flow needs (besides those its step kinds declare)
 steps:
   - {id: spec,  kind: spec,        label: "0", gate: human}
@@ -146,7 +146,7 @@ starts over), tasks run one at a time, and Claude compacts the session itself wh
 grow by the whole document they read. `fresh_steps: [<step ids>]` in the flow file runs every stage of those steps fresh
 too (a spec-flow copy with `session: flow` would list `spec`, `parse`, `config` — their prompts carry the spec, answers and settled decisions, so the shared session
 only grew: 950k tokens and a compaction by the parse step); `q3tui flow check` reports an unknown id. Each task still carries its own
-file confinement (`deny_dirs` / `write_files`), but the session remembers what it saw — a testbench written in the flow
+file confinement (`deny_dirs` / `write_files`), but the session remembers what it saw — a smoke testbench written in the flow
 session is no longer independent of the RTL (that is the original's behaviour; use `session: fresh` for independence).
 
 ## Gate modes

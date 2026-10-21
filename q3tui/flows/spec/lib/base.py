@@ -25,8 +25,6 @@ class Layout:
 
     schemas: Path
     rtl: Path
-    sva: Path
-    tb: Path
     docs: Path
     sim: Path  # simulation / lint / synthesis work area (logs, simv): build/sim
 
@@ -36,7 +34,7 @@ class Layout:
 
 def layout(engine) -> Layout:
     p = engine.project
-    return Layout(p.schemas_dir, p.rtl_dir, p.src_dir / "sva", p.tb_dir, p.docs_dir, p.sim_dir)
+    return Layout(p.schemas_dir, p.rtl_dir, p.docs_dir, p.sim_dir)
 
 
 def rules_text(names: list[str] | None = None, project_root: Path | None = None) -> str:

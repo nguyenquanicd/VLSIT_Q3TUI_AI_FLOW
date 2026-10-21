@@ -3,7 +3,7 @@
 Q3TUI takes a hardware block from **intent to checked RTL**. A pipeline engine runs a
 **flow** (a data file listing the steps): write the spec, extract requirements, settle the
 configuration (the `spec` flow), then write the RTL, format it, lint it and smoke-test it (the `rtl` flow).
-Testbench, assertions, verification and the final document were removed and come back as their own flows.
+Testbench, assertions, verification and the final document were removed.
 
 | Doc | Content |
 |---|---|
@@ -50,10 +50,9 @@ the flow starts at parse. `q3tui run` runs whatever is missing or stale, like `m
 ## Principles
 
 1. **Requirements are the backbone.** Every requirement has an ID (`REQ-001`). RTL
-   and checks cite the REQs they implement or check. The aim (with the verification flow to come) is that
-   *every requirement is checked and passing* and signed off by a person, not "coverage is high".
-2. **Independent checks.** The testbench is written from the spec, the requirements and the
-   configuration alone, never from the RTL (today: the rtl flow's smoke test).
+   and checks cite the REQs they implement or check. Every requirement is meant to be checked, not "coverage is high".
+2. **Independent checks.** The smoke testbench is written from the spec, the requirements and the
+   configuration alone, never from the RTL.
 3. **The fix loop is the product.** Failures are not just reported. Triage decides whose
    bug it is and sends a scoped fix to the owning step (the rtl flow: format, style lint and smoke test
    send fixes back to `rtl`). The loop ends when every check passes or the iteration budget runs out.

@@ -2,7 +2,7 @@
 
 Also available: [Tiếng Việt](vi.md).
 
-Q3TUI runs the **spec flow**: `spec → parse → config`, and the **rtl flow** (`rules → csr → rtl → format → style_lint → smoke` after the same three steps). The testbench, SVA, verification and document steps were removed and come back as their own flows. This guide covers
+Q3TUI runs the **spec flow**: `spec → parse → config`, and the **rtl flow** (`rules → csr → rtl → format → style_lint → smoke` after the same three steps). The testbench, SVA, verification and document steps were removed. This guide covers
 installing it, running a project start to finish, the rule system RTL is checked against, every setting, and
 every command/key you'll use day to day.
 

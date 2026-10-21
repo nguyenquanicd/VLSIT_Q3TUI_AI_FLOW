@@ -274,7 +274,7 @@ def test_rtl_happy_path(tmp_path, tools_dir, llm):
     assert report["modules"]["top"]["lint"] == "pass" and report["rule_profile"] == "project"
     # the stage: only its own file writable, never the testbench / SVA (independence), facts in the prompt
     c = calls(llm, "rtl_top")[0]
-    assert c.write_files == [rtl / "top.sv"] and (tmp_path / "src" / "tb") in c.deny_dirs and (tmp_path / "src" / "sva") in c.deny_dirs
+    assert c.write_files == [rtl / "top.sv"] and (tmp_path / "build") in c.deny_dirs
     assert "REQ-003: top ties them" in c.prompt and "PR_W = 8" in c.prompt and "src/rtl/leaf_a.sv" in c.prompt
     assert "Quy tắc RTL" in c.system_prompt and "PR_[A-Z0-9_]+" not in c.system_prompt  # the rule text, not the regexes
     assert [x.name for x in llm.calls][:2] in (["rtl_leaf_a", "rtl_leaf_b"], ["rtl_leaf_b", "rtl_leaf_a"])  # children before the top

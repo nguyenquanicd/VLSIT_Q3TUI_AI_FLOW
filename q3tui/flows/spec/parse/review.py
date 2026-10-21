@@ -5,7 +5,7 @@
   not confirmed as read yet. A requirement with `needs_human_decision` (ambiguity above the *blocking* threshold) is
   already a blocking question handled by `engine.answer` — it is not repeated here.
 - `review_requirement` / `confirm_all`: reviews are kept in reviews/parse_reviews.json (survive a reset) and are not
-  an input of the parse step: confirming a requirement does not make anything stale, same as sva/review.py.
+  an input of the parse step: confirming a requirement does not make anything stale, same as config/review.py.
 """
 
 from __future__ import annotations

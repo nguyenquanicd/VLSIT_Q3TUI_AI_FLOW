@@ -2,7 +2,7 @@
 
 Bản khác: [English](en.md).
 
-Q3TUI chạy **flow spec**: `spec → parse → config`, và **flow rtl** (`rules → csr → rtl → format → style_lint → smoke` sau cùng 3 step đó). Các step testbench, SVA, verify và doc đã bị gỡ, sẽ quay lại thành flow riêng. Tài liệu này hướng dẫn
+Q3TUI chạy **flow spec**: `spec → parse → config`, và **flow rtl** (`rules → csr → rtl → format → style_lint → smoke` sau cùng 3 step đó). Các step testbench, SVA, verify và doc đã bị gỡ. Tài liệu này hướng dẫn
 cách cài đặt, chạy 1 project từ đầu tới cuối, hệ thống rule kiểm tra RTL, toàn bộ setting, và mọi lệnh/phím
 bạn sẽ dùng hàng ngày.
 

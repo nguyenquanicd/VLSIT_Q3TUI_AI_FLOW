@@ -113,7 +113,7 @@ In mode `auto_answer` (or `pipeline.auto_answer`) the run goes on by itself, thr
 fixes off, run the owner flow's `rtl` step (`Engine(flow=owner).run(only="rtl", yes=True)`, its gates approved as the unattended run
 says), then run this flow again — the new RTL makes `sdc`, synthesis, the report and `ppa_optimize` stale — until the targets are met or
 `max_iterations` rounds are used (the step then fails and says so). A spec fix is never handed off unattended (it is your document):
-it stays proposed with a warning. The owner flow's later steps (tb, sva, verify, doc) are left stale for you to run.
+it stays proposed with a warning. The owner flow's later steps (format, style_lint, smoke) are left stale for you to run.
 
 **Function after PPA.** The fixes change the RTL, and nothing in this flow checks that it still works. When the targets are met on RTL that
 handed-off fixes changed (`options.verify_after`, default true; once per RTL), the owner flow's functional check runs on it: unattended
