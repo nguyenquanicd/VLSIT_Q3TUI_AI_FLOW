@@ -16,9 +16,8 @@ MODELS = [
     ("claude-fable-5-1", "Fable 5.1 — most capable, most expensive"),
 ]
 EFFORTS = ["low", "medium", "high", "xhigh", "max"]
-GATES = ["spec", "parse", "config", "rtl", "tb", "sva", "verify", "doc"]
-STEP_LABELS = (("spec", "Spec"), ("parse", "Parse"), ("config", "Config"), ("rtl", "RTL"), ("tb", "TB"), ("sva", "SVA"),
-               ("verify", "Verify"), ("doc", "Doc"), ("assistant", "Assistant"))
+GATES = ["spec", "parse", "config", "rtl"]
+STEP_LABELS = (("spec", "Spec"), ("parse", "Parse"), ("config", "Config"), ("rtl", "RTL"), ("assistant", "Assistant"))
 
 
 @dataclass(frozen=True)
@@ -65,16 +64,9 @@ TABS: tuple[Tab, ...] = (
         Setting("pipeline.escalate_after_repeats", "Escalate after", "int",
                 "A bug classified the same way this many times is handed to you instead of fixed again."),
         Setting("pipeline.auto_confirm_reviews", "Auto-confirm reviews", "bool",
-                "Confirm a step's own reviewable items (SVA assertions, flagged requirements, …) without asking. "
+                "Confirm a step's own reviewable items (flagged requirements, changed parameters, …) without asking. "
                 "A human gate still stops for Approve; Approve itself no longer refuses for unconfirmed items. "
                 "Narrower than Auto-approve / Auto-answer above — gates still stop, only per-item review is skipped."),
-        Setting("pipeline.parallel_rtl_tb", "Run rtl ‖ tb in parallel", "bool",
-                "vlsit flow: rtl (lint + synthesis) and tb (testbench generator) both read only spec/parse/config — "
-                "run them together instead of rtl then tb."),
-        Setting("pipeline.parallel_multi_agent", "  ↳ tb: separate agent session", "bool",
-                "Only with the setting above. Off: tb shares the flow's one session and its LLM calls queue behind "
-                "rtl's (their tool runs still overlap). On: tb gets its own persistent session (role \"verifier\") "
-                "so both run their LLM calls at the same time too."),
         Setting("tui.icons", "Icons", "choice",
                 "Status icons: unicode (✔ ⚑ ◐ …), nerd (for a \"… Nerd Font Mono\" font), ascii (any font).",
                 (("unicode", "unicode  ✔ ⚑ ◐ ★"), ("nerd", "nerd font  \uf00c \uf024 \uf110 \uf005"), ("ascii", "ascii  + # ~ *"))),
@@ -103,21 +95,15 @@ TABS: tuple[Tab, ...] = (
                 "A second pass that checks the draft for ambiguities and returns only its changes. Off = faster drafts."),
     )),
     Tab("rtl", "RTL", (
-        Setting("rtl.parallel", "Modules in parallel", "int", "Modules (RTL, SVA) written at once."),
+        Setting("rtl.parallel", "Modules in parallel", "int", "Modules written at once."),
         Setting("rtl.max_fix_attempts", "Fix rounds", "int", "Extra rounds when lint or synthesis still fail."),
         Setting("rtl.max_turns", "Turns per module", "int", "Agent turns for one module (write, compile, fix)."),
-    )),
-    Tab("tb", "TB", (
-        Setting("tb.tests_per_agent", "Tests per agent", "int", "Test cases written by one agent; agents run in parallel."),
-        Setting("tb.parallel", "Agents at once", "int", "How many test-case agents run in parallel."),
-        Setting("tb.max_fix_attempts", "Fix rounds", "int", "Extra rounds when the plan or TB checks still fail."),
-        Setting("tb.max_turns", "Turns per stage", "int", "Agent turns for one TB stage."),
     )),
     Tab("models", "Models per step", tuple(
         s for key, label in STEP_LABELS for s in step_model_settings(key, label))),
 )
 
-_STEP_TABS = ("spec", "rtl", "tb")  # per-step settings tabs (vlsit config sections), shown when the flow has that step
+_STEP_TABS = ("spec", "rtl")  # per-step settings tabs (config sections), shown when the flow has that step
 
 
 STEP_OPTIONS = "pipeline.step_options."  # + <step>.<key>: a step's option, shown by a flow's add-on (addons.AddonAPI.setting)
@@ -128,13 +114,10 @@ def is_step_option(path: str) -> bool:
 
 
 def tabs_for(steps: list[tuple[str, str]] | None = None, extra=()) -> tuple[Tab, ...]:
-    """The dialog's tabs for a flow whose steps are `(id, label)`; None = the vlsit steps. `extra`: the flow's step options."""
+    """The dialog's tabs for a flow whose steps are `(id, label)`; None = the spec flow's steps. `extra`: the flow's step options."""
     rows = list(steps) if steps is not None else [(k, l) for k, l in STEP_LABELS if k != "assistant"]
     have = {k for k, _ in rows}
     keep = [t for t in TABS if t.id != "models" and (t.id not in _STEP_TABS or t.id in have)]
-    if steps is not None:  # vlsit-only general settings (rtl ‖ tb) only where the flow has those steps
-        keep = [Tab(t.id, t.title, tuple(x for x in t.settings if not x.path.startswith("pipeline.parallel") or {"rtl", "tb"} <= have))
-                if t.id == "general" else t for t in keep]
     for step in dict.fromkeys(x.path.split(".")[2] for x in extra):  # a flow's step options: the step's own tab
         keep.append(Tab(step, step, tuple(x for x in extra if x.path.split(".")[2] == step)))
     models = Tab("models", "Models per step", tuple(x for k, l in [*rows, ("assistant", "Assistant")] for x in step_model_settings(k, l)))

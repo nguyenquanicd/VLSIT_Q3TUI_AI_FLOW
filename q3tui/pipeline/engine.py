@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
 import shutil
 from dataclasses import dataclass
 from datetime import datetime
@@ -68,10 +67,7 @@ class Engine:
         self.by_name = {s.name: s for s in self.steps}
         self.state_path = project.state_dir / "pipeline.json"
         self.state = PipelineState.load(self.state_path)
-        self._running: set[str] = set()  # steps executing right now (usually 0 or 1; 2 with parallel_rtl_tb)
-        # parallel_rtl_tb + parallel_multi_agent: step name -> LLM role to use instead of the flow's shared
-        # "flow" session for the duration of the parallel run (StepContext.llm, pipeline/base.py)
-        self._step_role_override: dict[str, str] = {}
+        self._running: set[str] = set()  # steps executing right now (0 or 1; `running_steps` lists them all)
         from q3tui.core.stats import StatsRecorder
 
         if not getattr(self.bus, "stats_recorder", None):  # once per bus, however many engines share it
@@ -82,9 +78,8 @@ class Engine:
 
     @property
     def running(self) -> str | None:
-        """One running step's name (None: nothing is running). With parallel_rtl_tb both run_step() calls are
-        in `_running` at once; this picks one for the single-name messages (quit confirm, reset's error) —
-        `running_steps` lists all of them."""
+        """One running step's name (None: nothing is running), for the single-name messages (quit confirm, reset's
+        error); `running_steps` lists all of them."""
         return next(iter(self._running), None)
 
     @running.setter
@@ -1037,50 +1032,10 @@ class Engine:
         self.bus.emit("run_finished", outcome=outcome, total_cost_usd=self.state.total_cost_usd)
         return outcome
 
-    def _parallel_tb_ready(self, selected: list[str], regenerate: set[str]) -> StepDef | None:
-        """vlsit: rtl (lint + synthesis) and tb (testbench generator) both read only spec/parse/config
-        (FLOW.md `sees`), neither needs the other's output. `pipeline.parallel_rtl_tb` on, 'tb' in the
-        requested range, and it actually needs a real run: returns the tb StepDef to run alongside rtl."""
-        if not self.project.cfg.pipeline.parallel_rtl_tb:
-            return None
-        tb_step = self.by_name.get("tb")
-        if tb_step is None or tb_step.name not in selected:
-            return None
-        view = self.evaluate(tb_step)
-        if view.status == "unavailable" or view.status == "missing_input":
-            return None
-        if view.status in ("user", "done") and tb_step.name not in regenerate:
-            return None  # skipped same as the sequential path would skip it — nothing to parallelise
-        return tb_step
-
-    async def _run_parallel(self, rtl_step: StepDef, rtl_regen: bool, tb_step: StepDef, tb_regen: bool) -> None:
-        """Run rtl and tb together. The flow's one shared session (role "flow") runs one task at a time —
-        without parallel_multi_agent, tb's LLM calls queue behind rtl's and only the non-LLM parts of each
-        step (tool runs: lint, synth, sim) truly overlap. parallel_multi_agent gives tb its own persistent
-        session (role "verifier", the same charter tb's stages would get outside flow sessions) so both
-        sets of LLM calls run at the same time too."""
-        multi_agent = self.project.cfg.pipeline.parallel_multi_agent
-        if multi_agent:
-            self._step_role_override[tb_step.name] = "verifier"
-        self.bus.emit("log", None, message=f"running {rtl_step.name} and {tb_step.name} in parallel"
-                      + (" (tb: its own agent session)" if multi_agent
-                         else " (shared session: tb's LLM calls queue behind rtl's; their tool runs still overlap)"))
-        try:
-            results = await asyncio.gather(self.run_step(rtl_step, regenerate=rtl_regen),
-                                           self.run_step(tb_step, regenerate=tb_regen), return_exceptions=True)
-        finally:
-            self._step_role_override.pop(tb_step.name, None)
-        errors = [r for r in results if isinstance(r, BaseException)]
-        if errors:
-            raise errors[0]
-
     async def _run(self, selected: list[str], yes: bool, regenerate: set[str]) -> Outcome:
         first = selected[0]
         started = False
-        handled: set[str] = set()  # tb already run alongside rtl: its own loop turn is a no-op
         for step in self.steps:
-            if step.name in handled:
-                continue
             view = self.evaluate(step)
             in_range = step.name in selected
             if step.name == first:
@@ -1115,17 +1070,6 @@ class Engine:
             elif view.status == "missing_input":
                 self.bus.emit("error", step.name, message=view.detail)
                 return "blocked"
-            elif step.name == "rtl" and (tb_step := self._parallel_tb_ready(selected, regenerate)) is not None:
-                await self._run_parallel(step, regen, tb_step, tb_step.name in regenerate)
-                handled.add(tb_step.name)
-                if not self._gate_ok(tb_step, yes):
-                    return "gate"
-                tb_earlier = [s.name for s in self.steps[: self.steps.index(tb_step)] if s.name in selected
-                             and any(f.startswith(DECISION_PREFIX) for f in self.state.feedback.get(s.name, []))]
-                if tb_earlier:
-                    self.bus.emit("log", tb_step.name, message=f"decisions for {', '.join(tb_earlier)}: updating "
-                                                                f"{'it' if len(tb_earlier) == 1 else 'them'} first, then going on")
-                    return "restart"
             else:
                 await self.run_step(step, regenerate=regen)
             if not self._gate_ok(step, yes):

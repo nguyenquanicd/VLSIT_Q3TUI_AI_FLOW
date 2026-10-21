@@ -146,10 +146,10 @@ the step view brings it back; `1`-`9` still select a step) — remembered as wel
 
 ## Settings
 
-`,` or `/settings [general|gates|llm|models|spec|rtl|tb]` opens the settings dialog.
-Tabs: **General** (auto-approve, auto-answer, auto-confirm, rtl ‖ tb in parallel, fix loop, language, icon set: `unicode` ✔ ⚑ ◐, `nerd` for a
+`,` or `/settings [general|gates|llm|models|spec|rtl]` opens the settings dialog.
+Tabs: **General** (auto-approve, auto-answer, auto-confirm, fix loop, language, icon set: `unicode` ✔ ⚑ ◐, `nerd` for a
 "… Nerd Font Mono" font, `ascii` for any font), **Gates** (the mode of each step's review gate in the current flow), **LLM** (model, effort, thinking budget,
-turns, $ and time limits, fallback model), **Spec**, **RTL**, **TB** and **Models per step**
+turns, $ and time limits, fallback model), **Spec**, **RTL** and **Models per step**
 (model / effort per step); it opens on the selected step's tab. Each
 setting has a one-line help. `ctrl+s` applies and saves to the project's `q3tui.yaml`; tick "Only for this
 session" to try a setting without saving it; invalid values keep the dialog open with the error.
@@ -231,8 +231,8 @@ id in `.q3tui/tui/session.json`; `/newchat` starts over).
 Slash commands complete as you type: the rest of the command or argument shows as grey ghost text (Tab or → accepts it) and a hint line above the input shows the usage and the valid values (steps, open question ids, models, efforts, files). Slash commands, which need no LLM: `/run [from] [to]`, `/stop`, `/approve <gate>|all [--force]`,
 `/change <step> <text>`, `/answer <id> <text>|all`, `/gate <step> [mode] [--session]`, `/gates`, `/flow [name]` (switch flow; key `F`; a running step is cancelled after you confirm), `/flowedit` (the step editor), `/skill`, `/prompts`,
 `/step <step> view|pass|notes [text]`, `/reset <step>|all [--only]`, `/model [id] [--save]` (no id: the settings' LLM tab),
-`/effort <level>`, `/specreview`, `/autoapprove`, `/autoanswer`, `/autoconfirm` (`on|off [--save]`), `/parallel on|off
-[--multi-agent]`, `/settings [tab]`, `/status`, `/open <file>`, `/cost [reset]`, `/stats [reset]`, `/newchat`, `/help`, `/quit`.
+`/effort <level>`, `/specreview`, `/autoapprove`, `/autoanswer`, `/autoconfirm` (`on|off [--save]`),
+`/settings [tab]`, `/status`, `/open <file>`, `/cost [reset]`, `/stats [reset]`, `/newchat`, `/help`, `/quit`.
 
 Assistant replies render as Markdown; `z` zooms the activity/chat to full height. A new message while the assistant is still answering is held (not sent) instead of cancelling the reply. **Esc** (or `x` / `/stop` when no pipeline step is running) stops the reply; the conversation continues from the last finished reply.
 
@@ -255,6 +255,6 @@ command line and `Esc` returns.
   next time.
 
 **Comment (`C`, every view):** select text with the mouse, or highlight a row / section in the shown tab (requirement, port, test,
-assertion, question, spec section …), press `C`, type the comment: the assistant receives it with the quoted text and fixes it with
+question, spec section …), press `C`, type the comment: the assistant receives it with the quoted text and fixes it with
 its tools (change request for the step, or a section edit). One key everywhere; `c` stays free for the views' own actions
-(e.g. Confirm in the SVA properties).
+(e.g. Confirm in the requirements review).

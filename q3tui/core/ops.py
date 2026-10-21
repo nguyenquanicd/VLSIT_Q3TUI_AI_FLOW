@@ -402,27 +402,6 @@ class Ops:
             msg += f" (saved to {self.project.rel(self.project.save_config_values({'pipeline': {'auto_confirm_reviews': on}}))})"
         return self._log(None, msg)
 
-    def set_parallel_rtl_tb(self, on: bool, multi_agent: bool | None = None, save: bool = False) -> str:
-        """vlsit: run rtl (lint + synthesis) and tb (testbench generator) together instead of one after the
-        other — neither reads the other's output. multi_agent (only meaningful when on): tb gets its own
-        persistent LLM session instead of queuing behind rtl's on the flow's shared one (real concurrency
-        for the LLM calls too, not just their lint/synth/tool runs)."""
-        pc = self.project.cfg.pipeline
-        pc.parallel_rtl_tb = on
-        if multi_agent is not None:
-            pc.parallel_multi_agent = multi_agent and on
-        msg = f"parallel rtl/tb: {'on' if on else 'off'}"
-        if on:
-            msg += f" ({'separate agent for tb' if pc.parallel_multi_agent else 'shared session: tb queues behind rtl'})"
-        if save:
-            values = {"parallel_rtl_tb": pc.parallel_rtl_tb}
-            if multi_agent is not None:
-                values["parallel_multi_agent"] = pc.parallel_multi_agent
-            msg += f" (saved to {self.project.rel(self.project.save_config_values({'pipeline': values}))})"
-        return self._log(None, msg)
-
-    # -- questions, spec-flow reviews (flows/spec/*/review.py) ---------------------------------------------
-
     def answer(self, question_id: str, text: str) -> str:
         """Answer a question (the step, and the step it is handed to, update on the next run)."""
         return self.engine.answer(question_id, text)

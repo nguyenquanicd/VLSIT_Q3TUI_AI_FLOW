@@ -185,7 +185,7 @@ def test_every_question_comes_with_options(engine, llm):
     assert qs and all(q["options"] for q in qs)
 
 
-# -- parallel_rtl_tb (pipeline.parallel_rtl_tb / parallel_multi_agent) -------------------------------------
+# -- the running set ------------------------------------------------------------------------------------------
 
 
 def test_running_set_tracks_more_than_one_step(engine):
@@ -198,41 +198,6 @@ def test_running_set_tracks_more_than_one_step(engine):
     assert engine.running_steps == ["req"]
     engine.running = None
     assert engine.running is None and engine.running_steps == []
-
-
-def test_parallel_tb_ready_off_by_default(engine, llm, monkeypatch):
-    from q3tui.pipeline.engine import StepView
-
-    monkeypatch.setattr(engine, "evaluate", lambda step: StepView(step.name, step.title, "pending", "none", [], 0))
-    assert engine._parallel_tb_ready(["rtl", "tb"], set()) is None  # pipeline.parallel_rtl_tb is False
-    engine.project.cfg.pipeline.parallel_rtl_tb = True
-    assert engine._parallel_tb_ready(["rtl", "tb"], set()) is engine.by_name["tb"]
-    assert engine._parallel_tb_ready(["rtl"], set()) is None  # tb outside the requested range: nothing to join
-
-
-def test_parallel_tb_ready_skips_steps_that_would_not_really_run(engine, llm, monkeypatch):
-    from q3tui.pipeline.engine import StepView
-
-    engine.project.cfg.pipeline.parallel_rtl_tb = True
-    for status in ("missing_input", "unavailable"):
-        monkeypatch.setattr(engine, "evaluate", lambda step, status=status: StepView(step.name, step.title, status, "none", [], 0))
-        assert engine._parallel_tb_ready(["rtl", "tb"], set()) is None
-    monkeypatch.setattr(engine, "evaluate", lambda step: StepView(step.name, step.title, "done", "none", [], 0))
-    assert engine._parallel_tb_ready(["rtl", "tb"], set()) is None  # done and not asked to --regenerate: nothing to join
-    assert engine._parallel_tb_ready(["rtl", "tb"], {"tb"}) is engine.by_name["tb"]  # --regenerate tb: it will run again
-
-
-def test_parallel_multi_agent_role_override_targets_tb_only(engine, llm):
-    """StepContext.llm() (pipeline/base.py), when engine.session_mode() == "flow", picks its role with
-    `engine._step_role_override.get(self.emit.step, "flow")` — the one line this locks down: tb gets
-    "verifier" only while _run_parallel has set the override; every other step (and tb once the parallel
-    run is over) still gets "flow", the whole flow's one shared session."""
-    assert engine._step_role_override.get("tb", "flow") == "flow"
-    engine._step_role_override["tb"] = "verifier"
-    assert engine._step_role_override.get("tb", "flow") == "verifier"
-    assert engine._step_role_override.get("rtl", "flow") == "flow"
-    engine._step_role_override.pop("tb", None)  # _run_parallel's `finally`: cleared once both steps are done
-    assert engine._step_role_override.get("tb", "flow") == "flow"
 
 
 def test_flow_session_reviewers_run_fresh(engine, llm, monkeypatch):

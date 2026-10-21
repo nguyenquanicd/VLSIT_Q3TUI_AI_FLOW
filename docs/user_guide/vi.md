@@ -162,11 +162,9 @@ Dialog có 1 tab cho mỗi mảng: **General**, **Gates**, **LLM**, **Models per
 |---|---|---|
 | `pipeline.auto_approve` | bool | Mọi gate tự approve; gate còn blocking question vẫn dừng lại hỏi. |
 | `pipeline.auto_answer` | bool | Chạy không giám sát: mọi gate tự approve, mọi câu hỏi (kể cả blocking) lấy default, các đề xuất được chấp nhận như đề xuất. |
-| `pipeline.max_fix_iterations` | int | Số vòng verify → fix → verify tối đa trước khi dừng và trả lại cho bạn. |
+| `pipeline.max_fix_iterations` | int | Số vòng check → fix → check của một step tối đa trước khi dừng và trả lại cho bạn. |
 | `pipeline.escalate_after_repeats` | int | 1 bug bị phân loại giống nhau liên tiếp bao nhiêu lần thì chuyển cho bạn thay vì tự fix tiếp. |
 | `pipeline.auto_confirm_reviews` | bool | Tự confirm item review của step (requirement bị đánh dấu, parameter đổi default) mà không hỏi. Gate human vẫn chờ `Approve`; `Approve` không còn từ chối vì item chưa confirm. Hẹp hơn auto-approve/auto-answer ở trên — gate vẫn dừng, chỉ bỏ review từng item. |
-| `pipeline.parallel_rtl_tb` | bool | Chỉ có nghĩa trong flow có cả step `rtl` và `tb` (hiện không flow built-in nào có). |
-| `pipeline.parallel_multi_agent` | bool | Chỉ có tác dụng khi setting trên bật. Tắt: `tb` dùng chung session của flow, LLM call của nó queue sau `rtl` (tool run thì vẫn chạy chồng nhau). Bật: `tb` có session riêng (role "verifier") nên LLM call cũng chạy đồng thời. |
 | `tui.icons` | choice | Bộ icon trạng thái: `unicode` (✔ ⚑ ◐ …), `nerd` (cần font "… Nerd Font Mono"), `ascii` (dùng được mọi font). |
 | `tui.language` | choice | Ngôn ngữ UI chrome (legend, banner, dialog) và nội dung pipeline sinh ra (spec, comment RTL, câu hỏi, docs): `en` / `vi` / `ko`. Chat assistant không bị ảnh hưởng — luôn tự theo ngôn ngữ bạn gõ. |
 

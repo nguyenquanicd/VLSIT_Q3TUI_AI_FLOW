@@ -13,7 +13,7 @@ Q3TUI runs the **spec flow** (`spec → parse (requirements) → config (paramet
 (rules, CSR, RTL, format, style lint, smoke test). Every phase that needs a human decision
 stops at a **gate**; everything else — naming-rule compliance, lint, formatting, the smoke simulation —
 is checked deterministically by code, not trusted to the model's word. The testbench, SVA, verification (simulation, mutation, sign-off) and document
-steps of the former VLSIT flow were removed and come back as their own flows. You can drive the
+steps of the former VLSIT flow were removed and are to come back as their own flows. You can drive the
 whole thing from the **TUI** (`q3tui`), the **CLI** (`q3tui run`, `q3tui status`, …), or by chatting with the
 built-in assistant, which has a tool for every action a key or command has.
 
@@ -56,21 +56,17 @@ focus.
 
 <table>
 <tr>
-<td width="33%"><a href="docs/images/tui-gate.svg"><img src="docs/images/tui-gate.svg" alt="The review dialog of a gate"></a></td>
-<td width="33%"><a href="docs/images/tui-sva.svg"><img src="docs/images/tui-sva.svg" alt="Gate 3b: the assertions to confirm"></a></td>
-<td width="33%"><a href="docs/images/tui-verify.svg"><img src="docs/images/tui-verify.svg" alt="Gate 5: the requirements traceability matrix"></a></td>
+<td width="50%"><a href="docs/images/tui-gate.svg"><img src="docs/images/tui-gate.svg" alt="The review dialog of a gate"></a></td>
 </tr>
 <tr>
 <td><b>Review dialog</b> (<code>a</code>): approve, answer the open questions, edit, or request changes.</td>
-<td><b>Gate 3b · assertions</b>: each SVA property with its requirement, plain-English meaning and vacuity check — confirm (<code>c</code>) or reject with a reason (<code>x</code>).</td>
-<td><b>Gate 5 · sign-off</b>: the RTM — RTL, SVA, test case, simulation, mutation score per requirement; you sign off (<code>v</code>).</td>
 </tr>
 </table>
 
 ## Features
 
-- **Gated pipeline, not a black box.** Three human review gates by default (requirements, assertions,
-  verification sign-off); two self-sign when their checks pass (config, testbench). Every gate's mode
+- **Gated pipeline, not a black box.** One human review gate by default (the requirements `parse` extracts);
+  the configuration signs itself when its checks pass. Every gate's mode
   (`human` / `auto` / `auto_answer` / `none`) is switchable per project or per session.
 - **Updates, not re-runs.** Changing one requirement updates only the modules and tests it touches — the rest
   of the design, and your review approvals, stay as they were.
@@ -78,17 +74,13 @@ focus.
   signed types, testbench-only system tasks, …), file/module-name consistency and more are checked by a
   code-level linter against your project's rule file(s) — the LLM gets the same rules as text, but never has
   the final word on compliance.
-- **Traceable by construction.** Every requirement is tagged in the RTL that implements it, covered by a test
-  case, and asserted by SVA properties you personally confirm — a six-condition requirements traceability
-  matrix (RTM) is what you sign off against, not a summary.
-- **Review what needs reviewing, nothing more.** Assertions, flagged requirements and changed parameters each
+- **Traceable requirements.** Every requirement has an ID (`REQ-NNN`); the RTL cites the ones it implements,
+  and the rtl flow's smoke test is written from the spec and the requirements alone, never from the RTL.
+- **Review what needs reviewing, nothing more.** Flagged requirements and changed parameters each
   have their own pending-review tracking, separate from blocking questions — gates refuse to self-approve
   until you've actually looked, unless you turn that off deliberately (`auto_confirm_reviews`).
-  Non-vacuous-only: an assertion that never fired in simulation is never silently "confirmed."
-- **rtl ‖ tb in parallel**, optionally on fully separate LLM sessions, when your project has no reason to run
-  them one after the other.
 - **Chat like the rest of the team.** The in-TUI assistant can run steps, answer questions, change gate
-  modes, adjust settings, review assertions, sign off requirements — anything a key or `/command` can do —
+  modes, adjust settings, review requirements and parameters — anything a key or `/command` can do —
   and replies in whichever language you write to it in.
 - **Language-aware chrome.** The TUI's own interface (status legend, result banners, dialogs) and the
   pipeline's generated content (spec, RTL comments, questions, docs) follow one `tui.language` setting

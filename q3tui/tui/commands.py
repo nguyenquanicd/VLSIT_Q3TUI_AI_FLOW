@@ -43,11 +43,8 @@ COMMANDS: dict[str, Command] = {
     "specreview": Command("on|off [--save]", "spec self-review after drafting", ON_OFF),
     "autoapprove": Command("on|off [--save]", "approve review gates automatically (blocking questions still stop)", ON_OFF),
     "autoanswer": Command("on|off [--save]", "unattended: approve gates, answer questions with defaults, accept proposals", ON_OFF),
-    "autoconfirm": Command("on|off [--save]", "confirm a step's own reviewable items (SVA assertions, flagged requirements) without "
+    "autoconfirm": Command("on|off [--save]", "confirm a step's own reviewable items (flagged requirements, parameters) without "
                            "asking; gates still stop for Approve", ON_OFF),
-    "parallel": Command("on|off [--multi-agent|--shared] [--save]",
-                        "vlsit: run rtl (lint+synth) and tb together instead of in sequence; --multi-agent: tb gets its own LLM session",
-                        (("on", "off"), ("--multi-agent", "--shared", "--save"), ("--save",))),
     "status": Command("", "print every step's status"),
     "open": Command("<file>", "show a file in the step view", ("file",)),
     "cost": Command("[reset]", "show (or clear) the LLM cost", (("reset",),)),

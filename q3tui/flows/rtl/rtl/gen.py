@@ -186,7 +186,7 @@ class RtlGenStep(VlsitStep):
             name="rtl_plan", system_prompt=rtl_prompts.PLAN_SYSTEM, prompt=rtl_prompts.plan_prompt(
                 list(reqs.items()), spec_files, (spec.get("metadata") or {}).get("top_module")),
             cwd=ctx.project.root, builtin_tools=["Read", "Grep", "Glob"], output_model=RtlPlan,
-            deny_dirs=[ctx.project.model_dir, ctx.project.tb_dir, lay.tb, lay.sva], max_turns=ctx.cfg.rtl.max_turns))
+            deny_dirs=[ctx.project.model_dir, ctx.project.tb_dir, lay.tb, lay.sva, ctx.project.build_dir], max_turns=ctx.cfg.rtl.max_turns))
         plan: RtlPlan = res.output
         write_json(artifacts.path(ctx.project, "rtl_plan.json"), {"inputs": key, "plan": plan.model_dump()})
         return plan
@@ -281,7 +281,7 @@ class RtlGenStep(VlsitStep):
 
         return Stage(name=f"rtl_{pm.name}", system_prompt=rtl_prompts.system(run.rules), prompt=prompt, cwd=project.root,
                      builtin_tools=["Read", "Grep", "Glob", "Write", "Edit"], sdk_tools=tools(), output_model=VModuleResult,
-                     deny_dirs=[project.model_dir, project.tb_dir, lay.tb, lay.sva],  # independence: never the testbench / SVA
+                     deny_dirs=[project.model_dir, project.tb_dir, lay.tb, lay.sva, project.build_dir],  # independence: never the testbench / SVA, nor old tool output
                      write_dirs=[lay.rtl], write_files=[path], max_turns=ctx.cfg.rtl.max_turns)
 
     def _snapshot(self, run: _Run, pm: PlanModule) -> dict:

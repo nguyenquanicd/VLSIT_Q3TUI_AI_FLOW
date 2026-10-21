@@ -77,11 +77,9 @@ class StepContext:
         from q3tui.llm import roles
 
         if self.engine.session_mode() == "flow":  # the flow's one session (flows/*.yaml `session: flow`), like one conversation
-            # pipeline.parallel_rtl_tb + parallel_multi_agent: tb runs alongside rtl in its own session instead
-            # (engine._run_parallel sets this for the duration of that parallel run only)
-            # reviewers and the flow file's `fresh_steps` (vlsit: spec, parse, config — their prompts carry all they need) run fresh
+            # reviewers and the flow file's `fresh_steps` (their prompts carry all they need) run fresh
             fresh = roles.FLOW_FRESH.search(stage.name) or self.emit.step in self.engine.flow.fresh_steps
-            role = None if fresh else self.engine._step_role_override.get(self.emit.step, "flow")
+            role = None if fresh else "flow"
         else:
             role = roles.role_of(stage.name) if self.cfg.team.enabled else None
             if role and self.cfg.team.unit_sessions == "own" and roles.unit_level(stage.name):

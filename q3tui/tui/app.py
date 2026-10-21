@@ -59,7 +59,7 @@ HELP = (
     "Commands: /run [from] [to] · /stop · /approve <step>|all [--force] · /change <step> <text> · /answer <id> <text> · /gate <step> <mode> · /gates · "
     "/model [id] [--save] · /effort <level> [--save] · /specreview on|off · /autoapprove on|off · /autoanswer on|off · "
     "/autoconfirm on|off · "
-    "/parallel on|off [--multi-agent|--shared] [--save] · /settings [tab] · /stats [reset] · "
+    "/settings [tab] · /stats [reset] · "
     "/import <path> [kind] · /reset <step> [--only] · /status · /open <file> · /cost [reset] · /newchat · /help · /quit. Anything else goes to the assistant."
 )
 
@@ -1415,11 +1415,6 @@ class Q3TUIApp(App):
                 if not args or args[0] not in ("on", "off"):
                     raise EngineError(f"usage: /specreview on|off [--save]  (now: {'on' if self.project.cfg.spec.self_review else 'off'})")
                 self.ops.set_spec_review(args[0] == "on", save="--save" in args)
-            elif cmd == "parallel":
-                if not args or args[0] not in ("on", "off"):
-                    raise EngineError("usage: /parallel on|off [--multi-agent|--shared] [--save]")
-                multi_agent = True if "--multi-agent" in args else (False if "--shared" in args else None)
-                self.ops.set_parallel_rtl_tb(args[0] == "on", multi_agent=multi_agent, save="--save" in args)
             elif cmd == "cost":
                 if args and args[0] == "reset":
                     self.ops.reset_cost()

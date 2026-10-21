@@ -124,7 +124,7 @@ class Step(RtlFlowStep):
         for attempt in range(3):
             stage = Stage(name="csr_map" if not attempt else "csr_map_fix", system_prompt=SYSTEM, prompt=self._prompt(ctx, snap, current, changed, problems, index),
                           cwd=project.root, builtin_tools=["Read", "Grep", "Glob"], sdk_tools=csr_tools(ts, self.tool(engine), work), add_dirs=skillmod.add_dirs(skills),
-                          output_model=CsrMap, deny_dirs=[project.tb_dir, project.model_dir, project.src_dir / "tb", project.src_dir / "sva", self.rtl_dir(engine)])
+                          output_model=CsrMap, deny_dirs=[project.tb_dir, project.model_dir, project.build_dir, project.src_dir / "tb", project.src_dir / "sva", self.rtl_dir(engine)])
             m: CsrMap = (await ctx.llm(stage)).output
             if not m.has_registers:
                 return m
