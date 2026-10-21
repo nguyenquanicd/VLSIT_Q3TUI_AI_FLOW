@@ -1,7 +1,7 @@
 """The waiver review of the Sanity flow (`<role>_waivers`): one decision per violation (`schemas/<role>_waivers.json`).
 
 Deterministic first: the report is ground truth (code reads it, code writes the waivers). One read-only LLM stage per batch of violations reads
-the RTL, the SDC and the spec, applies the knowledge (`<step>/md/knowledge.md`, the project's `sanity/<role>_knowledge.md`) and decides each one:
+the RTL, the SDC and the spec, applies the knowledge (`<step>/md/knowledge.md`, the project's `config/sanity/<role>_knowledge.md`) and decides each one:
 
   waive   safe, with the evidence cited                      → a `waive_*` command (the `<role>_check` step applies it)
   fix_rtl the RTL is unprotected                              → a scoped change request for the owner flow's `rtl` step (`sanity_handoff`)
@@ -24,7 +24,7 @@ from q3tui.llm.runtime import Stage
 from q3tui.pipeline.base import StepContext
 
 BATCH = 40  # violations per LLM stage (option `batch`)
-SDC_OPTIONS = [{"label": "I will update the SDC", "description": "you change sdc/ (sdc_add / sdc_set, the SDC tab); the analysis runs again"},
+SDC_OPTIONS = [{"label": "I will update the SDC", "description": "you change constraints/sdc/ (sdc_add / sdc_set, the SDC tab); the analysis runs again"},
                {"label": "No SDC change: decide again", "description": "the review looks again, with this answer, for a design reason"}]
 
 
@@ -38,10 +38,10 @@ class WaiverStep(SanityStep):
         return self.skill_path / "md" / "knowledge.md"
 
     def project_knowledge(self, engine) -> Path:
-        return self.sanity_dir(engine) / f"{self.role}_knowledge.md"
+        return engine.project.config_dir / "sanity" / f"{self.role}_knowledge.md"
 
     def answers_file(self, engine) -> Path:
-        return self.sanity_dir(engine) / f"{self.role}_answers.json"
+        return engine.project.reviews_dir / f"{self.role}_answers.json"
 
     def answers(self, engine) -> dict[str, str]:
         return read_json(self.answers_file(engine), {}) or {}
@@ -70,7 +70,7 @@ class WaiverStep(SanityStep):
     # -- the review -------------------------------------------------------------------------------
 
     def _knowledge_hash(self, engine) -> str:
-        return sha256_json(waivers.knowledge(self.knowledge_file(), engine.project.root, self.role))[:12]
+        return sha256_json(waivers.knowledge(self.knowledge_file(), engine.project.config_dir, self.role))[:12]
 
     def _applied(self, engine) -> str:
         """What the analysis script adds after `read_sdc` (clock groups, resets, your extra Tcl): the SDC files alone do not show it."""
@@ -97,7 +97,7 @@ class WaiverStep(SanityStep):
             lines.append(f"- **{v['id']}** {v['severity']} `{v['tag']}`: {v['message'][:300]}" + (f"\n  fields: {fields}" if fields else ""))
             if answers.get(waivers.sig_id(role, v)):
                 lines.append(f"  The user answered: {answers[waivers.sig_id(role, v)]} (settled: follow it, do not ask again)")
-        lines += ["", waivers.knowledge(self.knowledge_file(), engine.project.root, role)]
+        lines += ["", waivers.knowledge(self.knowledge_file(), engine.project.config_dir, role)]
         return "\n".join(lines)
 
     def _validate(self, engine, out: Review, batch: list[dict], modules: list[str], answers: dict[str, str]) -> list[dict]:
@@ -205,7 +205,7 @@ class WaiverStep(SanityStep):
         pending = self.pending_handoff(engine)
         if not pending:
             return None
-        owner = str(self.options.get("handoff_flow") or "vlsit")
+        owner = str(self.options.get("handoff_flow") or "rtl")
         return {"title": f"Hand {len(pending)} {self.role.upper()} fix(es) to '{owner}' and switch to it?",
                 "detail": f"{', '.join(i['id'] for i in pending)}: each becomes a scoped change request of the {owner} step that owns it (rtl / spec); run it there "
                           f"to apply them, then come back and run {engine.flow.name} again. No keeps them proposed (hand off later with sanity_handoff).",

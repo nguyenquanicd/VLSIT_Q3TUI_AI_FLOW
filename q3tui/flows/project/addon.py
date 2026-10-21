@@ -1,5 +1,5 @@
 """Add-on of the project settings flow (q3tui/addons.py): the actions behind its views — the assistant, `q3tui act NAME key=value` and the TUI's
-`/act` use them too. They change the project's own files (`pdks.json`, `q3tui.yaml`)."""
+`/act` use them too. They change the project's own files (`config/pdks.json`, `q3tui.yaml`)."""
 
 from __future__ import annotations
 
@@ -27,7 +27,7 @@ def register(api) -> None:
                 + f"\ncorners: {', '.join(g['corners'][:8])}{' …' if len(g['corners']) > 8 else ''} | default {g['default'] or '(first)'} | probe {g['probe_ns'] or 'default'} ns\n{g['notes']}"
                 + "".join(f"\n! {w}" for w in g["warnings"]))
 
-    @api.action("lib_add", "Add (or replace) a standard-cell technology in this project's pdks.json. Give only the folder with the .db files of its corners "
+    @api.action("lib_add", "Add (or replace) a standard-cell technology in this project's config/pdks.json. Give only the folder with the .db files of its corners "
                 "and the rest is filled in by reading it (an LLM stage, checked by code); anything you give — the id, name, node, … — wins. The ASIC "
                 "flow's dialogs then offer it, technology then corner.",
                 {"folder": "the folder with its .db files (searched below it), or a glob", "id": "short id (letters, digits; default: from the folder)",
@@ -44,7 +44,7 @@ def register(api) -> None:
             note = (" — " + g["notes"] if g["notes"] else "") + "".join(f" (! {w})" for w in g["warnings"])
         return ops._log("libraries", common.add_entry(ops.project, id, folder, title, node_nm, default, probe_ns, include) + note)
 
-    @api.action("lib_remove", "Remove a technology from this project's pdks.json (the built-in open-source ones are not in it).", {"id": "the technology id"})
+    @api.action("lib_remove", "Remove a technology from this project's config/pdks.json (the built-in open-source ones are not in it).", {"id": "the technology id"})
     def lib_remove(ops, id: str) -> str:
         return ops._log("libraries", common.remove_entry(ops.project, id))
 
@@ -75,7 +75,7 @@ def register(api) -> None:
         return ops.apply_settings({hints.LIBRARY_OPTION: path}, save=True)
 
     @api.action("tool_set", "Change a tool role of this project: its command, the modules loaded for it (besides the global ones), its time limit, its log reader. "
-                "Saved to the project's tools.json (created from the built-in preset when there is none, so the other roles stay) or tools.roles of q3tui.yaml.",
+                "Saved to the project's config/tools.json (created from the built-in preset when there is none, so the other roles stay) or tools.roles of q3tui.yaml.",
                 {"role": "the role (lint, synth, fpga_synth, asic_synth, …)", "cmd": "the command line, with {placeholders} (empty: keep)",
                  "modules": "modules loaded for this role, separated by spaces (empty: keep)", "timeout_s": "time limit in seconds (empty: keep)",
                  "parse": "the log reader (vcs, dc, verilator, iverilog, yosys, vivado, generic; empty: keep)", "description": "what the role does (empty: keep)"},

@@ -87,7 +87,7 @@ def _project_rows(app: "Q3TUIApp") -> list[tuple]:
 
 def _project_detail(app: "Q3TUIApp", key: str) -> str:
     if key.startswith("info."):
-        return {"info.root": "The project folder: deliverables (`spec/`, `src/`, …), `q3tui.yaml`, `tools.json`, `pdks.json` and `.q3tui/` (state).",
+        return {"info.root": "The project folder: deliverables (`spec/`, `src/`, `docs/`, …), `q3tui.yaml`, `config/` (tools.json, pdks.json) and `.q3tui/` (state).",
                 "info.config": "Every setting you change here is saved to this file (`q3tui.yaml`); a setting not in it has its default.",
                 "info.flow": "`pipeline.flow` of `q3tui.yaml`: the flow the project opens in. **F** (or `/flow`) moves this session to another flow without changing it."}.get(key, "")
     found = next(((t, s) for t, s in _settings(app) if s.path == key), None)
@@ -132,7 +132,7 @@ def _tool_detail(app: "Q3TUIApp", key: str) -> str:
         return ""
     return (f"**{r['role']}** — {'found' if r['found'] else '**not found**'}\n\n{r['description'] or ''}\n\n- command: `{r['cmd'] or '(not defined)'}`\n- modules: {', '.join(r['modules']) or 'none'}\n"
             f"- from: {r['from']}\n- used by: {', '.join(r['used_by']) or '–'}\n- log reader: {r.get('parse', '–')}\n\n"
-            "Enter / `e` edits the role (saved to the project's `tools.json`); `m` sets the modules loaded before every tool; `c` checks again.")
+            "Enter / `e` edits the role (saved to the project's `config/tools.json`); `m` sets the modules loaded before every tool; `c` checks again.")
 
 
 class ToolsTab(_Tab):
@@ -173,10 +173,10 @@ class ToolsTab(_Tab):
                   ("parse", "Log reader ((keep): the role's own patterns stay)", parse, "choice", [self.KEEP, *readers])]
         self._ask("Add a tool" if g.get("role") else "Add a tool (by hand)", fields,
                   lambda v: self._act("tool_set", role=common.slug(v["role"]), cmd=v["cmd"].strip(), modules=v["modules"].strip(), parse="" if v["parse"] == self.KEEP else v["parse"], description=g.get("description", "")),
-                  hint=(note + "\n" if note else "") + "saved to the project's tools.json · ctrl+s saves · Esc cancels")
+                  hint=(note + "\n" if note else "") + "saved to the project's config/tools.json · ctrl+s saves · Esc cancels")
 
     def action_edit(self) -> None:
-        """Enter / e: the command, the modules and the time limit of the highlighted role (saved to the project's tools.json)."""
+        """Enter / e: the command, the modules and the time limit of the highlighted role (saved to the project's config/tools.json)."""
         key = self.current_key()
         r = next((r for r in common.load_tool_rows(self.capp.project) or [] if r["role"] == key), None)
         if r is None:
@@ -186,7 +186,7 @@ class ToolsTab(_Tab):
                   ("timeout_s", "Time limit (s; empty: keep)", str(r.get("timeout_s") or ""), "line")]
         self._ask(f"Tool role {r['role']}", fields,
                   lambda v: self._act("tool_set", role=r["role"], cmd=v["cmd"].strip(), modules=v["modules"].strip(), timeout_s=v["timeout_s"].strip()),
-                  hint=f"saved to the project's tools.json (the role's log reader stays: {r.get('parse', '–')}) · ctrl+s saves · Esc cancels")
+                  hint=f"saved to the project's config/tools.json (the role's log reader stays: {r.get('parse', '–')}) · ctrl+s saves · Esc cancels")
 
     def action_check(self) -> None:
         """c: look for every tool (a shell per role loads the modules: a few seconds, in a thread)."""
@@ -246,7 +246,7 @@ def _lib_detail(app: "Q3TUIApp", key: str) -> str:
         return ""
     corners = pdks._corners(e["files"]) if e["files"] else ()
     body = "\n".join(f"- `{c}` — `{p}`" for c, p in corners[:40]) + (f"\n- … {len(corners) - 40} more" if len(corners) > 40 else "")
-    where = "this project's `pdks.json`" if e["source"] == "project" else "the built-in catalog (open-source PDKs)"
+    where = "this project's `config/pdks.json`" if e["source"] == "project" else "the built-in catalog (open-source PDKs)"
     return (f"**{e.get('title', e['id'])}** — {e.get('node_nm') or '?'} nm · from {where}\n\n- globs: {', '.join(f'`{g}`' for g in e.get('globs', []))}\n"
             + (f"- include: `{e['include']}`\n" if e.get("include") else "") + f"- default corner: `{e.get('default') or '(first)'}` · estimate probe: {e.get('probe_ns') or 'default'} ns\n\n"
             + (f"**Corners ({len(corners)})**\n\n{body}\n\n" if corners else "_No `.db` file matches here: the technology is not offered until it does._\n\n")
@@ -329,7 +329,7 @@ class LibTab(_Tab):
                 self._act("lib_use", id=common.slug(ident))
 
         self._ask(f"Technology {e['id']}" if existing else "Add a technology", fields, apply,
-                  hint=(note + "\n" if note else "") + "ctrl+s saves to this project's pdks.json · Esc cancels", buttons=[("scan", "Scan the folder", scan)])
+                  hint=(note + "\n" if note else "") + "ctrl+s saves to this project's config/pdks.json · Esc cancels", buttons=[("scan", "Scan the folder", scan)])
 
     def action_remove(self) -> None:
         key = self.current_key()

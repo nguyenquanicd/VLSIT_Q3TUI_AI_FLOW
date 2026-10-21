@@ -22,8 +22,8 @@ class Step(ProjectStep):
             flows.find_flow(cfg.pipeline.flow, project.root)
         except Exception as exc:  # noqa: BLE001
             problems.append(f"pipeline.flow: {exc}")
-        folders = {n: str(getattr(cfg.project, n)) for n in ("spec_dir", "req_dir", "schemas_dir", "src_dir", "docs_dir", "state_dir")}
-        files = {n: (project.root / n).is_file() for n in ("q3tui.yaml", "tools.json", "pdks.json")}
+        folders = {n: str(getattr(cfg.project, n)) for n in ("spec_dir", "config_dir", "constraints_dir", "schemas_dir", "reviews_dir", "reports_dir", "src_dir", "docs_dir", "build_dir", "state_dir")}
+        files = {n: ((project.root if n == "q3tui.yaml" else project.config_dir) / n).is_file() for n in ("q3tui.yaml", "tools.json", "pdks.json")}
         self.write_report(ctx.engine, {"root": str(project.root), "flow": cfg.pipeline.flow, "folders": folders, "files": files, "problems": problems,
                                        "config": project.rel(Path(cfg.source)) if getattr(cfg, "source", "") else "(defaults)"})
         for p in problems:

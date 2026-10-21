@@ -85,10 +85,10 @@ def waive_tcl(violations: list[dict], items: list[dict], rtl: str, role: str) ->
     return "\n".join(lines) + "\n", skipped
 
 
-def knowledge(builtin: Path, project_root: Path, role: str) -> str:
-    """The cases the review applies: the flow's (`<step>/md/knowledge.md`, K1…) then the project's (`sanity/<role>_knowledge.md`, U1…: they win)."""
+def knowledge(builtin: Path, config_dir: Path, role: str) -> str:
+    """The cases the review applies: the flow's (`<step>/md/knowledge.md`, K1…) then the project's (`config/sanity/<role>_knowledge.md`, U1…: they win)."""
     parts = []
-    for label, f in (("Built-in knowledge", builtin), ("Project knowledge (wins over the built-in cases)", project_root / "sanity" / f"{role}_knowledge.md")):
+    for label, f in (("Built-in knowledge", builtin), ("Project knowledge (wins over the built-in cases)", config_dir / "sanity" / f"{role}_knowledge.md")):
         if f.is_file() and f.read_text(errors="replace").strip():
             parts.append(f"## {label}\n\n{f.read_text(errors='replace').strip()}")
     return "\n\n".join(parts) or f"(no {role.upper()} knowledge: waive only what you can fully justify from the RTL, the SDC and the spec; ask otherwise)"

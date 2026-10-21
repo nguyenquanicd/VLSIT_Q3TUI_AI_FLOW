@@ -2,7 +2,7 @@
   "_comment": "Default tool roles of the RTL flow (docs/spec/rtl-flow.md): Verible (open source), used when no tools.json / tools.roles of the project defines the role. `lint`, `synth`, `sim`, `run` come from the project's tool set (the built-in Synopsys preset when it has none). verible_lint exits 1 when it finds something: that is a result, not a failure.",
   "roles": {
     "verible_lint": {"cmd": "verible-verilog-lint {args} {files}", "parse": "verible", "ok_returncodes": [0, 1], "modules": [], "timeout_s": 600,
-                     "description": "Verible style / lint check of the RTL files with the flags Q3TUI wrote from the rules (rtl/style_lint/verible.flags)"},
+                     "description": "Verible style / lint check of the RTL files with the flags Q3TUI wrote from the rules (src/rtl/style_lint/verible.flags)"},
     "csr_gen": {"cmd": "{python} {tool}/CSR_Generation.py {workbook} {sheet}", "parse": {"error": ["^Traceback", "Error:"], "warning": []}, "ok_returncodes": [0], "timeout_s": 300,
                 "description": "APB-CSR-Generator (https://github.com/nguyenquanicd/APB-CSR-Generator): reads the register-map workbook, writes RTL/<module>.sv, RTL/models/m_vlsi_synch.sv and Debug/debug.json into its working directory. {python} is Q3TUI's interpreter (it has openpyxl); {tool} is the generator's folder"},
     "verible_format": {"cmd": "verible-verilog-format {args} {files}", "parse": "verible", "ok_returncodes": [0], "modules": [], "timeout_s": 600,

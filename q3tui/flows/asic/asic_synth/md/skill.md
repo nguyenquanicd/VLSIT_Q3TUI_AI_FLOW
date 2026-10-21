@@ -8,6 +8,6 @@ options:
   compile: compile_ultra
   min_slack_ns: 0
   max_area_um2: null
-view: [asic/reports/*.rpt, asic/netlist/*.v]
+view: [build/syn/asic/reports/*.rpt, build/syn/asic/netlist/*.v]
 ---
-Design Compiler on the RTL with `sdc/sdc.tcl` and the library `library` (a `.db`, or a list of them: Settings → asic_synth, or `options.library`). Writes the netlist (`asic/netlist/<top>.v`, `.ddc`, `.sdc`, and the SVF Formality needs) and the area / timing / QoR / power / constraint reports. The clock is the SDC's (the FPGA flow's); a clock with an *ASIC MHz* in the SDC tab gets that frequency here instead (rendered into `asic/sdc/`, the FPGA's `sdc/` is not touched). The gate is your review of the numbers against `min_slack_ns` and `max_area_um2`.
+Design Compiler on the RTL with `constraints/sdc/sdc.tcl` and the library `library` (a `.db`, or a list of them: Settings → asic_synth, or `options.library`). Writes the netlist (`build/syn/asic/netlist/<top>.v`, `.ddc`, `.sdc`, and the SVF Formality needs) and the area / timing / QoR / power / constraint reports. The clock is the SDC's (the FPGA flow's); a clock with an *ASIC MHz* in the SDC tab gets that frequency here instead (rendered into `build/syn/asic/sdc/`, the FPGA's `constraints/sdc/` is not touched). The gate is your review of the numbers against `min_slack_ns` and `max_area_um2`.

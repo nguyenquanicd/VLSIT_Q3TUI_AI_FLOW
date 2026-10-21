@@ -56,13 +56,13 @@ def test_scan_groups_the_db_files_by_folder(proj):
 def test_adding_a_technology_writes_the_projects_pdks_json(proj):
     msg = common.add_entry(proj, "Cells 65", str(proj.root / "pdk" / "cells65" / "lib"), "Cells 65 nm LP", "65", default="tt_1p2v", probe_ns="0.5", include="^cells65_")
     assert "'cells_65'" in msg and "3 corner(s)" in msg  # (tech.db does not match `include`)
-    data = json.loads((proj.root / "pdks.json").read_text())
+    data = json.loads((proj.root / "config" / "pdks.json").read_text())
     assert data["pdks"] == [{"id": "cells_65", "title": "Cells 65 nm LP", "node_nm": 65, "globs": [str(proj.root / "pdk" / "cells65" / "lib" / "*.db")],
                              "include": "^cells65_", "default": "tt_1p2v", "probe_ns": 0.5}]
     tech = next(p for p in pdks.catalog(proj) if p.id == "cells_65")  # the ASIC flow's dialogs offer it
     assert [c for c, _ in tech.corners] == ["ff_1p32v", "ss_1p08v", "tt_1p2v"] and tech.default_path().endswith("cells65_tt_1p2v.db") and tech.probe_ns == 0.5
     common.add_entry(proj, "cells_65", str(proj.root / "pdk" / "cells65" / "lib" / "*.db"), "Renamed")  # the same id replaces it
-    assert [e["title"] for e in json.loads((proj.root / "pdks.json").read_text())["pdks"]] == ["Renamed"]
+    assert [e["title"] for e in json.loads((proj.root / "config" / "pdks.json").read_text())["pdks"]] == ["Renamed"]
 
 
 def test_what_cannot_be_added_says_why(proj):
@@ -74,15 +74,16 @@ def test_what_cannot_be_added_says_why(proj):
         common.add_entry(proj, "x", str(proj.root / "pdk" / "cells65" / "lib"), include="^nothing")
     with pytest.raises(ValueError, match="needs an id"):
         common.add_entry(proj, "  ", str(proj.root / "pdk" / "cells65" / "lib"))
-    assert not (proj.root / "pdks.json").exists()  # nothing half written
-    (proj.root / "pdks.json").write_text("{not json")
+    assert not (proj.root / "config" / "pdks.json").exists()  # nothing half written
+    (proj.root / "config").mkdir(exist_ok=True)
+    (proj.root / "config" / "pdks.json").write_text("{not json")
     with pytest.raises(ValueError, match="not valid JSON"):
         common.add_entry(proj, "x", str(proj.root / "pdk" / "cells65" / "lib"))
 
 
 def test_removing_a_technology(proj):
     common.add_entry(proj, "mine", str(proj.root / "pdk" / "cells28" / "lib"))
-    assert "removed" in common.remove_entry(proj, "mine") and json.loads((proj.root / "pdks.json").read_text())["pdks"] == []
+    assert "removed" in common.remove_entry(proj, "mine") and json.loads((proj.root / "config" / "pdks.json").read_text())["pdks"] == []
     with pytest.raises(ValueError, match="built-in technology"):
         common.remove_entry(proj, "gf180")
     with pytest.raises(ValueError, match="no technology 'ghost'"):
@@ -259,12 +260,12 @@ def test_lib_add_with_only_the_folder_uses_the_llm_and_what_you_give_wins(proj, 
     ops = Ops(Engine(proj))
     msg = ops.run_action("lib_add", folder=str(proj.root / "pdk" / "cells65"), title="My name")
     assert "'cells_65'" in msg and "Typical corner tt_1p2v" in msg and len(fake.stages) == 1
-    e = json.loads((proj.root / "pdks.json").read_text())["pdks"][0]
+    e = json.loads((proj.root / "config" / "pdks.json").read_text())["pdks"][0]
     assert (e["id"], e["title"], e["node_nm"], e["default"], e["include"], e["probe_ns"]) == ("cells_65", "My name", 65, "tt_1p2v", "^cells65_", 0.5)  # the title was given: it wins
     ops.run_action("lib_add", id="c28", folder=str(proj.root / "pdk" / "cells28" / "lib"))  # an id: no LLM
     assert len(fake.stages) == 1
     assert "cells_65 | Cells 65 nm LP | 65 nm | Acme" in ops.run_action("lib_identify", folder=str(proj.root / "pdk" / "cells65")) and len(fake.stages) == 2
-    assert [e["id"] for e in json.loads((proj.root / "pdks.json").read_text())["pdks"]] == ["cells_65", "c28"]  # (identify wrote nothing)
+    assert [e["id"] for e in json.loads((proj.root / "config" / "pdks.json").read_text())["pdks"]] == ["cells_65", "c28"]  # (identify wrote nothing)
 
 
 async def test_the_libraries_view_adds_with_only_a_path(proj, monkeypatch):
@@ -307,7 +308,7 @@ async def test_the_libraries_view_adds_with_only_a_path(proj, monkeypatch):
         keys = [table.coordinate_to_cell_key((i, 0)).row_key.value for i in range(table.row_count)]
         assert "cells_65" in keys
     assert hints.asic_library(proj).endswith("cells65_tt_1p2v.db")  # used as the ASIC library: its default corner
-    assert json.loads((proj.root / "pdks.json").read_text())["pdks"][0]["default"] == "tt_1p2v"
+    assert json.loads((proj.root / "config" / "pdks.json").read_text())["pdks"][0]["default"] == "tt_1p2v"
 
 
 async def test_when_the_llm_cannot_the_form_opens_to_fill_in_by_hand(proj, monkeypatch):
@@ -374,7 +375,7 @@ async def test_enter_edits_a_technology_and_u_picks_the_corner(proj):
         scr.action_save()
         await pilot.pause()
     assert hints.asic_library(Project.open(proj.root)).endswith("cells65_ff_1p32v.db")  # saved to q3tui.yaml
-    assert json.loads((proj.root / "pdks.json").read_text())["pdks"][0]["default"] == "ss_1p08v"  # (u does not change the technology's default)
+    assert json.loads((proj.root / "config" / "pdks.json").read_text())["pdks"][0]["default"] == "ss_1p08v"  # (u does not change the technology's default)
 
 
 async def test_enter_edits_a_setting_too(proj):
@@ -404,7 +405,7 @@ def test_a_role_is_saved_where_the_project_keeps_its_roles(proj):
     # no tools file and no inline roles: tools.json is created from the preset, so the other roles stay
     msg = common.set_role(proj, "lint", cmd="mylint -f {filelist}", modules="my/lint", timeout_s="120")
     assert msg == "tool role 'lint' saved to tools.json"
-    data = json.loads((proj.root / "tools.json").read_text())
+    data = json.loads((proj.root / "config" / "tools.json").read_text())
     assert data["roles"]["lint"]["cmd"] == "mylint -f {filelist}" and data["roles"]["lint"]["modules"] == ["my/lint"] and data["roles"]["lint"]["timeout_s"] == 120
     assert {"synth", "sim", "run"} <= set(data["roles"]) and "_comment" not in data  # (the preset's others are kept)
     assert data["roles"]["lint"]["parse"] == "vcs"  # what the role had stays
@@ -412,7 +413,7 @@ def test_a_role_is_saved_where_the_project_keeps_its_roles(proj):
 
     assert toolmod.load_tools(Project.open(proj.root).cfg, proj.root).roles["lint"].cmd == "mylint -f {filelist}"  # and is read at once
     common.set_role(proj, "synth", cmd="dc_shell -f {script} -x")  # another role: updates the same file
-    assert json.loads((proj.root / "tools.json").read_text())["roles"]["lint"]["cmd"] == "mylint -f {filelist}"
+    assert json.loads((proj.root / "config" / "tools.json").read_text())["roles"]["lint"]["cmd"] == "mylint -f {filelist}"
     with pytest.raises(ValueError, match="not defined: give its command"):
         common.set_role(proj, "nonesuch")
     assert "saved to tools.json" in common.set_role(proj, "nonesuch", cmd="x {a}")
@@ -420,7 +421,7 @@ def test_a_role_is_saved_where_the_project_keeps_its_roles(proj):
 
 def test_a_role_of_a_flows_default_becomes_the_projects_own(proj):
     common.set_role(proj, "fpga_synth", modules="xilinx/vivado/2024.1")  # the FPGA flow's default (Vivado), another module
-    r = json.loads((proj.root / "tools.json").read_text())["roles"]["fpga_synth"]
+    r = json.loads((proj.root / "config" / "tools.json").read_text())["roles"]["fpga_synth"]
     assert r["modules"] == ["xilinx/vivado/2024.1"] and r["cmd"].startswith("vivado -mode batch") and r["parse"] == "vivado"
 
 
@@ -428,8 +429,9 @@ def test_roles_inline_in_q3tui_yaml_and_other_files(proj):
     (proj.root / "q3tui.yaml").write_text("pipeline: {flow: project}\ntools:\n  roles:\n    mylint: {cmd: \"mylint {file}\", parse: generic}\n")
     proj = Project.open(proj.root)
     assert "saved to q3tui.yaml" in common.set_role(proj, "mylint", cmd="mylint2 {file}")
-    assert Project.open(proj.root).cfg.tools.roles["mylint"].cmd == "mylint2 {file}" and not (proj.root / "tools.json").exists()
-    (proj.root / "tools.yaml").write_text("roles: {}\n")
+    assert Project.open(proj.root).cfg.tools.roles["mylint"].cmd == "mylint2 {file}" and not (proj.root / "config" / "tools.json").exists()
+    (proj.root / "config").mkdir(exist_ok=True)
+    (proj.root / "config" / "tools.yaml").write_text("roles: {}\n")
     with pytest.raises(ValueError, match="tools.yaml: edit it by hand"):
         common.set_role(Project.open(proj.root), "mylint", cmd="x")
 
@@ -469,7 +471,7 @@ async def test_enter_edits_a_tool_role(proj, monkeypatch):
         app.screen.query_one("#f-cmd", Input).value = "fm_shell -f {script} -no_gui"
         app.screen.action_save()
         await pilot.pause()
-    assert json.loads((proj.root / "tools.json").read_text())["roles"]["asic_lec"]["cmd"] == "fm_shell -f {script} -no_gui"
+    assert json.loads((proj.root / "config" / "tools.json").read_text())["roles"]["asic_lec"]["cmd"] == "fm_shell -f {script} -no_gui"
 
 
 async def test_the_tools_view_checks_and_sets_modules(proj, monkeypatch):
@@ -587,7 +589,7 @@ def test_a_roles_own_log_patterns_are_kept_when_the_llm_says_generic(proj, tmp_p
     g = common.identify_tool(Ops(Engine(proj)), str(fm.parent))
     assert g["role"] == "asic_lec" and g["parse"] == "" and g["warnings"] == []  # asic_lec reads its log with its own error / warning patterns: "generic" would lose them
     common.set_role(proj, "asic_lec", cmd=g["cmd"], modules=" ".join(g["modules"]), parse=g["parse"])
-    r = json.loads((proj.root / "tools.json").read_text())["roles"]["asic_lec"]
+    r = json.loads((proj.root / "config" / "tools.json").read_text())["roles"]["asic_lec"]
     assert isinstance(r["parse"], dict) and r["parse"]["error"]  # (still the patterns)
 
 
@@ -613,12 +615,12 @@ def test_tool_add_with_only_a_path(proj, tooldir, monkeypatch):
     ops = Ops(Engine(proj))
     shown = ops.run_action("tool_identify", path=str(tooldir))
     assert shown.startswith("role sim | vsim -c -do {tc}") and "log reader vcs" in shown and "! module(s) not available here, dropped: not/a/module" in shown
-    assert not (proj.root / "tools.json").exists()  # (identify writes nothing)
+    assert not (proj.root / "config" / "tools.json").exists()  # (identify writes nothing)
     msg = ops.run_action("tool_add", path=str(tooldir), parse="verilator")  # what you give wins
     assert msg.startswith("tool role 'sim' saved to tools.json") and "vsim in batch mode" in msg
-    r = json.loads((proj.root / "tools.json").read_text())["roles"]["sim"]
+    r = json.loads((proj.root / "config" / "tools.json").read_text())["roles"]["sim"]
     assert r["cmd"] == "vsim -c -do {tc}" and r["parse"] == "verilator" and r["modules"] == ["vendor/sim/1.2"] and r["description"] == "Simulate with VendorSim"
-    assert {"lint", "synth", "run"} <= set(json.loads((proj.root / "tools.json").read_text())["roles"])  # the other roles stay
+    assert {"lint", "synth", "run"} <= set(json.loads((proj.root / "config" / "tools.json").read_text())["roles"])  # the other roles stay
     n = len(fake.stages)
     ops.run_action("tool_add", path=str(tooldir), role="sim", cmd="vsim -c {tc} -l log")  # role and command: no LLM
     assert len(fake.stages) == n
@@ -656,7 +658,7 @@ async def test_the_tools_view_adds_a_tool_with_only_a_path(proj, tooldir, monkey
         scr.query_one("#f-cmd", Input).value = "vsim -c -do {tc} -quiet"
         scr.action_save()
         await pilot.pause()
-    assert json.loads((proj.root / "tools.json").read_text())["roles"]["sim"]["cmd"] == "vsim -c -do {tc} -quiet"
+    assert json.loads((proj.root / "config" / "tools.json").read_text())["roles"]["sim"]["cmd"] == "vsim -c -do {tc} -quiet"
 
 
 async def test_a_tool_the_llm_cannot_identify_opens_the_form_by_hand(proj, tooldir, monkeypatch):

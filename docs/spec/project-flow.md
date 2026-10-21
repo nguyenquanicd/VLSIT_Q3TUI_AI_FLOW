@@ -3,13 +3,13 @@
 A built-in folder flow (`q3tui/flows/project/`, `q3tui --flow project`, **F** → "Project settings" at the bottom of the flow map, `/flow project`)
 for the settings of the project itself, as views you work in instead of files you edit. No LLM, no gates: the steps' runs only check and report
 (`.q3tui/project/<step>.json`); every change is made in a view (or by an action: the assistant and `q3tui act` call the same) and saved to the
-project's own files — `q3tui.yaml`, `pdks.json`. The design flows (vlsit, fpga, asic) are untouched.
+project's own files — `q3tui.yaml`, `config/pdks.json`. The design flows (spec, rtl, fpga, asic) are untouched.
 
 | Step | View | Does |
 |---|---|---|
 | `project` | **Settings**: the project root, the config file, the start-up flow, then the settings of the Settings dialog's General and LLM tabs (auto-approve, auto-answer, model, effort, budgets, icons, language, …) | Enter / `e` edits the highlighted setting in place and saves it to `q3tui.yaml` (`Ops.apply_settings`) |
-| `tools` | **Tools**: every tool role the flows know (Vivado, Design Compiler, Formality, Yosys, nextpnr, the VLSIT lint / sim roles) — tool, found ✔ / ✘, modules, where the role comes from (the project's tools.json, `tools.roles`, a flow's default, the preset) | `a` add a tool (give its path; the rest is filled in), Enter / `e` edits the role (command, modules, time limit), `c` checks which tools are found (loads the modules: a few seconds, in a thread), `m` sets the modules loaded before every tool (`tools.modules`) |
-| `libraries` | **Libraries**: the technologies of the ASIC flow's catalog (built-in open-source + the project's `pdks.json`), their corners, which corner is in use | `a` add (give the folder; the rest is filled in), Enter / `e` edit, `d` remove, `u` pick the corner used as the ASIC library |
+| `tools` | **Tools**: every tool role the flows know (Vivado, Design Compiler, Formality, Yosys, nextpnr, the lint / sim roles of the rtl flow) — tool, found ✔ / ✘, modules, where the role comes from (the project's tools.json, `tools.roles`, a flow's default, the preset) | `a` add a tool (give its path; the rest is filled in), Enter / `e` edits the role (command, modules, time limit), `c` checks which tools are found (loads the modules: a few seconds, in a thread), `m` sets the modules loaded before every tool (`tools.modules`) |
+| `libraries` | **Libraries**: the technologies of the ASIC flow's catalog (built-in open-source + the project's `config/pdks.json`), their corners, which corner is in use | `a` add (give the folder; the rest is filled in), Enter / `e` edit, `d` remove, `u` pick the corner used as the ASIC library |
 
 Enter edits the highlighted row in all three views, as in the other flows' views.
 
@@ -23,7 +23,7 @@ the cell corners (`include`: it leaves out `tech.db`, I/O, PLL, SRAM, level shif
 probe period and a note. **Code checks every claim**: the glob must be one the scan found, the `include` must compile and match files, the default corner
 must be one of the corners; what fails is dropped and shown as a warning. The form then opens **filled in** for you to review (id, name, node, default corner
 picked from the corners the files have, probe, include, *use as the ASIC library*); Scan lists what the folder holds. If the LLM cannot run (no credentials,
-no `.db`), the form opens empty to fill in by hand. Saving writes `<project>/pdks.json` (a backup of the old file goes to `.q3tui/bkp/`); the same id replaces
+no `.db`), the form opens empty to fill in by hand. Saving writes `<project>/config/pdks.json` (a backup of the old file goes to `.q3tui/bkp/`); the same id replaces
 the entry, and for a built-in technology it overrides it in this project. When the files are in several folders and the one given holds none directly,
 nothing is written and the folders are listed (name one). The built-in catalog (`q3tui/flows/asic/pdks.json`) lists open-source PDKs only; licensed ones are
 the project's.
@@ -47,7 +47,7 @@ folder it answered `asic_lec`, `fm_shell -f {script}` and the module `synopsys/f
 ## Editing a tool role (`tools`, Enter)
 
 The form changes the role's command, the modules loaded for it (besides the global ones) and its time limit; the log reader and the description stay. It is saved where
-the project keeps its roles: `tools.json` (created, from the roles the built-in preset gives, when the project has none — adding one role must not lose the others; a
+the project keeps its roles: `config/tools.json` (created, from the roles the built-in preset gives, when the project has none — adding one role must not lose the others; a
 flow's default role becomes the project's own once edited), else `tools.roles` of `q3tui.yaml`; a project that uses `tools.yaml` or a `tools.file` that is not JSON is
 told to edit it by hand.
 
@@ -60,7 +60,7 @@ identified; what you give wins), `tool_set role=… [cmd modules timeout_s parse
 ## What the runs report
 
 `project`: the flow exists, the folders, which config files exist. `tools`: how many roles are found, which are missing (warnings, not a failed step).
-`libraries`: technologies that match no file here, and a library in use that does not exist. A change of `q3tui.yaml`, `tools.json` or `pdks.json` makes
+`libraries`: technologies that match no file here, and a library in use that does not exist. A change of `q3tui.yaml`, `config/tools.json` or `config/pdks.json` makes
 the step stale.
 
 ## Not built yet

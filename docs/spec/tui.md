@@ -11,17 +11,16 @@ design is, what is running, and what needs your decision.
 ## Layout
 
 ```text
-┌─ Q3TUI · fifo_top · flow vlsit · ~/proj/fifo ─────────────── claude-opus-5-5 · $1.84 ─┐
-│ PIPELINE            │ STEP 3a · rtl   [Modules] [Synthesis] [Files] [Questions] [Log]   │
+┌─ Q3TUI · fifo_top · flow spec · ~/proj/fifo ──────────────── claude-opus-5-5 · $1.84 ─┐
+│ PIPELINE            │ STEP 1 · parse  [Requirements] [Parameters] [Files] [Questions]   │
 │                     │ ✔ NOT REVIEWED …                                                  │
 │ ✔ 0  spec           │ …                                                                 │
-│ ✔ 1  parse          │                                                                   │
-│ ✔ 2  config  auto   ├───────────────────────────────────────────────────────────────────┤
-│ ◐ 3a rtl            │ ACTIVITY — 3a rtl                                                 │
-│ · 4  tb      auto   │ 14:02:11 rtl    writing src/rtl/fifo_ctrl.sv                      │
-│ · 3b sva  0/12 SVA  │ 14:02:40 rtl    → lint  2 warnings                                │
-│ · 5  verify         │ 14:02:41        fifo_ctrl.sv:33  width mismatch on count          │
-│ · 6  doc            │ 14:03:02 rtl    → lint  clean · → synth …                         │
+│ ◐ 1  parse          │                                                                   │
+│ · 2  config  auto   ├───────────────────────────────────────────────────────────────────┤
+│                     │ ACTIVITY — 1 parse                                                │
+│                     │ 14:02:11 parse  reading spec/spec.md                              │
+│                     │ 14:02:40 parse  → 14 requirements, 3 questions                    │
+│                     │                                                                   │
 │                     │                                                                   │
 ├─────────────────────┴───────────────────────────────────────────────────────────────────┤
 │ > make the ingress depth a parameter, default 16                                        │
@@ -32,9 +31,9 @@ design is, what is running, and what needs your decision.
 
 | Area | Content |
 |---|---|
-| Header | design, the flow (`flow vlsit`), project path, model, total LLM cost for the session |
-| Pipeline | the steps **of the project's flow** (`engine.pipeline_steps`, tags from `engine.label`; the VLSIT flow: 0 spec, 1 parse, 2 config, 3a rtl, 4 tb, 3b sva, 5 verify, 6 doc): status, stale marker, open gate / question count, **gate mode badge** (`auto`, `auto-ans`; nothing = human), fix-loop iteration. Keys `1`–`9` select by position. Selecting a step filters Activity and Files to it |
-| Activity | live event stream of the running step(s): agent messages (collapsed to one line, expandable), tool calls, lint / synthesis / sim results. Steps may run in parallel (`pipeline.parallel_rtl_tb`: rtl ‖ tb), so lines are tagged |
+| Header | design, the flow (`flow spec`), project path, model, total LLM cost for the session |
+| Pipeline | the steps **of the project's flow** (`engine.pipeline_steps`, tags from `engine.label`; the spec flow: 0 spec, 1 parse, 2 config): status, stale marker, open gate / question count, **gate mode badge** (`auto`, `auto-ans`; nothing = human), fix-loop iteration. Keys `1`–`9` select by position. Selecting a step filters Activity and Files to it |
+| Activity | live event stream of the running step(s): agent messages (collapsed to one line, expandable), tool calls, lint / synthesis / sim results. Steps may run in parallel, so lines are tagged |
 | Result banner | top of each step view: the state of the result shown below it: `⚑ NOT REVIEWED` (a to approve) — or, with a specific reason for the gate still being open, `⚑ QUESTION WAITING` (blocking question(s): open the Questions tab, `o`) / `⚑ CONFIRM NEEDED` (StepDef.pending_reviews() items not confirmed: `c` / `C`) — `✔ APPROVED <time>`, `! OUT OF DATE` (old result shown), `✎ EDITED` by you, `◐ RUNNING` (previous result shown), `✖ LAST RUN FAILED` (last good result shown), `★ YOURS`, `○ NO RESULT YET`. Results are always shown when they exist |
 | Section status (spec) | per section: `✔ reviewed`, `⚑ not reviewed`, `✎ edited`, `? TBD`, `↻ change pending`, `○ missing`, `+ extra`. `v` marks a section reviewed; approving the spec marks all; regenerated sections whose text is unchanged keep their review |
 | Step view (lower panel) | follows the selected step (and the running one); see "Panels" below for how a flow's steps get theirs. **spec**: Sections (template ↔ spec.md; Enter edits the selected section's text in place, a **feedback box** under the section (`w` focuses it, `ctrl+s` sends, Esc leaves; one unsent draft per section; sent feedback is queued as a change request scoped to that section — `Ops.request_change("spec", text, section)` — shown as `↻ change pending`, and applied by the next spec run as an update of only that section), `n` add, `d` delete, `t` required/optional, `[` `]` move, `E` edit template) · Questions · Files. Other kinds: their tables, Files, Questions, Log |
@@ -50,22 +49,15 @@ The lower panel of a step comes from its **kind** (`StepDef.kind`, the `kind:` o
 - `spec` has the Sections panel above (`SpecPanel`).
 - A kind without a registered panel gets the **default panel**: the result banner, tabs **Files** (the step's outputs and
   inputs, rendered), **Questions**, **Log** (what the step did: its events, the last 300 lines).
-- The VLSIT kinds (`tui/vlsit_panels.py`) are the default panel plus tables over the JSON artifacts (each row has a detail
+- The spec flow's kinds (`tui/vlsit_panels.py`) are the default panel plus tables over the JSON artifacts (each row has a detail
   pane; missing files or keys only mean an empty table):
 
 | Kind | Tabs (before Files / Questions) |
 |---|---|
 | `vlsit_parse` | **Requirements** (REQ, category, ambiguity score, state: `review` when > 0.3, `decide` when it needs your decision; detail: text, source, SVA hint, parameters, RTL modules) · **Parameters** |
 | `vlsit_config` | **Parameters** (value, default, changed, locked, confirmed) · **Constraints** (C1–C5 ✔/✖ with rule and detail) |
-| `vlsit_rtl` | **Modules** (file, lines, `// REQ-xxx` tags, cells, area; source in the detail) · **Synthesis** (`synth_report.json`) |
-| `vlsit_tb` | **Test plan** (TC ↔ REQs, selected) · **Uncovered REQs** (no selected test case covers them) |
-| `vlsit_sva` | **Assertions** (label, module, REQs, vacuity, review status; the `// NL:` text in the detail). `c` confirm · `x` reject (asks why; the SVA step rewrites it) · `u` back to pending · `C` confirm all. Only confirmed assertions count in the RTM |
-| `vlsit_verify` | **RTM** (the six conditions per REQ, mutation score, sign-off; detail: each condition with its evidence). `v` signs the highlighted requirement off (a note is asked; refused unless RTL, SVA, TC, simulation and mutation hold), `V` takes it back · **Simulation** (per-TC results) |
-| `vlsit_doc` | Files · Questions |
 
-The pipeline list also shows `n/m SVA` (assertions confirmed) and `n/m REQ` (signed off). The keys call
-`Ops.review_property`, `Ops.confirm_properties`, `Ops.sign_req` (wrappers of `flows/vlsit/sva/review.py`); the assistant has
-the same as tools (`list_properties`, `review_property`, `confirm_all_properties`, `rtm_status`, `sign_requirement`).
+The RTL, testbench, assertion and verification panels (Modules, Test plan, Assertions, RTM) were removed with those steps.
 
 ## The picker
 
@@ -211,7 +203,7 @@ CLI, the assistant can do by prompting.** Both go through the same operations la
 | Spec content | `write_section` (write or replace one section of `spec.md` now; creates it at its template position), `set_intent`, `append_intent`, `mark_reviewed` |
 | Gates and asking | `gates`, `set_gate_mode`, `ask_user` (the picker: up to 4 questions with options, answers come back as text) |
 | Flow | `set_step_setting` (view / pass / notes), `get_skill`, `set_skill`, `get_prompt`, `set_prompt` |
-| VLSIT flow | `review_parse_requirement`, `confirm_all_requirements`, `review_config_parameter`, `confirm_all_parameters`, `list_properties`, `review_property`, `confirm_all_properties`, `rtm_status`, `sign_requirement`, `sign_all_ready_requirements` |
+| Spec flow | `review_parse_requirement`, `confirm_all_requirements`, `review_config_parameter`, `confirm_all_parameters` |
 | Pipeline | `run_steps` (start/stop/only/regenerate), `stop_run`, `approve`, `answer_question`, `request_change` (optionally for one section), `reset_step`, `import_file` (a file or a whole folder: spec documents, RTL, testbench / tests, SVA) |
 | Settings | `set_model`, `set_spec_review`, `set_auto_approve`, `set_auto_answer`, `set_auto_confirm_reviews`, `get_settings`, `set_settings`, `show_stats`, `reset_stats`, `reset_cost` |
 | Files | `Read`/`Grep`/`Glob` over the project; `Edit`/`Write` only in `spec/`, `schemas/` and `src/` (like a user in an editor); never `.q3tui/` |

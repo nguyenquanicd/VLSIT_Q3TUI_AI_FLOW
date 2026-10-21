@@ -1,10 +1,10 @@
 """Step `rtl` of the RTL flow: the VLSIT `rtl` step (RTL per module, rule check, lint, synthesis, update-not-re-run) writing to
-`rtl/`, with the project's own rules `rules/rtl_rules.md` in front of Q3TUI's default ones.
+`src/rtl/`, with the project's own rules `config/rtl_rules.md` in front of Q3TUI's default ones.
 
 The rule stack is shared with `style_lint` (flows/rtl/lib/rules.py): the generator writes to the rules the style checker
 turns into Verible flags. The user's file is an input: editing it updates the modules (`describe_changes`: "the RTL rules changed").
 
-Modules the `csr` step provides (the APB-CSR-Generator's slave and its CDC synchronizer: `rtl/csr/provided.json`) are part of the design: they
+Modules the `csr` step provides (the APB-CSR-Generator's slave and its CDC synchronizer: `src/rtl/csr/provided.json`) are part of the design: they
 are in the plan (the parent instantiates them, reads their ports, is updated when they change), in the filelist, the design lint and the synthesis,
 but this step never writes, rule-checks or fixes them: a lint finding in generated code is reported, the fix is the register map's."""
 
@@ -13,8 +13,8 @@ from __future__ import annotations
 from pathlib import Path
 
 from q3tui.flows.rtl.lib import csr, rules
-from q3tui.flows.vlsit.rtl.plan import PlanModule, RtlPlan
-from q3tui.flows.vlsit.rtl.step import RtlGenStep
+from q3tui.flows.rtl.rtl.plan import PlanModule, RtlPlan
+from q3tui.flows.rtl.rtl.gen import RtlGenStep
 from q3tui.pipeline.base import StepContext, StepFailed
 
 
@@ -22,14 +22,14 @@ class Step(RtlGenStep):
     title = "RTL (rules, lint, synthesis)"
 
     def rule_files(self) -> list[str]:
-        return rules.stack(getattr(self, "_root", None), super().rule_files())
+        return rules.stack(getattr(self, "_project", None), super().rule_files())
 
     def _provided(self, engine) -> dict[str, dict]:
         return csr.read_provided(self.lay(engine).rtl)
 
     def inputs(self, engine) -> list[Path]:
-        self._root = engine.project.root
-        user = rules.user_file(self._root)
+        self._project = engine.project
+        user = rules.user_file(self._project)
         rtl = self.lay(engine).rtl
         prov = csr.provided_file(rtl)
         return [*super().inputs(engine), *([user] if user.is_file() else []), *([prov] if prov.is_file() else []),
@@ -40,7 +40,7 @@ class Step(RtlGenStep):
         return [f for f in super().outputs(engine) if not (f.suffix == ".sv" and f.stem in own)]
 
     async def run(self, ctx: StepContext) -> None:
-        self._root = ctx.project.root
+        self._project = ctx.project
         self._provided_now = set(self._provided(ctx.engine))
         await super().run(ctx)
 

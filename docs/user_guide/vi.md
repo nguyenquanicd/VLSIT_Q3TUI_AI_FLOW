@@ -2,7 +2,7 @@
 
 Bản khác: [English](en.md).
 
-Q3TUI chạy **flow VLSIT**: `spec → parse → config → rtl ‖ tb → sva → verify → doc`. Tài liệu này hướng dẫn
+Q3TUI chạy **flow spec**: `spec → parse → config`, và **flow rtl** (`rules → csr → rtl → format → style_lint → smoke` sau cùng 3 step đó). Các step testbench, SVA, verify và doc đã bị gỡ, sẽ quay lại thành flow riêng. Tài liệu này hướng dẫn
 cách cài đặt, chạy 1 project từ đầu tới cuối, hệ thống rule kiểm tra RTL, toàn bộ setting, và mọi lệnh/phím
 bạn sẽ dùng hàng ngày.
 
@@ -56,7 +56,7 @@ q3tui                                       # mở TUI
 | Vùng | Hiển thị gì |
 |---|---|
 | **Pipeline** (trái) | Mọi step: icon trạng thái (chú thích ngay bên dưới), số thứ tự (`1`–`9` để nhảy tới), mode của gate hoặc thứ step đang chờ (`review 2?`). |
-| **Step view** (trên, phải) | Kết quả của step đang chọn, chia tab (Requirements / Parameters / Assertions / RTM / Files / Questions / …). Banner phía trên cho biết step cần gì từ bạn. |
+| **Step view** (trên, phải) | Kết quả của step đang chọn, chia tab (Requirements / Parameters / Files / Questions / …). Banner phía trên cho biết step cần gì từ bạn. |
 | **Activity** (dưới, phải) | Log trực tiếp của lần chạy, và câu trả lời của assistant. `z` để phóng to. |
 | **Thanh lệnh / chat** | `/command` (Tab để gợi ý, ↑/↓ lịch sử), hoặc gõ chữ thường để chat với assistant (`i` để focus). |
 | **Footer** | Phím tắt của vùng đang focus; `?` liệt kê tất cả. |
@@ -66,9 +66,9 @@ Kéo các đường chia (hoặc `ctrl+mũi tên`) để đổi kích thước; 
 ## 3. Flow, từng bước
 
 ```text
-spec ─► parse ─► config ─► rtl (3a) ─► tb (4) ─► sva (3b) ─► verify (5) ─► doc (6)
- human    auto     Gate 1   Gate 2              Gate 4    Gate 3b    Gate 5
-                   human    auto                auto      human      human
+spec ─► parse ─► config
+ human   Gate 1   Gate 2
+         human    auto
 ```
 
 | Step | Làm gì | Gate |
@@ -76,14 +76,9 @@ spec ─► parse ─► config ─► rtl (3a) ─► tb (4) ─► sva (3b) �
 | **spec** | Soạn (hoặc nhận) đặc tả IP. | human |
 | **parse** | Trích requirement (REQ-ID), parameter, bản đồ module từ spec; đánh dấu chỗ mơ hồ. | **1 · human** |
 | **config** | Chốt giá trị parameter theo change request của bạn; check constraint lúc elaboration. | 2 · auto (tự ký khi constraint pass) |
-| **rtl** | Viết từng module SystemVerilog synthesizable theo plan; lint và synthesis. | 3a · (không có gate riêng) |
-| **tb** | Viết testbench SystemVerilog thuần + test plan; compile. | 4 · auto (tự ký khi coverage đủ) |
-| **sva** | Viết SVA property cho từng requirement, bind vào RTL, chạy smoke pass check vacuity. | **3b · human** |
-| **verify** | Simulate từng test đã chọn, mutation test RTL, dựng ma trận traceability (RTM). | **5 · human** |
-| **doc** | Gộp `docs/specification.md` (và PDF) từ artifact các step khác. | — |
 
-`rtl` và `tb` chỉ cần output của `config` (không phụ thuộc lẫn nhau) — có thể chạy tuần tự (mặc định) hoặc
-**song song** (`pipeline.parallel_rtl_tb`, xem [§6](#6-settings)).
+RTL do flow `rtl` tạo (`pipeline.flow: rtl`, `q3tui --flow rtl run`): flow này dùng lại 3 step trên và thêm rules, CSR, RTL,
+format + style lint bằng Verible, và smoke test (docs/spec/rtl-flow.md).
 
 **Update, không chạy lại từ đầu:** sửa 1 requirement, 1 parameter, hay gửi change request chỉ khiến đúng
 phần bị ảnh hưởng chạy lại — các step trước và approval đã duyệt vẫn giữ nguyên, trừ khi thay đổi lan tới đó.
@@ -106,9 +101,8 @@ Gate là điểm dừng chờ quyết định của bạn. Mỗi gate có 1 **mo
 
 - **Blocking question** — quyết định thật sự chỉ bạn mới trả lời được (requirement mơ hồ, parameter xung
   đột...). Mở tab Questions (`o`) và trả lời.
-- **Item review chưa confirm** — assertion SVA, requirement bị đánh dấu, hoặc parameter đổi khỏi default mà
-  chưa ai xem qua. Những cái này **không** chặn gate `auto`/`auto_answer` (gate tự ký, item không tính vào
-  RTM), nhưng **có** chặn `Approve` (`a`) thường trên gate `human`, trừ khi bạn bật
+- **Item review chưa confirm** — requirement bị đánh dấu, hoặc parameter đổi khỏi default mà
+  chưa ai xem qua. Những cái này **không** chặn gate `auto`/`auto_answer` (gate tự ký, item vẫn mở), nhưng **có** chặn `Approve` (`a`) thường trên gate `human`, trừ khi bạn bật
   `pipeline.auto_confirm_reviews`.
 
 ![Hộp thoại review của gate](../images/tui-gate.svg)
@@ -124,26 +118,7 @@ khác hẳn chữ thường (vd `C` không phải `c`):
 | | `u` | Đưa về lại pending |
 | | `C` (Shift+c) | Confirm hết mọi requirement bị đánh dấu |
 | config → Parameters | `c` / `u` / `C` (Shift+c) | Tương tự, cho parameter đổi khỏi default |
-| sva → Assertions | `c` | Confirm assertion đang highlight |
-| | `x` | Reject (hỏi lý do; gửi lại `sva` thành change request đúng module) |
-| | `u` | Về lại pending |
-| | `C` (Shift+c) | Confirm hết assertion đang pending **không vacuous** (assertion chưa từng kích hoạt trong simulation không bao giờ tự confirm) |
-| verify → RTM | `v` | Sign off requirement đang highlight (cần đủ 6 điều kiện RTM) |
-| | `V` (Shift+v) | Rút lại sign-off |
-| | `S` (Shift+s) | Sign off mọi requirement đã sẵn sàng (bỏ qua cái chưa đủ điều kiện, không báo lỗi) |
 
-<table>
-<tr>
-<td width="50%"><a href="../images/tui-sva.svg"><img src="../images/tui-sva.svg" alt="sva → Assertions"></a></td>
-<td width="50%"><a href="../images/tui-verify.svg"><img src="../images/tui-verify.svg" alt="verify → RTM"></a></td>
-</tr>
-<tr>
-<td><b>sva → Assertions</b> (Gate 3b): mọi property kèm module, requirement, loại và kiểm tra vacuous; ý nghĩa
-bằng lời của property đang highlight ở bên phải.</td>
-<td><b>verify → RTM</b> (Gate 5): 6 điều kiện của từng requirement — RTL, SVA, test case, simulation,
-mutation score, sign-off của bạn.</td>
-</tr>
-</table>
 
 `/approve <step> --force` và `/approve all` bỏ qua cả blocking question *lẫn* review chưa confirm — dùng khi
 bạn đã tự đánh giá là ổn, không nên dùng theo thói quen.
@@ -155,7 +130,7 @@ deterministic** (code, không qua LLM) kiểm tra những gì kiểm tra đượ
 construct bị cấm, độ dài tên, tên file khớp tên module, v.v. LLM được đưa rule để đọc; nó không có quyền
 quyết định mình có tuân thủ hay không — code kiểm tra lại.
 
-- **Baseline mặc định:** `q3tui/flows/vlsit/rtl/rules/vlsit_rtl_rule_default.md` — rule synthesis
+- **Baseline mặc định:** `q3tui/flows/rtl/rtl/rules/rtl_rule_default.md` — rule synthesis
   ASIC (đặt tên, quy ước port DFT, construct cấm P1–P29, checklist sẵn sàng tapeout).
 - **Thêm rule riêng:** đặt file rule (vd `my_rules.md`) vào root project, liệt kê cùng với bản mặc định
   trong `pipeline.step_options.rtl.rules` ở `q3tui.yaml`:
@@ -163,7 +138,7 @@ quyết định mình có tuân thủ hay không — code kiểm tra lại.
   pipeline:
     step_options:
       rtl:
-        rules: [vlsit_rtl_rule_default.md, my_rules.md]
+        rules: [rtl_rule_default.md, my_rules.md]
   ```
   File trong project có **cùng tên** với bản mặc định sẽ ghi đè hoàn toàn (được đọc trước).
 - **Những gì đang được enforce bằng code:** tiền tố đặt tên (`i_`/`o_`/`reg_`/`w_`/pattern module/instance/
@@ -179,8 +154,7 @@ Mở bằng `,` (dialog Settings) hoặc `/settings [tab]`; mọi setting đều
 (`get_settings` / `set_settings`). Thêm `--save` vào lệnh `/command`, hoặc bỏ tick "Only for this session"
 trong dialog, để lưu vào `q3tui.yaml`; để tick (hoặc không thêm `--save`) nếu chỉ muốn thử trong session này.
 
-Dialog có 1 tab cho mỗi mảng: **General**, **Gates**, **LLM**, **Models per step**, **Spec**, **RTL** và
-**TB**.
+Dialog có 1 tab cho mỗi mảng: **General**, **Gates**, **LLM**, **Models per step**, **Spec**, **RTL**.
 
 ### General
 
@@ -190,8 +164,8 @@ Dialog có 1 tab cho mỗi mảng: **General**, **Gates**, **LLM**, **Models per
 | `pipeline.auto_answer` | bool | Chạy không giám sát: mọi gate tự approve, mọi câu hỏi (kể cả blocking) lấy default, các đề xuất được chấp nhận như đề xuất. |
 | `pipeline.max_fix_iterations` | int | Số vòng verify → fix → verify tối đa trước khi dừng và trả lại cho bạn. |
 | `pipeline.escalate_after_repeats` | int | 1 bug bị phân loại giống nhau liên tiếp bao nhiêu lần thì chuyển cho bạn thay vì tự fix tiếp. |
-| `pipeline.auto_confirm_reviews` | bool | Tự confirm item review của step (assertion SVA, requirement bị đánh dấu, parameter đổi default) mà không hỏi. Gate human vẫn chờ `Approve`; `Approve` không còn từ chối vì item chưa confirm. Hẹp hơn auto-approve/auto-answer ở trên — gate vẫn dừng, chỉ bỏ review từng item. |
-| `pipeline.parallel_rtl_tb` | bool | Flow VLSIT: `rtl` (lint + synthesis) và `tb` (sinh testbench) đều chỉ đọc `spec`/`parse`/`config` — chạy cùng lúc thay vì tuần tự. |
+| `pipeline.auto_confirm_reviews` | bool | Tự confirm item review của step (requirement bị đánh dấu, parameter đổi default) mà không hỏi. Gate human vẫn chờ `Approve`; `Approve` không còn từ chối vì item chưa confirm. Hẹp hơn auto-approve/auto-answer ở trên — gate vẫn dừng, chỉ bỏ review từng item. |
+| `pipeline.parallel_rtl_tb` | bool | Chỉ có nghĩa trong flow có cả step `rtl` và `tb` (hiện không flow built-in nào có). |
 | `pipeline.parallel_multi_agent` | bool | Chỉ có tác dụng khi setting trên bật. Tắt: `tb` dùng chung session của flow, LLM call của nó queue sau `rtl` (tool run thì vẫn chạy chồng nhau). Bật: `tb` có session riêng (role "verifier") nên LLM call cũng chạy đồng thời. |
 | `tui.icons` | choice | Bộ icon trạng thái: `unicode` (✔ ⚑ ◐ …), `nerd` (cần font "… Nerd Font Mono"), `ascii` (dùng được mọi font). |
 | `tui.language` | choice | Ngôn ngữ UI chrome (legend, banner, dialog) và nội dung pipeline sinh ra (spec, comment RTL, câu hỏi, docs): `en` / `vi` / `ko`. Chat assistant không bị ảnh hưởng — luôn tự theo ngôn ngữ bạn gõ. |
@@ -218,7 +192,7 @@ step, hoặc `/gate <step> <mode>` — tab này chỉ hiện mode của mọi st
 
 ### Models per step
 
-Mỗi step (spec, parse, config, rtl, tb, sva, verify, doc) và assistant có 1 cặp `model` + `effort` riêng —
+Mỗi step (spec, parse, config, rtl) và assistant có 1 cặp `model` + `effort` riêng —
 để trống thì dùng mặc định ở tab LLM. Cho phép trộn model, vd
 Opus chỗ cần chính xác, Haiku cho việc máy móc/khối lượng lớn.
 
@@ -232,20 +206,11 @@ Opus chỗ cần chính xác, Haiku cho việc máy móc/khối lượng lớn.
 
 | Setting | Kiểu | Chức năng |
 |---|---|---|
-| `rtl.parallel` | int | Số module (RTL, SVA) viết cùng lúc. |
+| `rtl.parallel` | int | Số module viết cùng lúc. |
 | `rtl.max_fix_attempts` | int | Số vòng thêm khi lint hoặc synthesis vẫn fail. |
 | `rtl.max_turns` | int | Số turn agent cho 1 module (viết, compile, fix). |
 
-Rule coding là file rule riêng của flow VLSIT, xem [§5](#5-rule-coding-rtl).
-
-### TB
-
-| Setting | Kiểu | Chức năng |
-|---|---|---|
-| `tb.tests_per_agent` | int | Số test case do 1 agent viết; các agent chạy song song. |
-| `tb.parallel` | int | Số agent viết test case chạy song song cùng lúc. |
-| `tb.max_fix_attempts` | int | Số vòng thêm khi plan hoặc TB check vẫn fail. |
-| `tb.max_turns` | int | Số turn agent cho 1 stage TB. |
+Rule coding là file rule riêng của flow rtl, xem [§5](#5-rule-coding-rtl).
 
 ## 7. Lệnh và phím tắt
 
@@ -268,14 +233,11 @@ này 2 phím (in hoa/thường) không bao giờ làm cùng 1 việc.
 | Skill editor | `K` (Shift+k) | `/skill` |
 | Prompt editor | `P` (Shift+p) | `/prompts` |
 | Tuỳ chỉnh 1 step (view/pass/notes) | — | `/step <step> view|pass|notes [text]` |
-| Sign off requirement (verify) | `v` | — (CLI: `q3tui sign <REQ>`) |
-| Rút lại sign-off (verify) | `V` (Shift+v) | — |
 | Reset output của step (hoặc toàn bộ) | `R` (Shift+r) | `/reset <step>|all [--only]` |
 | Sửa file hiện tại | `e` | — |
 | Comment lên text đã chọn / dòng đang highlight | `C`\* (Shift+c) | — |
 | Đổi model / mức suy luận | `m` | `/model [id]` / `/effort <level>` |
 | Bật/tắt self-review / auto-approve / auto-answer / auto-confirm | — | `/specreview` `/autoapprove` `/autoanswer` `/autoconfirm on|off` |
-| Chạy `rtl` ‖ `tb` song song | — | `/parallel on|off [--multi-agent|--shared]` |
 | Dialog Settings | `,` (dấu phẩy) | `/settings [tab]` |
 | Thống kê sử dụng | `s` | `/stats [reset]` |
 | Chi phí LLM tới giờ | — | `/cost [reset]` |
@@ -288,8 +250,8 @@ này 2 phím (in hoa/thường) không bao giờ làm cùng 1 việc.
 | Help | `?` (shift+/) | `/help` |
 
 \* `C` (Shift+c) là **Comment** ở toàn app, nhưng là **Confirm all** khi đang focus tab Requirements/
-Parameters/Assertions — xem [§4](#4-gate-và-review). Các phím review riêng từng step (`c`/`u`/`C` để
-confirm, `x` để reject, `v`/`V`/`S` để sign off) nằm trong bảng đó, không lặp lại ở đây.
+Parameters — xem [§4](#4-gate-và-review). Các phím review riêng từng step (`c`/`u`/`C` để
+confirm) nằm trong bảng đó, không lặp lại ở đây.
 
 ## 8. Input và output
 
@@ -298,22 +260,19 @@ spec/<ip>_spec.md                       input của bạn (hoặc output của s
 schemas/structured_spec.json            parse    — Gate 1
 schemas/final_config.json               config   — Gate 2
 schemas/synth_report.json               rtl
-schemas/selected_testplan.json          tb       — Gate 4
-schemas/rtm.json                        sva (Gate 3b) + verify (Gate 5): ma trận traceability requirement
-schemas/verification_report.json        verify
-schemas/{sva,parse,config}_reviews.json review từng item của bạn (giữ nguyên qua reset)
-src/rtl/*.sv, filelist.f                rtl
-src/tb/*.sv, filelist.f, run script     tb
-src/sva/*.sv, file bind, GATE3_REVIEW.md sva
-docs/specification.md (.pdf)            doc
+reviews/{parse,config}_reviews.json     review từng item của bạn (giữ nguyên qua reset)
+src/rtl/*.sv, filelist.f                    rtl (flow rtl)
+config/{tools,pdks}.json, rtl_rules.md   cấu hình của bạn
+constraints/sdc/                        SDC (flow fpga / asic / sanity)
+reports/  build/                        kết quả dễ đọc / output công cụ dùng một lần
 .q3tui/…                                chỉ nội bộ — LLM không bao giờ đọc
 ```
 
 ## 9. Chat với assistant
 
 Gõ bất kỳ thứ gì không bắt đầu bằng `/command` vào ô nhập dưới cùng, nó sẽ gửi tới assistant — assistant có
-tool cho mọi hành động trong tài liệu này (chạy step, trả lời câu hỏi, đổi mode gate, review assertion, sign
-off requirement, đổi setting...) và hỏi xác nhận trước khi làm gì có tính phá huỷ (reset, bật chế độ chạy
+tool cho mọi hành động trong tài liệu này (chạy step, trả lời câu hỏi, đổi mode gate, review requirement,
+đổi setting...) và hỏi xác nhận trước khi làm gì có tính phá huỷ (reset, bật chế độ chạy
 không giám sát). Assistant luôn trả lời bằng đúng ngôn ngữ bạn gõ, không phụ thuộc vào `tui.language`.
 
 ## 10. Flow RTL
@@ -321,17 +280,17 @@ không giám sát). Assistant luôn trả lời bằng đúng ngôn ngữ bạn 
 `pipeline.flow: rtl` (trong `q3tui.yaml`, hoặc `q3tui --flow rtl`) chạy riêng phần sinh RTL, kiểm tra và smoke test; verification để flow khác lo. Thiết kế chi tiết: `docs/spec/rtl-flow.md`.
 
 ```
-spec → rules → parse → config → csr → rtl → format → style_lint → smoke
+spec → parse → config → rules → csr → rtl → format → style_lint → smoke
 ```
 
-1. **Rule của bạn.** `q3tui act rtl_rules_init` tạo `rules/rtl_rules.md`: mỗi rule một bullet, `- **ID** nội dung`. File này được đọc trước rule mặc định của Q3TUI (cùng id = ghi đè).
-   Step `rules` kiểm tra mâu thuẫn (dừng và chỉ ra đúng chỗ cần sửa) rồi viết flag Verible vào `rtl/style_lint/`.
-2. **Thanh ghi.** Nếu spec có register map, step `csr` soạn `rtl/csr/csr_map.json` và sinh khối thanh ghi bằng APB-CSR-Generator (chạy `q3tui act csr_tool_install` một lần;
+1. **Rule của bạn.** `q3tui act rtl_rules_init` tạo `config/rtl_rules.md`: mỗi rule một bullet, `- **ID** nội dung`. File này được đọc trước rule mặc định của Q3TUI (cùng id = ghi đè).
+   Step `rules` kiểm tra mâu thuẫn (dừng và chỉ ra đúng chỗ cần sửa) rồi viết flag Verible vào `src/rtl/style_lint/`.
+2. **Thanh ghi.** Nếu spec có register map, step `csr` soạn `src/rtl/csr/csr_map.json` và sinh khối thanh ghi bằng APB-CSR-Generator (chạy `q3tui act csr_tool_install` một lần;
    hoặc đặt `csr.tool_dir` / `$CSR_GEN_HOME`). Muốn đổi thanh ghi thì sửa `csr_map.json`: sau lần soạn đầu file này là của bạn. `csr.mode: off` để bỏ qua.
 3. **RTL, format, style lint.** `rtl` theo rule; `format` chỉ đổi khoảng trắng (hỏi trước khi đụng file bạn đã sửa tay); `style_lint` chạy Verible và gửi lỗi vi phạm về `rtl`.
    Chuỗi này tự lặp, tối đa `style_lint.max_rounds` vòng.
 4. **Smoke test.** Testbench nhỏ viết chỉ từ spec, compile và chạy (role `sim`, `run`). Nếu fail thì được triage và sửa, hoặc thành câu hỏi cho bạn.
 
-Công cụ: Verible (`verible_lint`, `verible_format`) và generator CSR có cấu hình mặc định theo flow; `sim` / `run` / `lint` / `synth` lấy từ `tools.json` của bạn (preset Synopsys nếu chưa có).
-Thiếu tool thì step chờ và nêu tên role. **Skill:** các stage LLM đọc playbook (`skills/<tên>/SKILL.md`); đặt skill của bạn trong `<project>/skills/` để thêm hoặc thay.
+Công cụ: Verible (`verible_lint`, `verible_format`) và generator CSR có cấu hình mặc định theo flow; `sim` / `run` / `lint` / `synth` lấy từ `config/tools.json` của bạn (preset Synopsys nếu chưa có).
+Thiếu tool thì step chờ và nêu tên role. **Skill:** các stage LLM đọc playbook (`config/skills/<tên>/SKILL.md`); đặt skill của bạn trong `<project>/config/skills/` để thêm hoặc thay.
 `q3tui act style_show` và `q3tui act csr_show` in ra những gì flow đã quyết định.

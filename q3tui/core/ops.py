@@ -421,7 +421,7 @@ class Ops:
             msg += f" (saved to {self.project.rel(self.project.save_config_values({'pipeline': values}))})"
         return self._log(None, msg)
 
-    # -- questions, VLSIT review (steps/vlsit/review.py) ---------------------------------------------
+    # -- questions, spec-flow reviews (flows/spec/*/review.py) ---------------------------------------------
 
     def answer(self, question_id: str, text: str) -> str:
         """Answer a question (the step, and the step it is handed to, update on the next run)."""
@@ -431,48 +431,11 @@ class Ops:
         """Answer every open question with its default assumption."""
         return self._log(None, self.engine.answer_all())
 
-    def _review(self):
-        import importlib
-
-        try:
-            return importlib.import_module("q3tui.flows.vlsit.sva.review")
-        except ImportError as exc:  # no such module yet: a friendly message, never a traceback
-            raise EngineError(f"the VLSIT review module is not available ({exc})") from None
-
-    def properties(self) -> list[dict]:
-        """The SVA properties with their NL text, vacuity and your review status (VLSIT flow, step sva)."""
-        return self._review().load_properties(self.engine)
-
-    def review_property(self, label: str, status: str, note: str = "") -> str:
-        """Confirm / reject / reset an assertion (status confirmed | rejected | pending). Rejected → a change request to the sva step."""
-        if status not in ("confirmed", "rejected", "pending"):
-            raise EngineError(f"unknown review status '{status}' (confirmed, rejected, pending)")
-        self._review().review_property(self.engine, label, status, note)
-        return self._log("sva", f"assertion {label}: {status}" + (f" — {note}" if note else ""))
-
-    def confirm_properties(self, include_vacuous: bool = False) -> str:
-        """Confirm every pending assertion (vacuous ones only when asked) — "approve all" at Gate 3b."""
-        return self._log("sva", self._review().confirm_all(self.engine, include_vacuous))
-
-    def rtm(self) -> list[dict]:
-        """The requirements traceability matrix rows (six conditions per requirement)."""
-        return self._review().rtm_rows(self.engine)
-
-    def sign_req(self, req_id: str, signed: bool = True, note: str = "") -> str:
-        """Sign a requirement off in the RTM (you, never the LLM); refused unless its conditions 1–5 hold."""
-        msg = self._review().sign_req(self.engine, req_id, signed, note)
-        return self._log("verify", msg if isinstance(msg, str) and msg else f"{req_id}: {'signed off' if signed else 'sign-off withdrawn'}")
-
-    def sign_all_ready(self, note: str = "") -> str:
-        """Sign off every requirement whose conditions 1-5 already hold — "approve all" at Gate 5 (requirements that
-        are not ready are left alone; sign each one yourself once it is)."""
-        return self._log("verify", self._review().sign_all(self.engine, note))
-
     def _parse_review(self):
         import importlib
 
         try:
-            return importlib.import_module("q3tui.flows.vlsit.parse.review")
+            return importlib.import_module("q3tui.flows.spec.parse.review")
         except ImportError as exc:  # no such module yet: a friendly message, never a traceback
             raise EngineError(f"the VLSIT review module is not available ({exc})") from None
 
@@ -493,7 +456,7 @@ class Ops:
         import importlib
 
         try:
-            return importlib.import_module("q3tui.flows.vlsit.config.review")
+            return importlib.import_module("q3tui.flows.spec.config.review")
         except ImportError as exc:  # no such module yet: a friendly message, never a traceback
             raise EngineError(f"the VLSIT review module is not available ({exc})") from None
 

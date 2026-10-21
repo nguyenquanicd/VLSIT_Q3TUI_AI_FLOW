@@ -6,7 +6,7 @@ deps:
 gate: none
 options:
   max_rounds: null    # fix rounds (rtl ← findings, format, check again) before the step fails; empty: pipeline.max_fix_iterations
-view: [rtl/style_lint/style_report.json]
+view: [src/rtl/style_lint/style_report.json]
 ---
 Runs Verible lint with the flags of the `rules` step on the formatted RTL (code: the findings are ground truth). Findings go to an LLM judge that
 decides, per finding, violation / flag problem / acceptable; violations go back to `rtl` as scoped change requests (`[rtl:<module>]`), flag problems

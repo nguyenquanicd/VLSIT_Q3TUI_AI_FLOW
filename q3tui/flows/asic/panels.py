@@ -59,7 +59,7 @@ class PortTab(DataTab):
             return
         app.refresh_all()
         step = next((s for s in app.engine.steps if s.kind == "asic.asic_port"), None)
-        app.action_switch_flow(str((step.options if step else {}).get("handoff_flow") or "vlsit"))
+        app.action_switch_flow(str((step.options if step else {}).get("handoff_flow") or "rtl"))
 
     def action_handoff(self) -> None:
         self._hand("")
@@ -101,12 +101,12 @@ def _synth_rows(app: "Q3TUIApp") -> list[tuple]:
 
 def _synth_detail(app: "Q3TUIApp", key: str) -> str:
     d = _synth(app)
-    rep = app.project.root / "asic" / "reports"
+    rep = app.project.asic_dir / "reports"
     name = {"fmax": "qor.rpt", "slack": "timing.rpt", "path": "timing.rpt", "tns": "qor.rpt", "area": "area.rpt", "cells": "area.rpt", "power": "power.rpt",
             "viol": "constraints.rpt"}.get(key) or ("check_design.rpt" if key.startswith("cd_") else "check_timing.rpt" if key.startswith("ct_") else "")
     f = rep / name if name else None
     if f is not None and f.is_file():
-        return f"`asic/reports/{name}`\n\n```\n{f.read_text(errors='replace')[:6000]}\n```"
+        return f"`build/syn/asic/reports/{name}`\n\n```\n{f.read_text(errors='replace')[:6000]}\n```"
     return f"Overall: **{d.get('verdict', {}).get('overall', '?')}** — Design Compiler, no placement or routing."
 
 
@@ -124,7 +124,7 @@ def _lec_rows(app: "Q3TUIApp") -> list[tuple]:
 
 
 def _lec_detail(app: "Q3TUIApp", key: str) -> str:
-    f = app.project.root / "asic" / "reports" / "lec.rpt"
+    f = app.project.asic_dir / "reports" / "lec.rpt"
     return f"```\n{f.read_text(errors='replace')[:6000]}\n```" if f.is_file() else "_no lec.rpt yet_"
 
 

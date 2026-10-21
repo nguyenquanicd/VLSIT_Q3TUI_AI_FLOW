@@ -1,5 +1,5 @@
 """Shared pieces of the ASIC flow steps: the RTL (the VLSIT flow's result, read only), the SDC (shared with the FPGA flow's
-files in `sdc/`), where the netlist, the reports and the results go."""
+files in `constraints/sdc/`), where the netlist, the reports and the results go."""
 
 from __future__ import annotations
 
@@ -22,7 +22,7 @@ class AsicStep(FpgaStep):
         return d
 
     def asic_dir(self, engine) -> Path:
-        return engine.project.root / "asic"
+        return engine.project.asic_dir
 
     def reports_dir(self, engine) -> Path:
         return self.asic_dir(engine) / "reports"

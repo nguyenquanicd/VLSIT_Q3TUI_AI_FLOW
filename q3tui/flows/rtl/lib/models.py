@@ -16,7 +16,7 @@ class RuleFinding(BaseModel):
     severity: Literal["error", "warning"]
     ids: list[str] = Field(default_factory=list, description="the rule ids involved")
     problem: str
-    suggestion: str = Field("", description="the exact change to make in rules/rtl_rules.md")
+    suggestion: str = Field("", description="the exact change to make in config/rtl_rules.md")
 
 
 class RulesResult(BaseModel):

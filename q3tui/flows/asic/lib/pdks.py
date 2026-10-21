@@ -1,4 +1,4 @@
-"""The standard-cell libraries the ASIC flow can use, by technology and corner (`pdks.json` of the flow folder, `<project>/pdks.json` of yours).
+"""The standard-cell libraries the ASIC flow can use, by technology and corner (`pdks.json` of the flow folder, `<project>/config/pdks.json` of yours).
 
 A technology (PDK) is a set of Design Compiler `.db` files, one per corner; the dialogs offer technology, then corner, and the choice is the
 path of one `.db` (`asic_synth.library`). Only technologies whose files exist are offered. Nothing here runs a tool."""
@@ -69,7 +69,7 @@ def files_of(entry: dict) -> list[str]:
 def entries(project=None) -> list[dict]:
     """Every entry of the catalog as written — the flow's `pdks.json`, then `<project>/pdks.json` (same id replaces; `"only": true` hides the
     built-in ones) — with `source` ("built-in" | "project") and the files it matches here, also when there are none (a view shows those)."""
-    mine = _read(project.root / "pdks.json") if project is not None else {}
+    mine = _read(project.config_dir / "pdks.json") if project is not None else {}
     merged: dict[str, dict] = {}
     if not mine.get("only"):
         merged.update({e["id"]: {**e, "source": "built-in"} for e in _read(BUILTIN).get("pdks", []) if e.get("id")})

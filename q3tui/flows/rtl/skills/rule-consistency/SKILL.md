@@ -1,6 +1,6 @@
 ---
 name: rule-consistency
-description: Check the stack of RTL rules (the user's rules/rtl_rules.md over Q3TUI's defaults) for conflicts, duplicates and rules the tools cannot honour.
+description: Check the stack of RTL rules (the user's config/rtl_rules.md over Q3TUI's defaults) for conflicts, duplicates and rules the tools cannot honour.
 ---
 
 # Consistency of the rule stack
@@ -21,7 +21,7 @@ generate → violate → fix. Find them *before* RTL is written.
 - **Out-of-scope rules** (testbench rules in a design rule file).
 
 ## Severity
-- `error`: the stack cannot be followed as written (the flow stops until the user edits `rules/rtl_rules.md`). Use it for real
+- `error`: the stack cannot be followed as written (the flow stops until the user edits `config/rtl_rules.md`). Use it for real
   contradictions only.
 - `warning`: it can be followed, but something surprising happens (an override, a half-applied naming rule, a vague rule).
 

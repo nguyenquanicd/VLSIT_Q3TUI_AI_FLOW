@@ -6,7 +6,7 @@ deps:
 gate: none
 options:
   max_rounds: null    # fix rounds (smoke fails → triage → fix → format → style → smoke) before the step fails; empty: pipeline.max_fix_iterations
-view: [rtl/smoke/*.md, rtl/smoke/smoke_report.json]
+view: [src/rtl/smoke/*.md, src/rtl/smoke/smoke_report.json]
 ---
 A small testbench of the design's most basic function, written from the spec, the requirements and the configuration alone: the writer never sees the
 RTL (independent), then compiled with the RTL and run (tool roles `sim` and `run`). A failure is triaged by a second LLM that may read everything:

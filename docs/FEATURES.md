@@ -1,8 +1,8 @@
 # Q3TUI Feature Inventory
 
 This inventory reflects the current source as of **2026-10** (version 0.1.0, Beta) and focuses on the
-**VLSIT flow** (`spec → parse → config → rtl ‖ tb → sva → verify → doc`), the flow this product ships with
-by default. See the [User guide](user_guide/) for how to use everything listed here, and [spec/](spec/) for
+**spec flow** (`spec → parse → config`), the flow this product ships with
+by default, and the **rtl flow** that builds on it. The testbench, SVA, verification and document steps of the former VLSIT flow were removed and come back as their own flows. See the [User guide](user_guide/) for how to use everything listed here, and [spec/](spec/) for
 the architecture reference.
 
 ## 1. Pipeline engine
@@ -18,48 +18,29 @@ the architecture reference.
 - **Reset with a plan.** `q3tui reset <step>` shows exactly which generated files would be deleted (and
   backs them up) before you confirm; your own hand-written files are never touched.
 
-## 2. The VLSIT flow
+## 2. The spec flow
 
 | Step | What it does | Gate |
 |---|---|---|
 | spec | Drafts (or accepts your) IP specification, section by section, from an intent or as-is. | human |
 | parse | Extracts requirements (REQ-IDs), parameters and the module map; flags ambiguity. | **1 · human** |
 | config | Resolves parameter values against your change requests; checks elaboration constraints. | 2 · auto |
-| rtl | Writes one synthesizable SystemVerilog module per plan entry; lints and synthesizes it. | — |
-| tb | Writes a plain-SystemVerilog testbench and test plan; compiles it. | 4 · auto |
-| sva | Writes SVA properties per requirement, binds them to the RTL, runs a vacuity smoke pass. | **3b · human** |
-| verify | Simulates every selected test, mutation-tests the RTL, builds the RTM. | **5 · human** |
-| doc | Assembles the specification document (Markdown + PDF) from the other steps' artifacts. | — |
 
 ```mermaid
 flowchart LR
     spec[spec] --> parse["parse<br/><b>Gate 1 · human</b>"]
     parse --> config["config<br/>Gate 2 · auto"]
-    config --> rtl["rtl<br/>lint + synthesis"]
-    config --> tb["tb<br/>testbench<br/>Gate 4 · auto"]
-    rtl --> sva["sva<br/><b>Gate 3b · human</b>"]
-    tb --> sva
-    sva --> verify["verify<br/><b>Gate 5 · human</b>"]
-    verify --> doc[doc]
 
     style parse fill:#f9c74f,color:#000
-    style sva fill:#f9c74f,color:#000
-    style verify fill:#f9c74f,color:#000
 ```
-
-- **rtl ‖ tb in parallel.** Both steps read only `spec`/`parse`/`config` — neither needs the other's output
-  — so they can run concurrently (`pipeline.parallel_rtl_tb`) instead of one after the other.
-- **Separate agent sessions, optionally.** `pipeline.parallel_multi_agent` gives `tb` its own persistent LLM
-  session (role `verifier`) instead of queuing behind `rtl`'s on the flow's one shared session, so the LLM
-  calls themselves run concurrently too, not just the tool runs.
 
 ### The RTL flow (`rtl`, docs/spec/rtl-flow.md)
 
-- **Rules → Verible:** `rules/rtl_rules.md` (yours, wins) over `vlsit_rtl_rule_default.md`; the `rules` step checks the stack for contradictions before any RTL is
+- **Rules → Verible:** `config/rtl_rules.md` (yours, wins) over `rtl_rule_default.md`; the `rules` step checks the stack for contradictions before any RTL is
   written and writes the Verible lint / format flags (verified with the real tool; a flag Verible refuses is never read as "clean").
 - **Generate → format → style lint → fix**: `format` changes whitespace only (checked, backed up, asks before touching a hand-edited file); `style_lint` runs Verible,
   an LLM judge decides per finding (violation / flag problem / acceptable) and violations go back to `rtl` as scoped change requests; the engine's fix loop repeats it.
-- **CSR from a generator**: the registers come from the APB-CSR-Generator, driven from a register map (`rtl/csr/csr_map.json`) drafted from the spec; the map is checked
+- **CSR from a generator**: the registers come from the APB-CSR-Generator, driven from a register map (`src/rtl/csr/csr_map.json`) drafted from the spec; the map is checked
   by code (the tool checks nothing); the generated module is *provided* to `rtl` (instantiated, never rewritten by an LLM).
 - **Smoke test** written from the spec alone (the writer cannot read the RTL), compiled and run by code; failures are triaged (RTL / testbench / spec) and fixed or asked.
 - **Skills and tools for the LLM**: markdown playbooks it reads when needed plus in-process tools (`verible_*`, `smoke_*`, `csr_check`); Q3TUI confines files and checks results.
@@ -69,28 +50,18 @@ flowchart LR
 - **Four gate modes** per step: `human` (always stops), `auto` (self-signs once no blocking question is
   open), `auto_answer` (unattended — also answers every question with its default), `none`.
 - **Two independent things a gate can wait on:** a *blocking question* (an actual decision only a human can
-  make) and *unconfirmed review items* (SVA assertions, flagged requirements, changed parameters). A `human`
+  make) and *unconfirmed review items* (flagged requirements, changed parameters). A `human`
   gate's plain `Approve` refuses while either is open; an `auto`/`auto_answer` gate only cares about blocking
-  questions — unconfirmed items simply don't count toward the requirements traceability matrix.
-- **Per-item review, not a rubber stamp.** `c`/`u`/`C` (confirm / back to pending / confirm all) for SVA
-  assertions, flagged requirements and changed parameters; `x` to reject an assertion with a reason, routed
-  back to `sva` as a scoped change request for that module only.
-- **Vacuous assertions are never silently confirmed.** A confirm-all explicitly skips any assertion whose
-  trigger condition never fired during the simulation smoke pass — those need your explicit `c`.
+  questions.
+- **Per-item review, not a rubber stamp.** `c`/`u`/`C` (confirm / back to pending / confirm all) for
+  flagged requirements and changed parameters.
 - **Dedicated opt-out.** `pipeline.auto_confirm_reviews` turns off the per-item review requirement
   specifically, independent of the broader auto-approve/auto-answer switches — gates still stop for the
   things that actually matter.
 
-## 4. Requirements traceability and sign-off
+## 4. Removed: traceability, verification, document
 
-- **Six-condition RTM.** Every requirement's row tracks: (1) tagged in RTL, (2) an SVA assertion you
-  confirmed, (3) covered by a selected test case, (4) that simulation passes, (5) mutation score ≥ threshold
-  (or `N/A`), (6) signed off by you. `sign_req`/`sign_all` never auto-sign — a human decision, always.
-  `S` bulk-signs everything that's already ready, skipping the rest without error.
-- **Mutation testing** (built-in mutator, or a configured `mutate` tool role) scores whether the test suite
-  would actually catch a functional bug, per requirement — not just whether tests pass.
-- **Doc generation.** `doc` assembles a specification document (Markdown + PDF) referencing the final
-  parameters, RTL, and the RTM, from the other steps' artifacts — not hand-maintained.
+The testbench, SVA, verification (simulation, mutation testing, the six-condition requirements traceability matrix with your sign-off) and the specification document (Markdown + PDF) were steps of the former VLSIT flow. They are removed and come back as their own flows; nothing in this inventory describes them any more.
 
 ## 5. RTL coding rule enforcement
 
@@ -118,13 +89,9 @@ focus.
 <table>
 <tr>
 <td width="33%"><a href="images/tui-gate.svg"><img src="images/tui-gate.svg" alt="The review dialog of a gate"></a></td>
-<td width="33%"><a href="images/tui-sva.svg"><img src="images/tui-sva.svg" alt="Gate 3b: the assertions to confirm"></a></td>
-<td width="33%"><a href="images/tui-verify.svg"><img src="images/tui-verify.svg" alt="Gate 5: the requirements traceability matrix"></a></td>
 </tr>
 <tr>
 <td><b>Review dialog</b> (<code>a</code>): approve, answer the open questions, edit, or request changes.</td>
-<td><b>Gate 3b · assertions</b>: each SVA property with its requirement, plain-English meaning and vacuity check — confirm (<code>c</code>) or reject with a reason (<code>x</code>).</td>
-<td><b>Gate 5 · sign-off</b>: the RTM — RTL, SVA, test case, simulation, mutation score per requirement; you sign off (<code>v</code>).</td>
 </tr>
 </table>
 
@@ -150,7 +117,7 @@ focus.
 ## 8. The assistant (chat)
 
 - **A tool for every action** a key or `/command` has: run steps, answer questions, change gate modes,
-  review assertions, sign off requirements, adjust any setting, edit spec sections, import files, and more.
+  review requirements and parameters, adjust any setting, edit spec sections, import files, and more.
 - **Confirms before anything destructive** (reset, turning on an unattended mode) — it never does those
   silently.
 - **Replies in your language**, independent of `tui.language` — it mirrors whatever language you write to
@@ -165,7 +132,7 @@ focus.
 
 ## 10. Known limitations (beta)
 
-- RTL flow: known issues KI-1 (the generated CSR module is an exception to REF-003), KI-2 (RTL in `rtl/`, other flows read `src/rtl/`) and KI-3 (CSR source to move to the workbook), KI-4 (requirement ids), KI-5 (rule policy vs REF-003), KI-6 (smoke vs the spec's test plan), KI-7 (generator limits vs the spec), KI-8 (lint config not in the spec), KI-9 (option impact): docs/spec/rtl-flow.md "Known issues".
+- RTL flow: known issues KI-1 (the generated CSR module is an exception to REF-003), KI-2 (resolved: every flow reads `src/rtl/`) and KI-3 (CSR source to move to the workbook), KI-4 (requirement ids), KI-5 (rule policy vs REF-003), KI-6 (smoke vs the spec's test plan), KI-7 (generator limits vs the spec), KI-8 (lint config not in the spec), KI-9 (option impact): docs/spec/rtl-flow.md "Known issues".
 
 - UI-chrome translation (`tui.language`) covers the legend, result banners, and the Questions/Picker
   dialogs; the full keybinding help text and some dialog screens (Settings, Flow/Skill/Prompt editors,

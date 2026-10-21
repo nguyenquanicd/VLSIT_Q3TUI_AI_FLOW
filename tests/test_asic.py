@@ -221,11 +221,11 @@ async def test_the_steps_run(proj):
     assert s["tool"] == "Design Compiler V-2023.12-SP3" and s["area"]["total_um2"] == 228625.692253 and s["timing"]["slack_ns"] == -0.61
     assert s["timing"]["fmax_mhz"] == 178.3 and s["timing"]["groups"][0]["target_mhz"] == 200.0  # the SDC's 5 ns clock with the recorded -0.61 ns
     assert s["verdict"]["timing"] == "fail" and s["verdict"]["overall"] == "fail" and s["violation_count"] >= 2 and s["svf"].endswith("blk.svf")
-    assert (proj.root / "asic" / "netlist" / "blk.v").is_file() and (proj.root / "asic" / "netlist" / "blk.svf").is_file()
-    assert (proj.root / "asic" / "reports" / "area.rpt").is_file() and 'source -echo' in (proj.root / "asic" / "synth.tcl").read_text()
+    assert (proj.root / "build" / "syn" / "asic" / "netlist" / "blk.v").is_file() and (proj.root / "build" / "syn" / "asic" / "netlist" / "blk.svf").is_file()
+    assert (proj.root / "build" / "syn" / "asic" / "reports" / "area.rpt").is_file() and 'source -echo' in (proj.root / "build" / "syn" / "asic" / "synth.tcl").read_text()
     lec = json.loads((proj.schemas_dir / "asic_lec.json").read_text())
     assert lec["status"] == "equivalent" and lec["passing"] == 12
-    assert (proj.root / "sdc" / "sdc.tcl").is_file()  # the shared constraints
+    assert (proj.root / "constraints" / "sdc" / "sdc.tcl").is_file()  # the shared constraints
 
 
 async def test_a_clock_change_makes_the_synthesis_stale(proj):
@@ -423,11 +423,11 @@ async def test_the_asic_has_its_own_clock(proj):
     eng = Engine(proj)
     await eng.run(yes=True, stop="sdc")
     Ops(eng).run_action("sdc_set", key="clock.i_clk.asic_freq_mhz", value="100")
-    assert "-period 5 " in (proj.root / "sdc" / "clocks.tcl").read_text()  # the shared SDC (the FPGA's) is as it was: 200 MHz
+    assert "-period 5 " in (proj.root / "constraints" / "sdc" / "clocks.tcl").read_text()  # the shared SDC (the FPGA's) is as it was: 200 MHz
     eng = Engine(Project.open(proj.root))
     await eng.run(yes=True, stop="asic_synth")
-    assert "-period 10 " in (proj.root / "asic" / "sdc" / "clocks.tcl").read_text() and "-period 5 " in (proj.root / "sdc" / "clocks.tcl").read_text()
-    assert 'source -echo "' + str(proj.root / "asic" / "sdc" / "sdc.tcl") in (proj.root / "asic" / "synth.tcl").read_text()
+    assert "-period 10 " in (proj.root / "build" / "syn" / "asic" / "sdc" / "clocks.tcl").read_text() and "-period 5 " in (proj.root / "constraints" / "sdc" / "clocks.tcl").read_text()
+    assert 'source -echo "' + str(proj.root / "build" / "syn" / "asic" / "sdc" / "sdc.tcl") in (proj.root / "build" / "syn" / "asic" / "synth.tcl").read_text()
     s = json.loads((proj.schemas_dir / "asic_synth.json").read_text())
     assert s["clock_override"] == {"i_clk": 100.0} and s["clocks"][0]["period_ns"] == 10.0 and s["timing"]["groups"][0]["target_mhz"] == 100.0
     assert s["timing"]["fmax_mhz"] == pytest.approx(1000 / (10.0 + 0.61), abs=0.1)  # the recorded -0.61 ns slack against a 10 ns period
@@ -494,7 +494,7 @@ async def test_the_quick_estimate(proj):
     script = (proj.state_dir / "asic" / "estimate" / "estimate.tcl").read_text()
     assert "compile -map_effort low" in script and "compile_ultra" not in script and "probe.tcl" in script
     assert hints.asic_hint(proj)["i_clk"]["source"] == "estimate" and hints.asic_note(proj, "i_clk") == "ASIC ≈ 621.1 MHz (quick estimate, lib)"
-    assert not (proj.root / "asic" / "netlist").exists()  # (an estimate leaves no deliverable behind)
+    assert not (proj.root / "build" / "syn" / "asic" / "netlist").exists()  # (an estimate leaves no deliverable behind)
 
 
 async def test_a_fresh_synthesis_beats_an_estimate_and_a_stale_one_does_not(proj):
@@ -637,7 +637,8 @@ def _pdks(root: Path) -> None:
         for c in corners:
             (root / "pdk" / tech / f"cells_{tech}__{c}.db").write_text("x")
     (root / "pdk" / "a" / "macro_sram.db").write_text("not a standard-cell library")
-    (root / "pdks.json").write_text(json.dumps({"only": True, "pdks": [
+    (root / "config").mkdir(exist_ok=True)
+    (root / "config" / "pdks.json").write_text(json.dumps({"only": True, "pdks": [
         {"id": "a", "title": "Tech A", "node_nm": 180, "globs": [str(root / "pdk" / "a" / "cells_a__*.db")], "default": "tt_025C_5v00"},
         {"id": "b", "title": "Tech B", "node_nm": 45, "globs": [str(root / "pdk" / "b" / "*.db")]},
         {"id": "ghost", "title": "Not installed", "node_nm": 7, "globs": [str(root / "nowhere" / "*.db")]}]}))
@@ -746,9 +747,10 @@ async def test_the_probe_starts_from_the_technologys_catalog_entry(proj):
     from q3tui.flows.fpga.lib import hints
 
     _pdks(proj.root)
-    cat = json.loads((proj.root / "pdks.json").read_text())
+    cat = json.loads((proj.root / "config" / "pdks.json").read_text())
     cat["pdks"][0]["probe_ns"] = 0.3
-    (proj.root / "pdks.json").write_text(json.dumps(cat))
+    (proj.root / "config").mkdir(exist_ok=True)
+    (proj.root / "config" / "pdks.json").write_text(json.dumps(cat))
     (proj.root / "fake_dc.py").write_text(FAKE_FAST_DC % str(DATA))
     Ops(Engine(proj)).apply_settings({hints.LIBRARY_OPTION: str(proj.root / "pdk" / "a" / "cells_a__tt_025C_5v00.db")}, save=True)
     ops = Ops(Engine(Project.open(proj.root)))
@@ -773,7 +775,8 @@ def test_a_projects_catalog_adds_its_licensed_libraries(proj):
     (proj.root / "pdk" / "lic").mkdir(parents=True)
     for c in ("ss_1p08v", "tt_1p2v"):
         (proj.root / "pdk" / "lic" / f"lic65_{c}.db").write_text("x")
-    (proj.root / "pdks.json").write_text(json.dumps({"pdks": [{"id": "lic65", "title": "Licensed 65 nm", "node_nm": 65, "globs": [str(proj.root / "pdk" / "lic" / "*.db")]}]}))
+    (proj.root / "config").mkdir(exist_ok=True)
+    (proj.root / "config" / "pdks.json").write_text(json.dumps({"pdks": [{"id": "lic65", "title": "Licensed 65 nm", "node_nm": 65, "globs": [str(proj.root / "pdk" / "lic" / "*.db")]}]}))
     ids = [p.id for p in pdks.catalog(proj)]
     assert "lic65" in ids  # (the built-in open-source ones stay when they exist here: no "only")
     assert "lic65" not in [p.id for p in pdks.catalog()] and "lic65" not in pdks.BUILTIN.read_text()  # (and the repo never lists it)

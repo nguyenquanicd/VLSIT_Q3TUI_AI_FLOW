@@ -247,34 +247,3 @@ def test_ask_user_tool(engine):
     assert not err and "Depth: answer 0" in text and host.asked[-1][0]["options"][0]["label"] == "16"
     _, err = call(tools, "ask_user", questions=[])
     assert err
-
-
-def test_vlsit_review_ops_without_the_review_module(engine, monkeypatch):
-    import sys
-
-    monkeypatch.setitem(sys.modules, "q3tui.flows.vlsit.sva.review", None)   # (import fails → a friendly message)
-    tools = assistant_tools(Host(engine))
-    for name, args in (("list_properties", {}), ("rtm_status", {}), ("review_property", {"label": "a_x", "status": "confirmed"}),
-                       ("sign_requirement", {"req_id": "REQ-001"})):
-        text, err = call(tools, name, **args)
-        assert err and "review module" in text
-
-
-def test_vlsit_review_ops_call_the_review_module(engine, monkeypatch):
-    import sys
-    import types
-
-    calls = []
-    fake = types.ModuleType("q3tui.flows.vlsit.sva.review")
-    fake.load_properties = lambda eng: [{"label": "a_x", "status": "pending", "req_ids": ["REQ-001"], "nl": "x is never X"}]
-    fake.review_property = lambda eng, label, status, note="": calls.append(("prop", label, status, note))
-    fake.rtm_rows = lambda eng: [{"req_id": "REQ-001", "signed_off": False}]
-    fake.sign_req = lambda eng, rid, signed, note="": calls.append(("sign", rid, signed, note)) or f"{rid} signed"
-    monkeypatch.setitem(sys.modules, "q3tui.flows.vlsit.sva.review", fake)
-    ops = Ops(engine)
-    assert ops.properties()[0]["label"] == "a_x" and ops.rtm()[0]["req_id"] == "REQ-001"
-    assert "rejected" in ops.review_property("a_x", "rejected", "too weak")
-    assert ops.sign_req("REQ-001", True, "checked") == "REQ-001 signed"
-    assert calls == [("prop", "a_x", "rejected", "too weak"), ("sign", "REQ-001", True, "checked")]
-    with pytest.raises(EngineError):
-        ops.review_property("a_x", "maybe")

@@ -11,8 +11,8 @@
  │ Pipeline engine: flow (step graph), staleness (hashes), gates, fix loop,  │
  │ pipeline.json                                                             │
  ├───────────────────────────────────────────────────────────────────────────┤
- │ Step kinds: spec · vlsit_parse · vlsit_config · vlsit_rtl · vlsit_tb ·    │
- │   vlsit_sva · vlsit_verify · vlsit_doc   (each = ordered stages:          │
+ │ Step kinds: spec · vlsit_parse · vlsit_config · the rtl flow's own        │
+ │   (rtl.rules, rtl.csr, rtl.rtl, …)  (each = ordered stages:              │
  │   deterministic / LLM / tool)                                             │
  └──────┬──────────────────────┬──────────────────────────┬──────────────────┘
         │ LLM stages           │ deterministic            │ tool runs

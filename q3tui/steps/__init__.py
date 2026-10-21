@@ -7,14 +7,9 @@ from q3tui.pipeline.base import StepDef
 # step kind -> "module:Class" (lazy: the Agent SDK / pyslang imports stay out of the CLI start). Flow files name kinds.
 KINDS: dict[str, str] = {
     "spec": "q3tui.steps.spec.step:SpecStep",
-    # the VLSIT flow (docs/spec/vlsit-flow.md)
-    "vlsit_parse": "q3tui.flows.vlsit.parse.step:ParseStep",
-    "vlsit_config": "q3tui.flows.vlsit.config.step:ConfigStep",
-    "vlsit_rtl": "q3tui.flows.vlsit.rtl.step:RtlGenStep",
-    "vlsit_tb": "q3tui.flows.vlsit.tb.step:TbGenStep",
-    "vlsit_sva": "q3tui.flows.vlsit.sva.step:SvaStep",
-    "vlsit_verify": "q3tui.flows.vlsit.verify.step:VerifyStep",
-    "vlsit_doc": "q3tui.flows.vlsit.doc.step:DocStep",
+    # the spec flow (docs/spec/spec-flow.md)
+    "vlsit_parse": "q3tui.flows.spec.parse.step:ParseStep",
+    "vlsit_config": "q3tui.flows.spec.config.step:ConfigStep",
 }
 
 

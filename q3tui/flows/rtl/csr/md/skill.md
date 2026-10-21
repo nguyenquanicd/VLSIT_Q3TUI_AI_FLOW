@@ -7,9 +7,9 @@ gate: none
 options:
   mode: auto          # auto: only when the spec has software-visible registers · on: always · off: never
   tool_dir: null      # folder of APB-CSR-Generator; empty: $CSR_GEN_HOME, ~/.q3tui/tools/, <project>/tools/ (q3tui act csr_tool_install clones it)
-view: [rtl/csr/csr_map.json, rtl/csr/csr_report.json]
+view: [src/rtl/csr/csr_map.json, src/rtl/csr/csr_report.json]
 ---
-The software-visible registers of the design are not written by hand: the register map is drafted from the spec into `rtl/csr/csr_map.json` (yours to
+The software-visible registers of the design are not written by hand: the register map is drafted from the spec into `src/rtl/csr/csr_map.json` (yours to
 edit afterwards, like `sdc.json`), checked by code, turned into the workbook the APB-CSR-Generator reads and run through the tool role `csr_gen`.
 The generated APB slave (and the CDC synchronizer when the registers are on their own clock) is installed in the RTL folder as a module the `rtl` step
 does not write, rule-check or fix; the `rtl` step instantiates it. Skills: csr-register-map, apb-csr-tool.

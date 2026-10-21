@@ -29,7 +29,7 @@ def slug(text: str) -> str:
 # -- libraries -----------------------------------------------------------------------------------------------------------------
 
 def pdks_path(project) -> Path:
-    return project.root / "pdks.json"
+    return project.config_dir / "pdks.json"
 
 
 def load_pdks(project) -> dict:
@@ -217,7 +217,7 @@ def set_role(project, role: str, cmd: str = "", modules: str = "", timeout_s: st
         data["description"] = description.strip()
     ToolRole.model_validate(data)  # (a bad value is the user's error now)
     cfg_file = project.cfg.tools.file
-    path = toolmod.tools_file(project.cfg, project.root) if (cfg_file or any((project.root / n).is_file() for n in toolmod.FILE_NAMES)) else None
+    path = toolmod.tools_file(project.cfg, project.root) if (cfg_file or any((project.config_dir / n).is_file() for n in toolmod.FILE_NAMES)) else None
     if path is not None and path.suffix != ".json":
         raise ValueError(f"this project's tools are in {path.name}: edit it by hand (only tools.json is written here)")
     if project.cfg.tools.roles and path is None:  # roles inline in q3tui.yaml
@@ -225,7 +225,8 @@ def set_role(project, role: str, cmd: str = "", modules: str = "", timeout_s: st
         project.save_config_values({"tools": {"roles": {role: data}}})
         return f"tool role '{role}' saved to q3tui.yaml (tools.roles)"
     if path is None:
-        path = project.root / "tools.json"
+        path = project.config_dir / "tools.json"
+        path.parent.mkdir(parents=True, exist_ok=True)
         seed = json.loads((toolmod.PRESET_DIR / "synopsys.json").read_text())  # the roles the project uses now (the preset), kept
         seed.pop("_comment", None)
     else:

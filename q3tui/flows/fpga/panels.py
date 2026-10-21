@@ -36,7 +36,7 @@ def _file_detail(name: str, hint: str):
     """The detail pane of a section: its generated Tcl file and the keys."""
 
     def detail(app: "Q3TUIApp", key: str) -> str:
-        f = app.project.root / "sdc" / name
+        f = app.project.sdc_dir / name
         body = f.read_text() if f.is_file() else "(not generated yet)"
         return f"**`{key}`** → `sdc/{name}`\n\n```tcl\n{body}\n```\n\n{hint}"
 
@@ -361,20 +361,20 @@ class Section:
 SECTIONS = (
     Section("clocks", "Clocks", ("Clock", "Port", "MHz", "ASIC MHz", "Period ns", "Uncert. ns", "Duty %", "ASIC Fmax MHz"), _clock_rows,
             _file_detail("clocks.tcl", "`e` edit · `a` add a clock · `d` remove"),
-            "e edit · a add a clock · d remove · ASIC MHz: the ASIC flow's own target for the clock (e; same = the FPGA's) · ASIC Fmax: what the library can reach for this clock — E estimates it in about a minute (~), the ASIC flow's synthesis is exact (≥ = it met the clock it was given and can go faster; * = RTL changed since; – = not run)", "no sdc/sdc.json yet — run (r)"),
+            "e edit · a add a clock · d remove · ASIC MHz: the ASIC flow's own target for the clock (e; same = the FPGA's) · ASIC Fmax: what the library can reach for this clock — E estimates it in about a minute (~), the ASIC flow's synthesis is exact (≥ = it met the clock it was given and can go faster; * = RTL changed since; – = not run)", "no constraints/sdc/sdc.json yet — run (r)"),
     Section("groups", "Clock groups", ("Kind", "Groups"), _group_rows, _file_detail("clock_groups.tcl", "`e` edit · `a` add · `d` remove"),
             "relations between clocks (asynchronous / exclusive); a single clock needs none · e edit · a add · d remove",
             "no clock groups: a single clock domain needs none"),
     Section("io", "I/O", ("Setting", "Value"), _io_rows, _file_detail("io_constraints.tcl", "`e` edit"),
             "input / output delay = a share of the clock period on every port except clocks, resets and the excluded ones · e edit",
-            "no sdc/sdc.json yet — run (r)"),
+            "no constraints/sdc/sdc.json yet — run (r)"),
     Section("exceptions", "Exceptions", ("Kind", "From", "To", "Through", "Value"), _exception_rows,
             _file_detail("exceptions.tcl", "`e` edit · `a` add · `d` remove"),
             "false paths from asynchronous resets, multicycle and min / max delay paths · e edit · a add · d remove",
-            "no sdc/sdc.json yet — run (r)"),
+            "no constraints/sdc/sdc.json yet — run (r)"),
     Section("env", "Environment", ("Setting", "Value"), _env_rows, _file_detail("env.tcl", "`e` edit"),
             "driving cell, load, max fanout / transition — ASIC tools use them, the FPGA tools skip env.tcl · e edit",
-            "no sdc/sdc.json yet — run (r)"),
+            "no constraints/sdc/sdc.json yet — run (r)"),
 )
 
 
@@ -414,7 +414,7 @@ def _ppa_rows(app: "Q3TUIApp") -> list[tuple]:
 def _ppa_detail(app: "Q3TUIApp", key: str) -> str:
     d = _ppa(app)
     if key == "cp":
-        f = app.project.root / "fpga" / "reports" / "paths.rpt"
+        f = app.project.fpga_dir / "reports" / "paths.rpt"
         return f"```\n{f.read_text(errors='replace')[:6000]}\n```" if f.is_file() else "_no paths.rpt_"
     return f"Overall: **{d.get('verdict', {}).get('overall', '?')}** — post-synthesis estimates; placement and routing can still change them."
 
@@ -461,7 +461,7 @@ class FixTab(DataTab):
             return
         app.refresh_all()
         step = next((s for s in app.engine.steps if s.kind == "fpga.ppa_optimize"), None)  # on to the flow that got the change requests
-        app.action_switch_flow(str((step.options if step else {}).get("handoff_flow") or "vlsit"))
+        app.action_switch_flow(str((step.options if step else {}).get("handoff_flow") or "rtl"))
 
     def action_handoff(self) -> None:
         self._hand("")

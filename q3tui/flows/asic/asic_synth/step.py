@@ -1,6 +1,6 @@
 """ASIC step `asic_synth`: Design Compiler on the RTL with the SDC and a standard-cell library (tool role `asic_synth`).
 
-The Tcl script is written by code (`lib/dc.py`); the netlist goes to `asic/netlist/`, the reports to `asic/reports/`, the numbers
+The Tcl script is written by code (`lib/dc.py`); the netlist goes to `build/syn/asic/netlist/`, the reports to `build/syn/asic/reports/`, the numbers
 (area, worst slack, power, violations) and the verdict against `min_slack_ns` / `max_area_um2` to `schemas/asic_synth.json`.
 A missing tool or library is a failed step ("not run"), never a pass."""
 
@@ -52,7 +52,7 @@ class Step(AsicStep):
 
     def _constraints(self, ctx: StepContext) -> tuple[Path | None, dict[str, float], "sdcmod.SdcConfig | None"]:
         """(the SDC file to source, the clocks with their own ASIC frequency {name: MHz}, the constraints in effect). When no clock has one that is
-        the shared `sdc/sdc.tcl`; otherwise `sdc/sdc.json` with those clocks changed is rendered into `asic/sdc/` — the FPGA's SDC stays as it is.
+        the shared `constraints/sdc/sdc.tcl`; otherwise `constraints/sdc/sdc.json` with those clocks changed is rendered into `build/syn/asic/sdc/` — the FPGA's SDC stays as it is.
         The ASIC frequency of a clock is set in the SDC tab (*ASIC MHz*) or `sdc_set key=clock.<name>.asic_freq_mhz`."""
         engine, project = ctx.engine, ctx.project
         cfg = sdcmod.load(project)

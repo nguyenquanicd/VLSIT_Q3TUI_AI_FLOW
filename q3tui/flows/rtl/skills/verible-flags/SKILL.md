@@ -39,6 +39,6 @@ Goal: flags that make `verible-verilog-lint` / `verible-verilog-format` enforce 
 
 ## Judgment
 - Two rules that cannot both hold (a line length of 80 and a name rule that forces longer names, tabs allowed here and forbidden there) are a
-  *conflict*: report it, do not silently pick one. The user decides in `rules/rtl_rules.md`.
+  *conflict*: report it, do not silently pick one. The user decides in `config/rtl_rules.md`.
 - Do not turn a rule on "to be safe". Every enabled rule must be traceable to a rule id; put the id next to it in your answer.
 - Keep the flags short: one `--rules=` line is easier to review than ten.

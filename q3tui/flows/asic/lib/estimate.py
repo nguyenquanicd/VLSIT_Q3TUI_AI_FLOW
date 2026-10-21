@@ -53,7 +53,7 @@ def compute(ops) -> str:
         raise EngineError("the ASIC flow has no asic_synth step")
     cfg = sdcmod.load(ops.project)
     if cfg is None or not cfg.clocks:
-        raise EngineError("no clock yet: run the sdc step first (sdc/sdc.json)")
+        raise EngineError("no clock yet: run the sdc step first (constraints/sdc/sdc.json)")
     problem = step.missing_rtl(eng)
     if problem:
         raise EngineError(problem)

@@ -1,15 +1,15 @@
 # Q3TUI — Design Specification
 
-Q3TUI takes a hardware block from **intent to verified RTL**. A pipeline engine runs a
+Q3TUI takes a hardware block from **intent to checked RTL**. A pipeline engine runs a
 **flow** (a data file listing the steps): write the spec, extract requirements, settle the
-configuration, write the RTL and a testbench independently, add assertions, verify
-(simulation, SVA, mutation testing, a requirements traceability matrix) and document.
+configuration (the `spec` flow), then write the RTL, format it, lint it and smoke-test it (the `rtl` flow).
+Testbench, assertions, verification and the final document were removed and come back as their own flows.
 
 | Doc | Content |
 |---|---|
 | [pipeline.md](pipeline.md) | The engine: updates not re-runs, resume, who sees what, the spec step, questions, approval, controls |
-| [vlsit-flow.md](vlsit-flow.md) | The VLSIT RTL flow (the default): steps, artifacts, RTM, review API |
-| [flows.md](flows.md) | Flows as data (YAML / folders / markdown), gate modes, sessions, tools by role (`tools.json`), the TUI picker and panels |
+| [spec-flow.md](spec-flow.md) | The spec flow (the default): spec → parse → config, artifacts, review API, importing |
+| [flows.md](flows.md) | Flows as data (YAML / folders / markdown), gate modes, sessions, tools by role (`config/tools.json`), the TUI picker and panels |
 | [rtl-flow.md](rtl-flow.md) | The RTL flow: rules → Verible flags, RTL, format, style lint (LLM judge, fix loop), smoke test; skills for the LLM stages |
 | [fpga-flow.md](fpga-flow.md) | The FPGA flow: SDC, Vivado out-of-context synthesis, timing / utilization report (PPA estimation) |
 | [project-flow.md](project-flow.md) | The project settings flow: the project's settings, the tools (found or not, modules), the ASIC libraries (add one by scanning a folder) |
@@ -23,10 +23,11 @@ configuration, write the RTL and a testbench independently, add assertions, veri
 
 ## The pipeline
 
-The default flow is `vlsit` ([vlsit-flow.md](vlsit-flow.md)):
+The default flow is `spec` ([spec-flow.md](spec-flow.md)); the `rtl` flow continues from its artifacts:
 
 ```text
-spec ─► parse ─► config ─► rtl ‖ tb ─► sva ─► verify ─► doc
+spec ─► parse ─► config                      (flow `spec`)
+spec ─► rules ─► parse ─► config ─► csr ─► rtl ─► format ─► style_lint ─► smoke   (flow `rtl`)
 ```
 
 | Step | Produces | Skipped when you provide |
@@ -34,18 +35,14 @@ spec ─► parse ─► config ─► rtl ‖ tb ─► sva ─► verify ─�
 | **spec** | `spec/spec.md`, sectioned by an editable template | a spec document |
 | **parse** | requirements (`REQ-NNN`), parameters, module mapping, ambiguity questions (`schemas/structured_spec.json`) | — |
 | **config** | locked parameters, constraints checked by code (`schemas/final_config.json`) | — |
-| **rtl** | SystemVerilog per module, lint clean, synthesis report | — |
-| **tb** | test plan (TC ↔ REQ) and a plain-SystemVerilog testbench | — |
-| **sva** | assertions per module (each with its `// NL:` text), bound to the RTL | — |
-| **verify** | per-TC simulation, SVA results, mutation testing, the RTM; a bounded fix loop | — |
-| **doc** | `docs/specification.md` (+ PDF) | — |
+| **rtl** (rtl flow) | SystemVerilog per module, lint clean, synthesis report | — |
 
 The built-in `rtl` flow ([rtl-flow.md](rtl-flow.md)) generates the RTL alone and checks it (rules → Verible flags, CSR from the APB-CSR-Generator,
 format, style lint, smoke test); `fpga`, `asic` and `project` are the synthesis and settings flows. The built-in `example` flow (spec → parse) is a minimal folder flow to copy. Users write
 their own flows from the registered step kinds ([flows.md](flows.md)).
 
-Who sees what (enforced): `tb` reads only spec, parse and config — never the RTL. Details
-in [pipeline.md](pipeline.md) and [vlsit-flow.md](vlsit-flow.md).
+Who sees what (enforced): the smoke-test writer reads only spec, parse and config. Details
+in [pipeline.md](pipeline.md) and [spec-flow.md](spec-flow.md).
 
 **Start anywhere.** Each step's inputs are plain files in the project. Provide a spec and
 the flow starts at parse. `q3tui run` runs whatever is missing or stale, like `make`.
@@ -74,7 +71,7 @@ the flow starts at parse. `q3tui run` runs whatever is missing or stale, like `m
 
 - New blocks written from scratch, a few clock domains at most.
 - Tools by role (lint, synthesis, simulation, run, optionally mutation), configured in
-  `tools.json`; the built-in preset is Synopsys (VCS, Design Compiler).
+  `config/tools.json`; the built-in preset is Synopsys (VCS, Design Compiler).
 - Interfaces: CLI and TUI (Textual) over one pipeline engine.
 - Not in scope: formal, UVM, upgrading existing RTL, web UI.
 
@@ -83,5 +80,5 @@ the flow starts at parse. `q3tui run` runs whatever is missing or stale, like `m
 | Milestone | Scope |
 |---|---|
 | History | M0–M10 built the engine, the TUI, the assistant, the spec step, team mode and two built-in Q3TUI flows (`units`, `steps`: requirements, architecture, Python golden model, cross-check, triage, signoff). Those flows and their steps have been removed |
-| **Current** | Flows as data ([flows.md](flows.md)); the **VLSIT flow** ([vlsit-flow.md](vlsit-flow.md)) is the product's flow and the default; `example` is the template for your own |
+| **Current** | Flows as data ([flows.md](flows.md)); the **spec flow** ([spec-flow.md](spec-flow.md)) is the default and the `rtl` flow ([rtl-flow.md](rtl-flow.md)) builds on it; `example` is the template for your own |
 | Later | Formal, existing-RTL upgrade, UVM, Verdi debug, web UI, MCP/skills |

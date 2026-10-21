@@ -9,10 +9,11 @@ Product of **VLSI Technology**.
 
 ## Overview
 
-Q3TUI runs the **VLSIT flow** end to end: `spec → parse (requirements) → config (parameters) → rtl ‖ tb →
-sva (assertions) → verify (simulation + mutation + sign-off) → doc`. Every phase that needs a human decision
-stops at a **gate**; everything else — naming-rule compliance, lint, requirement traceability, simulation,
-mutation scoring — is checked deterministically by code, not trusted to the model's word. You can drive the
+Q3TUI runs the **spec flow** (`spec → parse (requirements) → config (parameters)`), and the **rtl flow** on top of it
+(rules, CSR, RTL, format, style lint, smoke test). Every phase that needs a human decision
+stops at a **gate**; everything else — naming-rule compliance, lint, formatting, the smoke simulation —
+is checked deterministically by code, not trusted to the model's word. The testbench, SVA, verification (simulation, mutation, sign-off) and document
+steps of the former VLSIT flow were removed and come back as their own flows. You can drive the
 whole thing from the **TUI** (`q3tui`), the **CLI** (`q3tui run`, `q3tui status`, …), or by chatting with the
 built-in assistant, which has a tool for every action a key or command has.
 
@@ -25,30 +26,21 @@ Vietnamese), and `docs/spec/` for the underlying design and architecture referen
 flowchart LR
     spec[spec] --> parse["parse<br/><b>Gate 1 · human</b>"]
     parse --> config["config<br/>Gate 2 · auto"]
-    config --> rtl["rtl<br/>lint + synthesis"]
-    config --> tb["tb<br/>testbench<br/>Gate 4 · auto"]
-    rtl --> sva["sva<br/><b>Gate 3b · human</b>"]
-    tb --> sva
-    sva --> verify["verify<br/><b>Gate 5 · human</b>"]
-    verify --> doc[doc]
 
     style parse fill:#f9c74f,color:#000
-    style sva fill:#f9c74f,color:#000
-    style verify fill:#f9c74f,color:#000
 ```
 
-`rtl` and `tb` only need `config`'s output — run them one after another (default) or in parallel
-(`pipeline.parallel_rtl_tb`). Yellow = a gate that stops for your review by default.
+Yellow = a gate that stops for your review by default. The `rtl` flow continues from `config` (below).
 
 ## Other flows
 
-`pipeline.flow` picks the flow (`q3tui flow list`). Besides `vlsit`:
+`pipeline.flow` picks the flow (`q3tui flow list`). Besides `spec`:
 
-- **`rtl`** — RTL on its own, checked and ready for verification: `spec → rules → parse → config → csr → rtl → format → style_lint → smoke`. Your rules
-  (`rules/rtl_rules.md`) over Q3TUI's defaults become **Verible** flags (checked for contradictions before any RTL is written); the software-visible
+- **`rtl`** — RTL on its own, checked and ready for verification: `spec → parse → config → rules → csr → rtl → format → style_lint → smoke`. Your rules
+  (`config/rtl_rules.md`) over Q3TUI's defaults become **Verible** flags (checked for contradictions before any RTL is written); the software-visible
   registers are **generated** by the [APB-CSR-Generator](https://github.com/nguyenquanicd/APB-CSR-Generator) from a register map drafted from the spec
   (`q3tui act csr_tool_install`); the RTL is formatted, style-linted by an LLM judge whose fixes go back to `rtl`, and smoke-tested with a testbench
-  written from the spec alone. The chain and its fix loops run by themselves. LLM stages use markdown **skills** (`skills/<name>/SKILL.md`, yours
+  written from the spec alone. The chain and its fix loops run by themselves. LLM stages use markdown **skills** (`config/skills/<name>/SKILL.md`, yours
   can replace or add). See [docs/spec/rtl-flow.md](docs/spec/rtl-flow.md).
 - `fpga`, `asic`, `project` — synthesis / PPA estimation and the project settings ([docs/spec/flows.md](docs/spec/flows.md)).
 
@@ -111,7 +103,7 @@ limitations).
 
 | Version | Date | Status | Author(s) | Notes |
 |---|---|---|---|---|
-| 0.1.0 | 2026-10 | **Beta** | Ethanoctis, superdalink | VLSIT flow (spec → parse → config → rtl ‖ tb → sva → verify → doc) complete end to end; TUI, CLI and assistant parity. |
+| 0.1.0 | 2026-10 | **Beta** | Ethanoctis, superdalink | spec flow (spec → parse → config) and rtl flow; TUI, CLI and assistant parity. |
 
 ## Quick start
 

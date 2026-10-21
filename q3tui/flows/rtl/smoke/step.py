@@ -23,7 +23,7 @@ from q3tui.flows.rtl.lib.tools import smoke_tools
 from q3tui.llm.runtime import Stage
 from q3tui.pipeline.base import StepContext, StepFailed
 from q3tui.steps.common import Question, assign_question_ids, load_answers, scoped, spec_block
-from q3tui.steps.vlsit import artifacts
+from q3tui.flows.spec.lib import artifacts
 
 _SECTIONS = skill_sections(Path(__file__).parent / "md" / "skill.md")
 WRITER, TRIAGE = _SECTIONS["WRITER"], _SECTIONS["TRIAGE"]
@@ -114,7 +114,7 @@ class Step(RtlFlowStep):
         engine, project = ctx.engine, ctx.project
         f = self._files(engine)
         ts, work = self.tools(engine), self.workdir(engine)
-        skills = skillmod.discover(project.root, engine.flow.path, ["smoke-testbench", *(["apb-csr-tool"] if csr.read_provided(self.rtl_dir(engine)) else [])])
+        skills = skillmod.discover(project.config_dir, engine.flow.path, ["smoke-testbench", *(["apb-csr-tool"] if csr.read_provided(self.rtl_dir(engine)) else [])])
         f["tb"].parent.mkdir(parents=True, exist_ok=True)
         stage = Stage(name="smoke_tb", system_prompt=WRITER, prompt=self._writer_prompt(engine, snap, f["tb"], old, feedback, skillmod.index(skills, project.root)),
                       cwd=project.root, builtin_tools=["Read", "Grep", "Glob", "Write", "Edit"],
@@ -176,7 +176,7 @@ class Step(RtlFlowStep):
         if rounds >= limit:
             write_json(f["report"], report)
             raise StepFailed(f"smoke: still failing after {rounds} fix round(s) (options.max_rounds / pipeline.max_fix_iterations):\n{summary}")
-        skills = skillmod.discover(project.root, engine.flow.path, ["smoke-triage"])
+        skills = skillmod.discover(project.config_dir, engine.flow.path, ["smoke-triage"])
         block, _ = spec_block(project)
         rtl = self.design_files(engine)
         prompt = "\n".join(["# Task: triage the failing smoke test", "", "## Specification", block, "", "## Requirements",

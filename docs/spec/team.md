@@ -4,7 +4,7 @@ With `team.enabled` (and per-stage sessions, `session: fresh`), every LLM task o
 goes to **that role's one Claude session**, which persists across tasks, runs and restarts
 until you restart it. A persistent session reads the project once (then from the prompt
 cache at ~1/10 of the price), remembers why it wrote what it wrote, and fixes a bug report
-in a turn. With `session: flow` (the VLSIT default) the whole flow is already one session
+in a turn. With `session: flow` (set it in a flow file; no built-in flow does now) the whole flow is already one session
 (role `flow`, [flows.md](flows.md) "Sessions") and team routing does not apply.
 
 ## The roles
@@ -52,7 +52,7 @@ memory cannot leak the other side.
 
 ```yaml
 pipeline:
-  session: fresh       # team routing applies to per-stage sessions (the vlsit flow defaults to `flow`)
+  session: fresh       # team routing applies to per-stage sessions (a flow with `session: flow` ignores team routing)
 team:
   enabled: true        # route every role task to its persistent session
   dedupe_chars: 300    # markdown sections (then paragraphs) at least this long are sent once per session

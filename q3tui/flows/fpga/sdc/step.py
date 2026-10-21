@@ -1,4 +1,4 @@
-"""FPGA step `sdc`: `sdc/{clocks,clock_groups,exceptions,io_constraints,env,sdc}.tcl` from `sdc/sdc.json` (code only, no LLM).
+"""FPGA step `sdc`: `constraints/sdc/{clocks,clock_groups,exceptions,io_constraints,env,sdc}.tcl` from `constraints/sdc/sdc.json` (code only, no LLM).
 
 First run: sdc.json is made from the top module's ports (clock = input named like a clock, resets = false paths) and the
 clock the spec states ("target frequency 100 MHz"; `options.period_ns` wins, else 10 ns). After that sdc.json is yours: edit it
@@ -47,17 +47,17 @@ class Step(FpgaStep):
             text = "\n".join(p.read_text(errors="replace") for p in project.spec_documents() if p.suffix.lower() in (".md", ".txt", ".rst"))
             cfg = sdcmod.default_config(ports, text, self.options.get("period_ns"))
             sdcmod.save(project, cfg)
-            ctx.emit("log", message="sdc/sdc.json created: " + (", ".join(f"{c.name} {c.freq_mhz:g} MHz" for c in cfg.clocks) or "no clock found"))
+            ctx.emit("log", message="constraints/sdc/sdc.json created: " + (", ".join(f"{c.name} {c.freq_mhz:g} MHz" for c in cfg.clocks) or "no clock found"))
         if not cfg.clocks:
-            raise StepFailed("no clock: none of the top module's inputs is named like one; add one to sdc/sdc.json (SDC tab)")
+            raise StepFailed("no clock: none of the top module's inputs is named like one; add one to constraints/sdc/sdc.json (SDC tab)")
         problems = sdcmod.port_problems(cfg, ports)
         if problems:  # the RTL's ports changed (or the SDC names a port that is not there): hand it back, never constrain nothing
             raise StepFailed(f"the SDC does not match the ports of {top}: " + "; ".join(problems)
-                             + ". Fix it in the SDC view (e on the clock: its port) or sdc/sdc.json, or `q3tui act sdc_set key=clock.<name>.port value=<port>`.")
+                             + ". Fix it in the SDC view (e on the clock: its port) or constraints/sdc/sdc.json, or `q3tui act sdc_set key=clock.<name>.port value=<port>`.")
         try:
             written = sdcmod.write(project, cfg, ports)
         except ValueError as exc:
-            raise StepFailed(f"sdc/sdc.json: {exc}") from exc
+            raise StepFailed(f"constraints/sdc/sdc.json: {exc}") from exc
         ctx.emit("log", message=f"SDC: {', '.join(f'{c.name} {c.period_ns:g} ns ({c.freq_mhz:g} MHz)' + (' — ' + n if (n := hints.asic_note(project, c.name)) else '') for c in cfg.clocks)}; "
                                 f"{len(written)} file(s) written")
         ctx.unchanged = not written

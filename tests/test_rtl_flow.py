@@ -20,23 +20,24 @@ some unrelated line
 
 def test_flow_loads_and_is_valid():
     flow = flows.load_flow("rtl")
-    assert [s.id for s in flow.steps][:9] == ["spec", "rules", "parse", "config", "csr", "rtl", "format", "style_lint", "smoke"]
+    assert [s.id for s in flow.steps][:9] == ["spec", "parse", "config", "rules", "csr", "rtl", "format", "style_lint", "smoke"]
     assert flows.validate(flow) == []
     assert flow.session == "fresh"
     assert {"verible_lint", "verible_format", "csr_gen"} <= set(flow.tool_defaults)  # the flow's own roles (tools.json)
 
 
 def test_rule_stack_puts_your_file_first(tmp_path):
-    assert rules.stack(tmp_path, ["vlsit_rtl_rule_default.md"]) == ["vlsit_rtl_rule_default.md"]
-    (tmp_path / "rules").mkdir()
-    (tmp_path / rules.USER_RULES).write_text("- **U-01** mine\n")
-    assert rules.stack(tmp_path, ["vlsit_rtl_rule_default.md"]) == [rules.USER_RULES, "vlsit_rtl_rule_default.md"]
+    project = Project.open(tmp_path)
+    assert rules.stack(project, ["rtl_rule_default.md"]) == ["rtl_rule_default.md"]
+    (tmp_path / "config").mkdir()
+    (tmp_path / "config" / rules.USER_RULES).write_text("- **U-01** mine\n")
+    assert rules.stack(project, ["rtl_rule_default.md"]) == ["config/rtl_rules.md", "rtl_rule_default.md"]
     assert rules.stack(None, ["x.md"]) == ["x.md"]
     # the same names are what the generator reads (project path first, then the shipped file)
-    from q3tui.steps.vlsit.base import rules_text
+    from q3tui.flows.spec.lib.base import rules_text
 
-    text = rules_text(rules.stack(tmp_path, ["vlsit_rtl_rule_default.md"]), tmp_path)
-    assert text.index("rtl_rules.md") < text.index("vlsit_rtl_rule_default.md") and "U-01" in text
+    text = rules_text(rules.stack(project, ["rtl_rule_default.md"]), tmp_path)
+    assert text.index("rtl_rules.md") < text.index("rtl_rule_default.md") and "U-01" in text
 
 
 def test_parse_verible():
@@ -67,9 +68,9 @@ def test_parse_verible_real_output():  # (captured from verible v0.0-4296-g0f262
 
 
 def test_verible_findings_carry_the_source_line(tmp_path):
-    (tmp_path / "rtl").mkdir()
-    (tmp_path / "rtl" / "m_a.sv").write_text("module M_A;\nendmodule\n\n  wire x;   \n")
-    diags = T.parse_log("verible", "rtl/m_a.sv:4:9: Remove trailing spaces. [Style: trailing-spaces] [no-trailing-spaces]\n")
+    (tmp_path / "src" / "rtl").mkdir(parents=True)
+    (tmp_path / "src" / "rtl" / "m_a.sv").write_text("module M_A;\nendmodule\n\n  wire x;   \n")
+    diags = T.parse_log("verible", "src/rtl/m_a.sv:4:9: Remove trailing spaces. [Style: trailing-spaces] [no-trailing-spaces]\n")
     f = verible.findings(diags, tmp_path)
     assert [(x.module, x.line, x.rule, x.text) for x in f] == [("m_a", 4, "no-trailing-spaces", "  wire x;")]
     assert f[0].key() == "m_a:4:no-trailing-spaces"
@@ -121,9 +122,8 @@ def test_rtl_dir_option_moves_the_rtl(tmp_path):
     proj = Project.open(tmp_path)
     engine = Engine(proj, flow=flows.load_flow("rtl", tmp_path))
     rtl = engine.by_name["rtl"]
-    assert rtl.lay(engine).rtl == tmp_path / "rtl" and rtl.options["rtl_dir"] == "rtl"
-    vlsit = Engine(proj, flow=flows.load_flow("vlsit", tmp_path))
-    assert vlsit.by_name["rtl"].lay(vlsit).rtl == tmp_path / "src" / "rtl"  # the vlsit flow is untouched
+    assert rtl.lay(engine).rtl == tmp_path / "src" / "rtl"  # (project.rtl_dir)
+    assert rtl.lay(engine).sva == tmp_path / "src" / "sva"  # (everything else keeps the default layout)
 
 
 # -- the steps with a fake Verible and a fake LLM -------------------------------------------------------------------
@@ -199,7 +199,7 @@ def rtl_proj(tmp_path, monkeypatch):
         "pipeline: {flow: rtl}\ntools:\n  roles:\n"
         f"    verible_lint: {{cmd: '{py} {tmp_path}/fake_verible.py {{args}} {{files}}', parse: verible, ok_returncodes: [0, 1]}}\n"
         f"    verible_format: {{cmd: '{py} {tmp_path}/fake_verible.py {{args}} {{files}}', parse: verible}}\n")
-    (tmp_path / "rtl").mkdir()
+    (tmp_path / "src" / "rtl").mkdir(parents=True)
     fake = ScriptedLLM()
     monkeypatch.setattr(runtime, "run_stage", fake)
     eng = Engine(Project.open(tmp_path))
@@ -226,21 +226,21 @@ def test_rules_step_writes_the_flags_and_updates_by_diff(rtl_proj):
     root, eng, fake = rtl_proj
     fake.answers["rules_style"] = _flags_answer
     _run(eng, "rules")
-    sd = root / "rtl" / "style_lint"
+    sd = root / "src" / "rtl" / "style_lint"
     assert (sd / "verible.flags").read_text().splitlines()[1:] == ["--ruleset=none", "--rules=+no-tabs"]
     assert "--indentation_spaces=2" in (sd / "format.flags").read_text() and (sd / "rules_resolved.md").is_file()
     first = fake.calls[0]
     assert "verible-flags" in first.prompt and "SKILL.md" in first.prompt  # the skills are offered, not pasted
     assert "- line-length* — " in first.prompt and "[length=100]" in first.prompt  # the installed Verible's rules, from `--help_rules=all`
     assert {t.name for t in first.sdk_tools} == {"verible_help", "verible_check_flags", "verible_lint"}
-    assert first.output_model is RulesResult and root / "rtl" in first.deny_dirs  # (the rules are read, never the RTL)
+    assert first.output_model is RulesResult and root / "src" / "rtl" in first.deny_dirs  # (the rules are read, never the RTL)
     # nothing changed: no LLM
     n = len(fake.calls)
     _run(eng, "rules")
     assert len(fake.calls) == n
     # your rules file: the task names exactly the rule that is new
-    (root / "rules").mkdir()
-    (root / "rules" / "rtl_rules.md").write_text("- **USR-01** lines are at most 100 characters\n")
+    (root / "config").mkdir(exist_ok=True)
+    (root / "config" / "rtl_rules.md").write_text("- **USR-01** lines are at most 100 characters\n")
     _run(eng, "rules")
     assert len(fake.calls) == n + 1 and "added USR-01" in fake.calls[-1].prompt and "--rules=+no-tabs" in fake.calls[-1].prompt
 
@@ -252,7 +252,7 @@ def test_rules_that_contradict_stop_the_flow_before_any_rtl(rtl_proj):
                                                                   suggestion="raise USR-02 to 32")])
     with pytest.raises(StepFailed, match="NAM-07, USR-02"):
         _run(eng, "rules")
-    assert not (root / "rtl" / "style_lint" / "verible.flags").exists() and (root / "rtl" / "style_lint" / "rules_check.json").is_file()
+    assert not (root / "src" / "rtl" / "style_lint" / "verible.flags").exists() and (root / "src" / "rtl" / "style_lint" / "rules_check.json").is_file()
 
 
 def test_bad_flags_are_sent_back_to_the_llm(rtl_proj):
@@ -269,18 +269,18 @@ def test_format_changes_whitespace_only_and_keeps_a_backup(rtl_proj):
     from q3tui.pipeline.state import StepRecord
 
     root, eng, fake = rtl_proj
-    (root / "rtl" / "a.sv").write_text("module  a;\n  wire   x;\nendmodule\n")
-    (root / "rtl" / "b.sv").write_text("module b;\n  wire x; // CORRUPT\nendmodule\n")
-    (root / "rtl" / "c.sv").write_text("module c; SYNTAX\nendmodule\n")
-    eng.state.steps["rtl"] = StepRecord(status="done", outputs={f"rtl/{n}.sv": sha256_file(root / "rtl" / f"{n}.sv") for n in "abc"})
+    (root / "src" / "rtl" / "a.sv").write_text("module  a;\n  wire   x;\nendmodule\n")
+    (root / "src" / "rtl" / "b.sv").write_text("module b;\n  wire x; // CORRUPT\nendmodule\n")
+    (root / "src" / "rtl" / "c.sv").write_text("module c; SYNTAX\nendmodule\n")
+    eng.state.steps["rtl"] = StepRecord(status="done", outputs={f"src/rtl/{n}.sv": sha256_file(root / "src" / "rtl" / f"{n}.sv") for n in "abc"})
     _run(eng, "format")
-    assert (root / "rtl" / "a.sv").read_text() == "module a;\n wire x;\nendmodule\n"
-    assert "wire x" in (root / "rtl" / "b.sv").read_text()  # the formatter changed code (wire y): refused
-    rep = eng.by_name["format"].read_json(root / "rtl" / "style_lint" / "format.json")
+    assert (root / "src" / "rtl" / "a.sv").read_text() == "module a;\n wire x;\nendmodule\n"
+    assert "wire x" in (root / "src" / "rtl" / "b.sv").read_text()  # the formatter changed code (wire y): refused
+    rep = eng.by_name["format"].read_json(root / "src" / "rtl" / "style_lint" / "format.json")
     assert rep["formatted"] == ["a.sv"] and rep["rejected_changed_code"] == ["b.sv"] and list(rep["syntax_errors"]) == ["c.sv"]
-    assert list((root / ".q3tui" / "bkp").glob("*/rtl/a.sv"))
+    assert list((root / ".q3tui" / "bkp").glob("*/src/rtl/a.sv"))
     # the format is not a hand edit: the rtl step's record follows it
-    assert eng.state.steps["rtl"].outputs["rtl/a.sv"] == sha256_file(root / "rtl" / "a.sv")
+    assert eng.state.steps["rtl"].outputs["src/rtl/a.sv"] == sha256_file(root / "src" / "rtl" / "a.sv")
     assert eng.evaluate(eng.by_name["rtl"]).edited == []
 
 
@@ -289,23 +289,23 @@ def test_format_asks_before_touching_a_file_you_edited(rtl_proj):
     from q3tui.pipeline.state import StepRecord
 
     root, eng, fake = rtl_proj
-    f = root / "rtl" / "a.sv"
+    f = root / "src" / "rtl" / "a.sv"
     f.write_text("module  a;\nendmodule\n")
-    eng.state.steps["rtl"] = StepRecord(status="done", outputs={"rtl/a.sv": sha256_file(f)})
+    eng.state.steps["rtl"] = StepRecord(status="done", outputs={"src/rtl/a.sv": sha256_file(f)})
     f.write_text("module   a; // mine\nendmodule\n")  # your edit
     _run(eng, "format")
     q = eng.by_name["format"].questions_list(eng)
     assert len(q) == 1 and q[0].blocking and "edited by hand" in q[0].question and f.read_text().startswith("module   a;")
-    assert eng.evaluate(eng.by_name["rtl"]).edited == ["rtl/a.sv"]  # still yours
+    assert eng.evaluate(eng.by_name["rtl"]).edited == ["src/rtl/a.sv"]  # still yours
     eng.by_name["format"].answer(eng, q[0].id, "yes — format it (a backup is kept)")
     _run(eng, "format")
-    assert f.read_text() == "module a; // mine\nendmodule\n" and list((root / ".q3tui" / "bkp").glob("*/rtl/a.sv"))
-    assert eng.evaluate(eng.by_name["rtl"]).edited == ["rtl/a.sv"]  # your edit is still flagged as yours
+    assert f.read_text() == "module a; // mine\nendmodule\n" and list((root / ".q3tui" / "bkp").glob("*/src/rtl/a.sv"))
+    assert eng.evaluate(eng.by_name["rtl"]).edited == ["src/rtl/a.sv"]  # your edit is still flagged as yours
 
 
 def _style_setup(root, eng, body="module m;\n  parameter BAD_NAME = 1;\nendmodule\n"):
-    (root / "rtl" / "m.sv").write_text(body)
-    sd = root / "rtl" / "style_lint"
+    (root / "src" / "rtl" / "m.sv").write_text(body)
+    sd = root / "src" / "rtl" / "style_lint"
     sd.mkdir()
     (sd / "verible.flags").write_text("--rules=+no-tabs\n")
 
@@ -315,7 +315,7 @@ def test_style_lint_clean_needs_no_llm(rtl_proj):
     _style_setup(root, eng, "module m;\nendmodule\n")
     _run(eng, "style_lint")
     assert fake.calls == []
-    assert eng.by_name["style_lint"].read_json(root / "rtl" / "style_lint" / "style_report.json")["status"] == "clean"
+    assert eng.by_name["style_lint"].read_json(root / "src" / "rtl" / "style_lint" / "style_report.json")["status"] == "clean"
 
 
 def test_style_lint_hands_fixes_back_to_their_owners(rtl_proj):
@@ -339,7 +339,7 @@ def test_a_flag_problem_goes_to_the_rules_step_and_waivers_are_remembered(rtl_pr
     _run(eng, "style_lint")
     assert eng.state.step_meta["style_lint"]["waived"]
     fake.answers["style_triage"] = lambda s: StyleVerdict(flag_problems=[], fixes=[])
-    (root / "rtl" / "m.sv").write_text("module m;\n  parameter BAD_NAME = 1;\nendmodule\n")  # fixed; the accepted finding is not judged again
+    (root / "src" / "rtl" / "m.sv").write_text("module m;\n  parameter BAD_NAME = 1;\nendmodule\n")  # fixed; the accepted finding is not judged again
     n = len(fake.calls)
     _run(eng, "style_lint")
     assert len(fake.calls) == n
@@ -362,7 +362,7 @@ def test_the_verible_tools_run_through_the_roles(rtl_proj):
     root, eng, fake = rtl_proj
     _style_setup(root, eng)
     ts = eng.by_name["style_lint"].tools(eng)
-    tools = {t.name: t for t in verible_tools(ts, root / ".q3tui" / "w", root, lambda: sorted((root / "rtl").glob("*.sv")), root / "rtl" / "style_lint" / "verible.flags")}
+    tools = {t.name: t for t in verible_tools(ts, root / ".q3tui" / "w", root, lambda: sorted((root / "src" / "rtl").glob("*.sv")), root / "src" / "rtl" / "style_lint" / "verible.flags")}
 
     def call(name, **args):
         out = anyio.run(lambda: tools[name].handler(args))
@@ -394,14 +394,14 @@ def test_the_fix_loop_runs_by_itself_rtl_format_style_rtl_format_style(rtl_proj)
             return [engine.project.root / "spec.txt"]
 
         def outputs(self, engine):
-            return sorted((engine.project.root / "rtl").glob("*.sv"))
+            return sorted((engine.project.root / "src" / "rtl").glob("*.sv"))
 
         def missing_input(self, engine):
             return None
 
         async def run(self, ctx):
             ran.append("rtl")
-            f = ctx.project.root / "rtl" / "m.sv"
+            f = ctx.project.root / "src" / "rtl" / "m.sv"
             by_unit, _ = split_feedback(ctx.feedback, "rtl")
             if not f.is_file():
                 f.write_text("module  m;\n  parameter  BAD_NAME = 1;   \nendmodule\n")
@@ -419,15 +419,15 @@ def test_the_fix_loop_runs_by_itself_rtl_format_style_rtl_format_style(rtl_proj)
 
         steps[n].run = counted
     (root / "spec.txt").write_text("x")
-    (root / "rtl" / "style_lint").mkdir(parents=True)
-    (root / "rtl" / "style_lint" / "verible.flags").write_text("--rules=+no-tabs\n")
+    (root / "src" / "rtl" / "style_lint").mkdir(parents=True)
+    (root / "src" / "rtl" / "style_lint" / "verible.flags").write_text("--rules=+no-tabs\n")
     eng = Engine(Project.open(root), steps=[stub, steps["format"], steps["style_lint"]], flow=flow)
     fake.answers["style_triage"] = lambda s: StyleVerdict(summary="rename", fixes=[Fix(module="m", request="line 2: rename BAD_NAME to PARA_W")])
     assert anyio.run(lambda: eng.run(yes=True)) == "complete"
     assert ran == ["rtl", "format", "style_lint", "rtl", "format", "style_lint"]
-    assert (root / "rtl" / "m.sv").read_text() == "module m;\n parameter PARA_W = 1;\nendmodule\n"  # fixed, then formatted
+    assert (root / "src" / "rtl" / "m.sv").read_text() == "module m;\n parameter PARA_W = 1;\nendmodule\n"  # fixed, then formatted
     assert fake.names() == ["style_triage"]  # the second check is clean: no LLM
-    rep = eng.by_name["style_lint"].read_json(root / "rtl" / "style_lint" / "style_report.json")
+    rep = eng.by_name["style_lint"].read_json(root / "src" / "rtl" / "style_lint" / "style_report.json")
     assert rep["status"] == "clean" and eng.state.feedback.get("rtl", []) == []
     assert [v.status for v in eng.status()] == ["done", "done", "done"]
 
@@ -472,10 +472,10 @@ def smoke_proj(tmp_path, monkeypatch):
     (tmp_path / "schemas").mkdir()
     (tmp_path / "schemas" / "structured_spec.json").write_text(json.dumps(SPEC_JSON))
     (tmp_path / "schemas" / "final_config.json").write_text(json.dumps(CONFIG_JSON))
-    (tmp_path / "rtl").mkdir()
-    (tmp_path / "rtl" / "m.sv").write_text("module m(input i_clk, input [7:0] i_a, output [7:0] o_y);\nendmodule\n")
-    (tmp_path / "rtl" / "style_lint").mkdir()
-    (tmp_path / "rtl" / "style_lint" / "verible.flags").write_text("--rules=+no-tabs\n")
+    (tmp_path / "src" / "rtl").mkdir(parents=True)
+    (tmp_path / "src" / "rtl" / "m.sv").write_text("module m(input i_clk, input [7:0] i_a, output [7:0] o_y);\nendmodule\n")
+    (tmp_path / "src" / "rtl" / "style_lint").mkdir(parents=True)
+    (tmp_path / "src" / "rtl" / "style_lint" / "verible.flags").write_text("--rules=+no-tabs\n")
     fake = ScriptedLLM()
 
     def writer(stage):
@@ -505,14 +505,14 @@ def test_smoke_writer_never_sees_the_rtl_and_the_result_is_code(smoke_proj):
     assert w.name == "smoke_tb" and {t.name for t in w.sdk_tools} == {"smoke_compile", "smoke_run"}
     assert "o_y follows i_a" in w.prompt and "PR_W = 8" in w.prompt and "smoke-testbench" in w.prompt
     assert "input [7:0] i_a" not in w.prompt  # the RTL's text is nowhere in the task
-    assert root / "rtl" / "m.sv" in w.deny_dirs and root / "rtl" / "style_lint" in w.deny_dirs
-    assert root / "rtl" / "smoke" not in w.deny_dirs and w.write_files == [root / "rtl" / "smoke" / "tb_smoke.sv"]
-    rep = eng.by_name["smoke"].read_json(root / "rtl" / "smoke" / "smoke_report.json")
+    assert root / "src" / "rtl" / "m.sv" in w.deny_dirs and root / "src" / "rtl" / "style_lint" in w.deny_dirs
+    assert root / "src" / "rtl" / "smoke" not in w.deny_dirs and w.write_files == [root / "src" / "rtl" / "smoke" / "tb_smoke.sv"]
+    rep = eng.by_name["smoke"].read_json(root / "src" / "rtl" / "smoke" / "smoke_report.json")
     assert rep["status"] == "pass" and rep["run"]["results"]["S2"]["status"] == "PASS"
-    assert "| S2 | copy | REQ-001 |" in (root / "rtl" / "smoke" / "smoke_plan.md").read_text()
-    assert "m.sv" in (root / "rtl" / "smoke" / "filelist.f").read_text()
+    assert "| S2 | copy | REQ-001 |" in (root / "src" / "rtl" / "smoke" / "smoke_plan.md").read_text()
+    assert "m.sv" in (root / "src" / "rtl" / "smoke" / "filelist.f").read_text()
     # RTL changed, spec the same: it compiles and runs again, the testbench is not rewritten (update, not re-run)
-    (root / "rtl" / "m.sv").write_text("module m(input i_clk, input [7:0] i_a, output [7:0] o_y); // v2\nendmodule\n")
+    (root / "src" / "rtl" / "m.sv").write_text("module m(input i_clk, input [7:0] i_a, output [7:0] o_y); // v2\nendmodule\n")
     assert eng.evaluate(eng.by_name["smoke"]).status == "stale"
     _run(eng, "smoke")
     assert fake.names() == ["smoke_tb"]
@@ -525,12 +525,12 @@ def test_smoke_writer_never_sees_the_rtl_and_the_result_is_code(smoke_proj):
 
 def test_an_rtl_bug_goes_back_to_rtl_and_the_loop_is_set(smoke_proj):
     root, eng, fake = smoke_proj
-    (root / "rtl" / "m.sv").write_text("module m; // RTL_BUG\nendmodule\n")
+    (root / "src" / "rtl" / "m.sv").write_text("module m; // RTL_BUG\nendmodule\n")
     fake.answers["smoke_triage"] = lambda s: SmokeTriage(verdicts=[Verdict(id="S2", verdict="rtl_bug", module="m", summary="o_y is off by one",
                                                                           request="register i_a once, o_y = that register")])
     _run(eng, "smoke")
     t = fake.calls[-1]
-    assert t.name == "smoke_triage" and "rtl/m.sv" in t.prompt and root / "rtl" / "m.sv" not in t.deny_dirs  # the judge may read the RTL
+    assert t.name == "smoke_triage" and "rtl/m.sv" in t.prompt and root / "src" / "rtl" / "m.sv" not in t.deny_dirs  # the judge may read the RTL
     assert "S2: FAIL" in t.prompt and "expected 5 saw 4" in t.prompt and "smoke-triage" in t.prompt
     assert eng.state.feedback["rtl"] == ["[rtl:m] From the smoke test (S2): o_y is off by one register i_a once, o_y = that register"]
     assert eng.state.step_meta["smoke"]["loop"] is True
@@ -539,7 +539,7 @@ def test_an_rtl_bug_goes_back_to_rtl_and_the_loop_is_set(smoke_proj):
 
 def test_two_failures_with_one_cause_make_one_request_per_module(smoke_proj):
     root, eng, fake = smoke_proj
-    (root / "rtl" / "m.sv").write_text("module m; // RTL_BUG\nendmodule\n")
+    (root / "src" / "rtl" / "m.sv").write_text("module m; // RTL_BUG\nendmodule\n")
     fake.answers["smoke_triage"] = lambda s: SmokeTriage(verdicts=[
         Verdict(id="S2", verdict="rtl_bug", module="m", summary="adds 2", request="add 1"),
         Verdict(id="S4", verdict="rtl_bug", module="m", summary="never wraps", request="add 1")])
@@ -557,12 +557,12 @@ def test_a_testbench_bug_comes_back_to_the_writer(smoke_proj):
     fake.tb_bug = False
     _run(eng, "smoke")  # the change request reaches the writer; the result is now a pass
     assert fake.names() == ["smoke_tb", "smoke_triage", "smoke_tb"] and "expect 4 after one cycle" in fake.calls[2].prompt
-    assert eng.by_name["smoke"].read_json(root / "rtl" / "smoke" / "smoke_report.json")["status"] == "pass"
+    assert eng.by_name["smoke"].read_json(root / "src" / "rtl" / "smoke" / "smoke_report.json")["status"] == "pass"
 
 
 def test_a_spec_issue_is_a_blocking_question_and_a_compile_error_is_triaged(smoke_proj):
     root, eng, fake = smoke_proj
-    (root / "rtl" / "m.sv").write_text("module m; // COMPILE_ERR\nendmodule\n")
+    (root / "src" / "rtl" / "m.sv").write_text("module m; // COMPILE_ERR\nendmodule\n")
     fake.answers["smoke_triage"] = lambda s: SmokeTriage(verdicts=[Verdict(id="compile", verdict="spec_issue", summary="the spec never names the enable port")])
     _run(eng, "smoke")
     assert "port i_x not found" in fake.calls[-1].prompt
@@ -573,7 +573,7 @@ def test_a_spec_issue_is_a_blocking_question_and_a_compile_error_is_triaged(smok
 
 def test_smoke_fails_after_max_rounds_and_tools_must_exist(smoke_proj):
     root, eng, fake = smoke_proj
-    (root / "rtl" / "m.sv").write_text("module m; // RTL_BUG\nendmodule\n")
+    (root / "src" / "rtl" / "m.sv").write_text("module m; // RTL_BUG\nendmodule\n")
     fake.answers["smoke_triage"] = lambda s: SmokeTriage(verdicts=[Verdict(id="S2", verdict="rtl_bug", module="m", summary="off by one", request="fix the delay")])
     eng.by_name["smoke"].options["max_rounds"] = 1
     _run(eng, "smoke")
@@ -609,14 +609,14 @@ def test_the_whole_chain_runs_by_itself_until_the_smoke_test_passes(smoke_proj):
             return [engine.project.root / "spec.txt"]
 
         def outputs(self, engine):
-            return sorted((engine.project.root / "rtl").glob("*.sv"))
+            return sorted((engine.project.root / "src" / "rtl").glob("*.sv"))
 
         def missing_input(self, engine):
             return None
 
         async def run(self, ctx):
             ran.append("rtl")
-            f = ctx.project.root / "rtl" / "m.sv"
+            f = ctx.project.root / "src" / "rtl" / "m.sv"
             by_unit, _ = split_feedback(ctx.feedback, "rtl")
             if "m" in by_unit:
                 f.write_text(f.read_text().replace("RTL_BUG", "fixed"))
@@ -634,14 +634,14 @@ def test_the_whole_chain_runs_by_itself_until_the_smoke_test_passes(smoke_proj):
 
         steps[n].run = counted
     (root / "spec.txt").write_text("x")
-    (root / "rtl" / "m.sv").unlink()
+    (root / "src" / "rtl" / "m.sv").unlink()
     eng = Engine(Project.open(root), steps=[stub, steps["format"], steps["style_lint"], steps["smoke"]], flow=flow)
     fake.answers["smoke_triage"] = lambda s: SmokeTriage(verdicts=[Verdict(id="S2", verdict="rtl_bug", module="m", summary="off by one", request="fix the delay")])
     assert anyio.run(lambda: eng.run(yes=True)) == "complete"
     assert ran == ["rtl", "format", "style_lint", "smoke", "rtl", "format", "style_lint", "smoke"]
     assert fake.names() == ["smoke_tb", "smoke_triage"]  # the testbench was written once, the triage asked once, style never needed the LLM
-    rep = eng.by_name["smoke"].read_json(root / "rtl" / "smoke" / "smoke_report.json")
-    assert rep["status"] == "pass" and "RTL_BUG" not in (root / "rtl" / "m.sv").read_text()
+    rep = eng.by_name["smoke"].read_json(root / "src" / "rtl" / "smoke" / "smoke_report.json")
+    assert rep["status"] == "pass" and "RTL_BUG" not in (root / "src" / "rtl" / "m.sv").read_text()
     assert [v.status for v in eng.status()] == ["done"] * 4 and eng.state.feedback.get("rtl", []) == []
 
 
@@ -652,48 +652,47 @@ def test_the_addon_actions_and_settings(rtl_proj):
     assert {"style_lint", "smoke"} <= {s.path.split(".")[2] for s in eng.flow.settings if s.path.startswith("pipeline.step_options.")}
     ops = Ops(eng)
     assert "created" in ops.run_action("rtl_rules_init")
-    assert "My RTL rules" in (root / "rules" / "rtl_rules.md").read_text()
+    assert "My RTL rules" in (root / "config" / "rtl_rules.md").read_text()
     with pytest.raises(Exception, match="exists already"):
         ops.run_action("rtl_rules_init")
     # your rules reach the real rtl step: it lists the file as an input and reads it first
     rtl = eng.by_name["rtl"]
-    (root / "rules" / "rtl_rules.md").write_text("- **USR-01** mine\n")
-    assert root / "rules" / "rtl_rules.md" in rtl.inputs(eng) and rtl.rule_files() == [rules.USER_RULES, "vlsit_rtl_rule_default.md"]
-    (root / "rtl" / "a.sv").write_text("module  a;\nendmodule\n")
-    (root / "rtl" / "style_lint").mkdir()
-    (root / "rtl" / "style_lint" / "verible.flags").write_text("--rules=+no-tabs\n")
-    assert "--rules=+no-tabs" in ops.run_action("style_show") and "rules (first wins): rules/rtl_rules.md" in ops.run_action("style_show")
+    (root / "config" / "rtl_rules.md").write_text("- **USR-01** mine\n")
+    assert root / "config" / "rtl_rules.md" in rtl.inputs(eng) and rtl.rule_files() == ["config/rtl_rules.md", "rtl_rule_default.md"]
+    (root / "src" / "rtl" / "a.sv").write_text("module  a;\nendmodule\n")
+    (root / "src" / "rtl" / "style_lint").mkdir(parents=True)
+    (root / "src" / "rtl" / "style_lint" / "verible.flags").write_text("--rules=+no-tabs\n")
+    assert "--rules=+no-tabs" in ops.run_action("style_show") and "rules (first wins): config/rtl_rules.md" in ops.run_action("style_show")
     assert "1 file(s) formatted" in ops.run_action("format_now", files="a")
-    assert (root / "rtl" / "a.sv").read_text() == "module a;\nendmodule\n"
+    assert (root / "src" / "rtl" / "a.sv").read_text() == "module a;\nendmodule\n"
 
 
-# -- the real `rtl` step in this flow (the VLSIT step with the fake stages of tests/test_vlsit_rtl_tb.py) -----------
+# -- the real `rtl` step in this flow (the VLSIT step with the fake stages of tests.test_rtl_gen.py) -----------
 
-from tests.test_vlsit_rtl_tb import calls, config_json, llm, spec_json, tools_dir, tools_yaml  # noqa: E402,F401  (fixtures)
+from tests.test_rtl_gen import calls, config_json, llm, spec_json, tools_dir, tools_yaml  # noqa: E402,F401  (fixtures)
 
 
 def test_the_rtl_step_writes_to_rtl_and_follows_your_rules(tmp_path, tools_dir, llm):
-    from q3tui.steps.vlsit import artifacts
+    from q3tui.flows.spec.lib import artifacts
 
     (tmp_path / "q3tui.yaml").write_text("pipeline: {flow: rtl, step_options: {rtl: {rules: [rtl_rule.md]}}}\n" + tools_yaml(tools_dir))
     (tmp_path / "spec").mkdir()
     (tmp_path / "spec" / "spec.md").write_text("# demo spec\n")
-    (tmp_path / "rules").mkdir()
-    (tmp_path / "rules" / "rtl_rules.md").write_text("- **USR-01** Every module has a header comment with its owner.\n")
+    (tmp_path / "config").mkdir()
+    (tmp_path / "config" / "rtl_rules.md").write_text("- **USR-01** Every module has a header comment with its owner.\n")
     project = Project.open(tmp_path)
     artifacts.write(project, "structured_spec.json", spec_json(), check=False)
     artifacts.write(project, "final_config.json", config_json(), check=False)
     eng = Engine(project)
     anyio.run(lambda: eng.run_step(eng.by_name["rtl"]))
-    assert sorted(p.name for p in (tmp_path / "rtl").glob("*.sv")) == ["leaf_a.sv", "leaf_b.sv", "top.sv"]
-    assert not (tmp_path / "src" / "rtl").exists()
-    assert (tmp_path / "rtl" / "filelist.f").read_text().split() == ["rtl/leaf_a.sv", "rtl/leaf_b.sv", "rtl/top.sv"]
+    assert sorted(p.name for p in (tmp_path / "src" / "rtl").glob("*.sv")) == ["leaf_a.sv", "leaf_b.sv", "top.sv"]
+    assert (tmp_path / "src" / "rtl" / "filelist.f").read_text().split() == ["src/rtl/leaf_a.sv", "src/rtl/leaf_b.sv", "src/rtl/top.sv"]
     c = calls(llm, "rtl_top")[0]
-    assert c.write_files == [tmp_path / "rtl" / "top.sv"]
+    assert c.write_files == [tmp_path / "src" / "rtl" / "top.sv"]
     assert "USR-01" in c.system_prompt and c.system_prompt.index("rtl_rules.md") < c.system_prompt.index("rtl_rule.md")  # yours first: it wins
     # editing your rules updates the modules (the file is an input of the step)
     n = len(calls(llm, "rtl_"))
-    (tmp_path / "rules" / "rtl_rules.md").write_text("- **USR-01** Every module has a header comment with its owner and the date.\n")
+    (tmp_path / "config" / "rtl_rules.md").write_text("- **USR-01** Every module has a header comment with its owner and the date.\n")
     assert eng.evaluate(eng.by_name["rtl"]).status == "stale"
     anyio.run(lambda: eng.run_step(eng.by_name["rtl"]))
     assert eng.state.steps["rtl"].status == "done" and len(calls(llm, "rtl_")) >= n
@@ -701,7 +700,7 @@ def test_the_rtl_step_writes_to_rtl_and_follows_your_rules(tmp_path, tools_dir, 
 
 def test_a_failure_that_keeps_coming_back_becomes_a_question_not_another_round(smoke_proj):
     root, eng, fake = smoke_proj
-    (root / "rtl" / "m.sv").write_text("module m; // RTL_BUG\nendmodule\n")
+    (root / "src" / "rtl" / "m.sv").write_text("module m; // RTL_BUG\nendmodule\n")
     fake.answers["smoke_triage"] = lambda s: SmokeTriage(verdicts=[Verdict(id="S2", verdict="rtl_bug", module="m", summary="port names differ", request="rename the ports")])
     _run(eng, "smoke")  # round 1: handed back
     _run(eng, "smoke")  # round 2: handed back again (escalate_after_repeats = 2)

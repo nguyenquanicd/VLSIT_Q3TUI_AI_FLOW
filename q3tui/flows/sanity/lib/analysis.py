@@ -1,7 +1,7 @@
 """The analysis step of the Sanity flow (CDC, RDC): runs the tool of its role on the RTL and the shared SDC and keeps the violations as data.
 
-The Tcl script `sanity/<role>_setup.tcl` is written by code each run (lib/script.py). The SDC is `sdc/sdc.tcl`: the one the FPGA / ASIC
-flows render from `sdc/sdc.json`, or one you wrote. The resets come from sdc.json when there is one, else from the RTL (`options.resets` wins).
+The Tcl script `build/sanity/<role>_setup.tcl` is written by code each run (lib/script.py). The SDC is `constraints/sdc/sdc.tcl`: the one the FPGA / ASIC
+flows render from `constraints/sdc/sdc.json`, or one you wrote. The resets come from sdc.json when there is one, else from the RTL (`options.resets` wins).
 The violations are read from the report the script writes; the tool failing, or not being there, is a failed step — never a pass."""
 
 from __future__ import annotations
@@ -52,14 +52,14 @@ class AnalysisStep(SanityStep):
         if why := self.missing_rtl(engine):
             return why
         if self.sdc_top(engine) is None:
-            return "the SDC is needed first (step sdc: sdc/sdc.tcl)"
+            return "the SDC is needed first (step sdc: constraints/sdc/sdc.tcl)"
         return None
 
     def script_text(self, engine, top: str, work: Path, waive: Path | None = None) -> str:
         """The run's Tcl; with `waive`, the waivers of the review sourced after the check (the `<role>_check` step)."""
         root = engine.project.root
         opts = engine.by_name[self.role].options if self.role in engine.by_name else self.options  # (the lane's analysis step owns extra_tcl / resets: the check runs the same script)
-        sdcj = read_json(root / "sdc" / "sdc.json", {}) or {}
+        sdcj = read_json(engine.project.sdc_dir / "sdc.json", {}) or {}
         if not sdcj.get("resets") and not opts.get("resets"):  # (a hand-written SDC says nothing of resets)
             sdcj = {**sdcj, "resets": rtl_resets(self.filelist(engine), root, top)}
         elif opts.get("resets"):
@@ -100,7 +100,7 @@ class AnalysisStep(SanityStep):
         violations = [{"id": f"V{i}", **v} for i, v in enumerate(found, 1)]
         self.sanity_dir(engine).joinpath(raw.name).write_text(raw.read_text(errors="replace"))
         report = {"tool": res.vendor, "top": top, "status": "clean" if not violations else "violations", "runtime_s": round(time.monotonic() - t0, 1),
-                  "log": project.rel(Path(res.log_path)), "report": f"sanity/{raw.name}", "rtl": self.rtl_hash(engine), "sdc": self.sdc_hash(engine),
+                  "log": project.rel(Path(res.log_path)), "report": project.rel(self.sanity_dir(engine) / raw.name), "rtl": self.rtl_hash(engine), "sdc": self.sdc_hash(engine),
                   "infos": infos, "violations": violations}
         self.write(engine, report_json(role), report)
         table.write(self.table_files(engine), role, report, None)  # (the old review, if any, no longer fits this report: the next step decides again)

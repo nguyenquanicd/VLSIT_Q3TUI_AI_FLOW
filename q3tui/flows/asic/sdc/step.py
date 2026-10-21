@@ -1,4 +1,4 @@
-"""ASIC step `sdc`: the FPGA flow's SDC step (the same `sdc/sdc.json` → `sdc/*.tcl`, code only): both flows work on the same files."""
+"""ASIC step `sdc`: the FPGA flow's SDC step (the same `constraints/sdc/sdc.json` → `constraints/sdc/*.tcl`, code only): both flows work on the same files."""
 
 from __future__ import annotations
 

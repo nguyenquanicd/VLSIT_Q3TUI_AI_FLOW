@@ -2,7 +2,7 @@
 
 Also available: [Tiếng Việt](vi.md).
 
-Q3TUI runs the **VLSIT flow**: `spec → parse → config → rtl ‖ tb → sva → verify → doc`. This guide covers
+Q3TUI runs the **spec flow**: `spec → parse → config`, and the **rtl flow** (`rules → csr → rtl → format → style_lint → smoke` after the same three steps). The testbench, SVA, verification and document steps were removed and come back as their own flows. This guide covers
 installing it, running a project start to finish, the rule system RTL is checked against, every setting, and
 every command/key you'll use day to day.
 
@@ -56,7 +56,7 @@ q3tui                                       # opens the TUI
 | Area | What it shows |
 |---|---|
 | **Pipeline** (left) | Every step: status icon (legend below it), number (`1`–`9` jump to it), gate mode or what it is waiting for (`review 2?`). |
-| **Step view** (top right) | The selected step's result, in tabs (Requirements / Parameters / Assertions / RTM / Files / Questions / …). A banner on top says what the step needs from you. |
+| **Step view** (top right) | The selected step's result, in tabs (Requirements / Parameters / Files / Questions / …). A banner on top says what the step needs from you. |
 | **Activity** (bottom right) | The live log of the run, and the assistant's replies. `z` zooms it. |
 | **Command / chat bar** | `/command` (Tab completes, ↑/↓ history), or plain text to the assistant (`i` focuses it). |
 | **Footer** | The keys of whatever has focus; `?` lists them all. |
@@ -66,9 +66,9 @@ Drag the dividers (or `ctrl+arrows`) to resize; sizes are kept per project.
 ## 3. The flow, step by step
 
 ```text
-spec ─► parse ─► config ─► rtl (3a) ─► tb (4) ─► sva (3b) ─► verify (5) ─► doc (6)
- human    auto     Gate 1   Gate 2              Gate 4    Gate 3b    Gate 5
-                   human    auto                auto      human      human
+spec ─► parse ─► config
+ human   Gate 1   Gate 2
+         human    auto
 ```
 
 | Step | What it does | Gate |
@@ -76,14 +76,9 @@ spec ─► parse ─► config ─► rtl (3a) ─► tb (4) ─► sva (3b) �
 | **spec** | Drafts (or accepts your) IP specification. | human |
 | **parse** | Extracts requirements (REQ-IDs), parameters, module map from the spec; flags ambiguity. | **1 · human** |
 | **config** | Resolves parameter values against your change requests; checks elaboration constraints. | 2 · auto (self-signs when constraints pass) |
-| **rtl** | Writes one synthesizable SystemVerilog module per plan entry; lints and synthesizes it. | 3a · (no gate of its own) |
-| **tb** | Writes a plain-SystemVerilog testbench and test plan; compiles it. | 4 · auto (self-signs when coverage holds) |
-| **sva** | Writes SVA properties per requirement, binds them to the RTL, runs a vacuity smoke pass. | **3b · human** |
-| **verify** | Simulates every selected test, mutation-tests the RTL, builds the requirements traceability matrix (RTM). | **5 · human** |
-| **doc** | Assembles `docs/specification.md` (and PDF) from the other steps' artifacts. | — |
 
-`rtl` and `tb` only need `config`'s output (neither needs the other's) — they can run one after another
-(default) or **in parallel** (`pipeline.parallel_rtl_tb`, see [§6](#6-settings)).
+The RTL comes from the `rtl` flow (`pipeline.flow: rtl`, `q3tui --flow rtl run`), which reuses these three steps and adds the
+rules, the CSR, the RTL, a Verible format and style lint, and a smoke test (docs/spec/rtl-flow.md).
 
 **Updates, not re-runs:** editing a requirement, a parameter, or asking for a change re-runs only what that
 change actually affects — earlier steps and your existing approvals are untouched unless the change reaches
@@ -107,9 +102,9 @@ Change a gate's mode: `g` (picker) or `/gate <step> <mode>`. `pipeline.auto_appr
 
 - **A blocking question** — an actual decision only you can make (an ambiguous requirement, a parameter
   conflict, …). Open the Questions tab (`o`) and answer it.
-- **Unconfirmed review items** — SVA assertions, flagged requirements, or parameters changed from default
+- **Unconfirmed review items** — flagged requirements, or parameters changed from default
   that nobody has looked at yet. These never block an `auto`/`auto_answer` gate (it signs itself, and the
-  items simply don't count toward the RTM), but they **do** block a plain `Approve` (`a`) on a `human` gate,
+  items simply stay open), but they **do** block a plain `Approve` (`a`) on a `human` gate,
   unless you turn on `pipeline.auto_confirm_reviews`.
 
 ![The review dialog of a gate](../images/tui-gate.svg)
@@ -127,26 +122,7 @@ Uppercase key = **Shift+that letter**, a separate key from its lowercase version
 | | `u` | Take it back to pending |
 | | `C` (Shift+c) | Confirm every flagged requirement |
 | config → Parameters | `c` / `u` / `C` (Shift+c) | Same, for parameters changed from default |
-| sva → Assertions | `c` | Confirm the highlighted assertion |
-| | `x` | Reject it (asks for a reason; sent back to `sva` as a scoped change request) |
-| | `u` | Back to pending |
-| | `C` (Shift+c) | Confirm every pending, **non-vacuous** assertion (an assertion that never fired in simulation is never auto-confirmed) |
-| verify → RTM | `v` | Sign off the highlighted requirement (needs all six RTM conditions) |
-| | `V` (Shift+v) | Withdraw its sign-off |
-| | `S` (Shift+s) | Sign off every requirement that is ready (skips the rest, no error) |
 
-<table>
-<tr>
-<td width="50%"><a href="../images/tui-sva.svg"><img src="../images/tui-sva.svg" alt="sva → Assertions"></a></td>
-<td width="50%"><a href="../images/tui-verify.svg"><img src="../images/tui-verify.svg" alt="verify → RTM"></a></td>
-</tr>
-<tr>
-<td><b>sva → Assertions</b> (Gate 3b): every property with its module, requirement, kind and vacuity check; the
-highlighted one's plain-English meaning on the right.</td>
-<td><b>verify → RTM</b> (Gate 5): the six conditions per requirement — RTL, SVA, test case, simulation,
-mutation score, your sign-off.</td>
-</tr>
-</table>
 
 `/approve <step> --force` and `/approve all` bypass blocking questions *and* unconfirmed reviews the same
 way `--force` always has — use it when you've judged it fine, not as a habit.
@@ -158,7 +134,7 @@ Every RTL stage reads a **rule file** (plain Markdown, the same text an engineer
 constructs, name length, file/module-name match, and more. The LLM is told the rules; it does not get to
 decide whether it followed them.
 
-- **Default baseline:** `q3tui/flows/vlsit/rtl/rules/vlsit_rtl_rule_default.md` — ASIC synthesis
+- **Default baseline:** `q3tui/flows/rtl/rtl/rules/rtl_rule_default.md` — ASIC synthesis
   rules (naming, DFT port conventions, prohibited constructs P1–P29, a tapeout-readiness checklist).
 - **Add your own:** drop a rule file (e.g. `my_rules.md`) in your project root and list it alongside the
   default in `pipeline.step_options.rtl.rules` in `q3tui.yaml`:
@@ -166,7 +142,7 @@ decide whether it followed them.
   pipeline:
     step_options:
       rtl:
-        rules: [vlsit_rtl_rule_default.md, my_rules.md]
+        rules: [rtl_rule_default.md, my_rules.md]
   ```
   A project file with the *same name* as the shipped default overrides it outright (checked first).
 - **What's enforced in code today:** naming prefixes (`i_`/`o_`/`reg_`/`w_`/module/instance/parameter
@@ -183,8 +159,7 @@ assistant (`get_settings` / `set_settings`). Add `--save` to a `/command` form, 
 session" unticked in the dialog, to persist a change to `q3tui.yaml`; leave it ticked (or omit `--save`) to
 try something for this session only.
 
-The dialog has one tab per area: **General**, **Gates**, **LLM**, **Models per step**, **Spec**, **RTL** and
-**TB**.
+The dialog has one tab per area: **General**, **Gates**, **LLM**, **Models per step**, **Spec**, **RTL**.
 
 ### General
 
@@ -194,8 +169,8 @@ The dialog has one tab per area: **General**, **Gates**, **LLM**, **Models per s
 | `pipeline.auto_answer` | bool | Unattended: every gate approves itself, every question (blocking too) takes its default, and proposals are accepted as suggested. |
 | `pipeline.max_fix_iterations` | int | How many times verify → fixes → verify may repeat before stopping and handing it to you. |
 | `pipeline.escalate_after_repeats` | int | A bug classified the same way this many times in a row is handed to you instead of being fixed again automatically. |
-| `pipeline.auto_confirm_reviews` | bool | Confirms a step's own reviewable items (SVA assertions, flagged requirements, changed parameters) without asking. A human gate still stops for `Approve`; `Approve` itself no longer refuses for unconfirmed items. Narrower than auto-approve/auto-answer above — gates still stop, only per-item review is skipped. |
-| `pipeline.parallel_rtl_tb` | bool | VLSIT flow: `rtl` (lint + synthesis) and `tb` (testbench generator) both read only `spec`/`parse`/`config` — run them together instead of one after the other. |
+| `pipeline.auto_confirm_reviews` | bool | Confirms a step's own reviewable items (flagged requirements, changed parameters) without asking. A human gate still stops for `Approve`; `Approve` itself no longer refuses for unconfirmed items. Narrower than auto-approve/auto-answer above — gates still stop, only per-item review is skipped. |
+| `pipeline.parallel_rtl_tb` | bool | Only meaningful in a flow with both an `rtl` and a `tb` step (none is built in now). |
 | `pipeline.parallel_multi_agent` | bool | Only with the setting above on. Off: `tb` shares the flow's one session and its LLM calls queue behind `rtl`'s (their tool runs still overlap). On: `tb` gets its own persistent session (role "verifier") so both run their LLM calls at the same time too. |
 | `tui.icons` | choice | Status icon set: `unicode` (✔ ⚑ ◐ …), `nerd` (needs a "… Nerd Font Mono" font), `ascii` (any font). |
 | `tui.language` | choice | TUI chrome (legend, result banners, dialogs) and pipeline-generated content (spec, RTL comments, questions, docs): `en` / `vi` / `ko`. The assistant chat is unaffected — it always mirrors whichever language you write to it in. |
@@ -222,7 +197,7 @@ pressing `g` on a step, or `/gate <step> <mode>` — this tab just shows every s
 
 ### Models per step
 
-One `model` + `effort` pair per step (spec, parse, config, rtl, tb, sva, verify, doc) and for the assistant —
+One `model` + `effort` pair per step (spec, parse, config, rtl) and for the assistant —
 leave unset to use the LLM tab's default. Lets you mix models,
 e.g. Opus where precision matters, Haiku for mechanical/high-volume work.
 
@@ -236,20 +211,11 @@ e.g. Opus where precision matters, Haiku for mechanical/high-volume work.
 
 | Setting | Type | What it does |
 |---|---|---|
-| `rtl.parallel` | int | Modules (RTL, SVA) written at once. |
+| `rtl.parallel` | int | Modules written at once. |
 | `rtl.max_fix_attempts` | int | Extra rounds when lint or synthesis still fail. |
 | `rtl.max_turns` | int | Agent turns for one module (write, compile, fix). |
 
-The coding rules are the VLSIT flow's own rule files, see [§5](#5-rtl-coding-rules).
-
-### TB
-
-| Setting | Type | What it does |
-|---|---|---|
-| `tb.tests_per_agent` | int | Test cases written by one agent; agents run in parallel. |
-| `tb.parallel` | int | How many test-case agents run in parallel. |
-| `tb.max_fix_attempts` | int | Extra rounds when the plan or TB checks still fail. |
-| `tb.max_turns` | int | Agent turns for one TB stage. |
+The coding rules are the rtl flow's own rule files, see [§5](#5-rtl-coding-rules).
 
 ## 7. Commands and keys
 
@@ -272,14 +238,11 @@ version, and in this flow the two are never the same action.
 | Skill editor | `K` (Shift+k) | `/skill` |
 | Prompt editor | `P` (Shift+p) | `/prompts` |
 | Customise a step (view/pass/notes) | — | `/step <step> view|pass|notes [text]` |
-| Sign off a requirement (verify) | `v` | — (CLI: `q3tui sign <REQ>`) |
-| Withdraw a sign-off (verify) | `V` (Shift+v) | — |
 | Reset a step's outputs (or everything) | `R` (Shift+r) | `/reset <step>|all [--only]` |
 | Edit the current file | `e` | — |
 | Comment on selected text / a highlighted row | `C`\* (Shift+c) | — |
 | Switch model / reasoning effort | `m` | `/model [id]` / `/effort <level>` |
 | Toggle self-review / auto-approve / auto-answer / auto-confirm | — | `/specreview` `/autoapprove` `/autoanswer` `/autoconfirm on|off` |
-| Run `rtl` ‖ `tb` in parallel | — | `/parallel on|off [--multi-agent|--shared]` |
 | Settings dialog | `,` (comma) | `/settings [tab]` |
 | Usage statistics | `s` | `/stats [reset]` |
 | LLM cost so far | — | `/cost [reset]` |
@@ -291,9 +254,8 @@ version, and in this flow the two are never the same action.
 | Quit | ctrl+q | `/quit` |
 | Help | `?` (shift+/) | `/help` |
 
-\* `C` (Shift+c) is **Comment** app-wide, but **Confirm all** when a Requirements/Parameters/Assertions tab
-has focus — see [§4](#4-gates-and-review). The step-specific review keys (`c`/`u`/`C` to confirm, `x` to
-reject, `v`/`V`/`S` to sign off) are listed in that table, not repeated here.
+\* `C` (Shift+c) is **Comment** app-wide, but **Confirm all** when a Requirements/Parameters tab
+has focus — see [§4](#4-gates-and-review). The step-specific review keys (`c`/`u`/`C` to confirm) are listed in that table, not repeated here.
 
 ## 8. Input and output
 
@@ -302,22 +264,18 @@ spec/<ip>_spec.md                       your input (or the spec step's own outpu
 schemas/structured_spec.json            parse    — Gate 1
 schemas/final_config.json               config   — Gate 2
 schemas/synth_report.json               rtl
-schemas/selected_testplan.json          tb       — Gate 4
-schemas/rtm.json                        sva (Gate 3b) + verify (Gate 5): the requirements traceability matrix
-schemas/verification_report.json        verify
-schemas/{sva,parse,config}_reviews.json your per-item reviews (kept across a reset)
-src/rtl/*.sv, filelist.f                rtl
-src/tb/*.sv, filelist.f, run script     tb
-src/sva/*.sv, bind file, GATE3_REVIEW.md sva
-docs/specification.md (.pdf)            doc
+reviews/{parse,config}_reviews.json     your per-item reviews (kept across a reset)
+src/rtl/*.sv, filelist.f                    rtl (rtl flow)
+config/{tools,pdks}.json, rtl_rules.md   your configuration
+constraints/sdc/                        the SDC (fpga / asic / sanity flows)
+reports/  build/                        readable results / disposable tool output
 .q3tui/…                                internal only — never read by an LLM stage
 ```
 
 ## 9. The assistant (chat)
 
 Type anything that isn't a `/command` into the bottom input and it goes to the assistant — it has a tool for
-every action in this guide (run a step, answer a question, change a gate mode, review an assertion, sign off
-a requirement, change settings, …) and asks for confirmation before anything destructive (reset, turning on
+every action in this guide (run a step, answer a question, change a gate mode, review a requirement, change settings, …) and asks for confirmation before anything destructive (reset, turning on
 unattended modes). It always replies in whatever language you write to it in, independent of `tui.language`.
 
 ## 10. The RTL flow
@@ -326,17 +284,17 @@ unattended modes). It always replies in whatever language you write to it in, in
 Design reference: `docs/spec/rtl-flow.md`.
 
 ```
-spec → rules → parse → config → csr → rtl → format → style_lint → smoke
+spec → parse → config → rules → csr → rtl → format → style_lint → smoke
 ```
 
-1. **Your rules.** `q3tui act rtl_rules_init` writes `rules/rtl_rules.md`: one rule per bullet, `- **ID** text`. They are read before Q3TUI's default rules (same id =
-   override). The `rules` step checks them for contradictions (it stops with the exact text to change) and writes the Verible flags to `rtl/style_lint/`.
-2. **Registers.** If the spec has a register map, the `csr` step drafts `rtl/csr/csr_map.json` and generates the register block with the APB-CSR-Generator
+1. **Your rules.** `q3tui act rtl_rules_init` writes `config/rtl_rules.md`: one rule per bullet, `- **ID** text`. They are read before Q3TUI's default rules (same id =
+   override). The `rules` step checks them for contradictions (it stops with the exact text to change) and writes the Verible flags to `src/rtl/style_lint/`.
+2. **Registers.** If the spec has a register map, the `csr` step drafts `src/rtl/csr/csr_map.json` and generates the register block with the APB-CSR-Generator
    (`q3tui act csr_tool_install` once; or set `csr.tool_dir` / `$CSR_GEN_HOME`). Edit `csr_map.json` to change a register: it is yours after the first draft. `csr.mode: off` skips it.
 3. **RTL, format, style lint.** `rtl` follows the rules; `format` only changes whitespace (it asks before touching a file you edited); `style_lint` runs Verible and sends
    violations back to `rtl`. This repeats by itself, up to `style_lint.max_rounds`.
 4. **Smoke test.** A small testbench written from the spec only, compiled and run (tool roles `sim` and `run`). A failure is triaged and fixed, or becomes a question for you.
 
-Tools: Verible (`verible_lint`, `verible_format`) and the CSR generator come with the flow's defaults; `sim` / `run` / `lint` / `synth` come from your `tools.json` (the Synopsys
-preset when you have none). A missing tool makes its step wait and name the role. **Skills:** the LLM stages read playbooks (`skills/<name>/SKILL.md`); put your own in
-`<project>/skills/` to add or replace one. `q3tui act style_show` and `q3tui act csr_show` print what the flow decided.
+Tools: Verible (`verible_lint`, `verible_format`) and the CSR generator come with the flow's defaults; `sim` / `run` / `lint` / `synth` come from your `config/tools.json` (the Synopsys
+preset when you have none). A missing tool makes its step wait and name the role. **Skills:** the LLM stages read playbooks (`config/skills/<name>/SKILL.md`); put your own in
+`<project>/config/skills/` to add or replace one. `q3tui act style_show` and `q3tui act csr_show` print what the flow decided.

@@ -1,4 +1,4 @@
-"""Step `rules` of the RTL flow: the rule stack → a consistency check → the Verible flags (`rtl/style_lint/`).
+"""Step `rules` of the RTL flow: the rule stack → a consistency check → the Verible flags (`src/rtl/style_lint/`).
 
 The LLM does the work with a skill (verible-flags, rule-consistency) and the Verible tools (`verible_help`, `verible_check_flags`): it reads
 the rules, finds contradictions, writes the flags and proves them with the tool. Code does what is code: the rule stack and its diff by rule
@@ -19,7 +19,7 @@ from q3tui.flows.rtl.lib.models import RuleFinding, RulesResult
 from q3tui.flows.rtl.lib.tools import verible_tools
 from q3tui.llm.runtime import Stage
 from q3tui.pipeline.base import StepContext, StepFailed
-from q3tui.steps.vlsit import rules_check
+from q3tui.flows.rtl.lib import rules_check
 
 SYSTEM = skill_sections(Path(__file__).parent / "md" / "skill.md")["SYSTEM"]
 SKILLS = ["verible-flags", "rule-consistency"]
@@ -100,7 +100,7 @@ class Step(RtlFlowStep):
         changes = diff_rules(meta.get("blocks") or {}, blocks) if have and meta.get("blocks") else []
         ts = self.tools(engine)
         work = self.workdir(engine)
-        skills = skillmod.discover(project.root, engine.flow.path, SKILLS)
+        skills = skillmod.discover(project.config_dir, engine.flow.path, SKILLS)
         catalog = await anyio.to_thread.run_sync(lambda: self._catalog(engine, ts, work))
         prompt = self._prompt(ctx, rules, self._naming(engine), flags, changes, skillmod.index(skills, project.root), catalog)
         if ctx.feedback:
@@ -124,7 +124,7 @@ class Step(RtlFlowStep):
         files["check"].write_text(self._report(out))
         errors = [f for f in out.findings if f.severity == "error"]
         if errors:
-            raise StepFailed("the rules contradict each other — edit rules/rtl_rules.md (the first file wins; a rule id in both is an override):\n"
+            raise StepFailed("the rules contradict each other — edit config/rtl_rules.md (the first file wins; a rule id in both is an override):\n"
                              + "\n".join(f"- {', '.join(f.ids)}: {f.problem}" + (f" → {f.suggestion}" if f.suggestion else "") for f in errors))
         header = f"# Verible flags written by Q3TUI from the rules ({', '.join(self.rule_files(engine))}); edit the rules, not this file\n"
         files["lint"].write_text(header + "\n".join(out.verible_flags) + "\n")
