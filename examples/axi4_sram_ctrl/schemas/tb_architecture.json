@@ -1,0 +1,384 @@
+{
+  "schema_version": 1,
+  "ip_name": "axi4_sram_ctrl",
+  "contract_hash": "3d3d7bc64241ba197f200b37d30754b8fc5f049a7d27c69d79f6aff8603de949",
+  "dut": {
+    "top_module": "m_vlsi_axi4_sram",
+    "parameters": {
+      "PARA_DATA_WD": "32",
+      "PARA_ADDR_WD": "32",
+      "PARA_ID_WD": "4",
+      "PARA_LEN_WD": "8",
+      "PARA_FIFO_DEPTH": "8",
+      "PARA_NUM_BANKS": "1"
+    },
+    "clock": "i_clk",
+    "reset": "i_rst_n",
+    "reset_active_low": true
+  },
+  "interfaces": [
+    {
+      "id": "IF-001",
+      "kind": "clock_reset",
+      "protocol": "single clock, active-low async-assert reset",
+      "role": "slave",
+      "ports": [
+        "i_clk",
+        "i_rst_n"
+      ],
+      "stimulus_agent": "tb_clock_reset",
+      "vip_binding": null
+    },
+    {
+      "id": "IF-002",
+      "kind": "axi4_slave",
+      "protocol": "AXI4 write channels AW, W, B",
+      "role": "slave",
+      "ports": [
+        "i_awaddr",
+        "i_awvalid",
+        "o_awready",
+        "i_awburst",
+        "i_awlen",
+        "i_awid",
+        "i_awsize",
+        "i_wdata",
+        "i_wstrb",
+        "i_wvalid",
+        "o_wready",
+        "i_wlast",
+        "o_bid",
+        "o_bresp",
+        "o_bvalid",
+        "i_bready"
+      ],
+      "stimulus_agent": "vip_master",
+      "vip_binding": {
+        "status": "pending",
+        "family": "axi4_avip"
+      }
+    },
+    {
+      "id": "IF-003",
+      "kind": "axi4_slave",
+      "protocol": "AXI4 read channels AR, R",
+      "role": "slave",
+      "ports": [
+        "i_araddr",
+        "i_arvalid",
+        "o_arready",
+        "i_arburst",
+        "i_arlen",
+        "i_arid",
+        "i_arsize",
+        "o_rid",
+        "o_rdata",
+        "o_rresp",
+        "o_rvalid",
+        "o_rlast",
+        "i_rready"
+      ],
+      "stimulus_agent": "vip_master",
+      "vip_binding": {
+        "status": "pending",
+        "family": "axi4_avip"
+      }
+    },
+    {
+      "id": "IF-004",
+      "kind": "sram",
+      "protocol": "synchronous SRAM, byte strobes, 1-cycle read latency",
+      "role": "memory master",
+      "ports": [
+        "o_sram_addr",
+        "o_sram_wdata",
+        "o_sram_wstrb",
+        "i_sram_rdata",
+        "o_sram_we",
+        "o_sram_oe"
+      ],
+      "stimulus_agent": "sram_model",
+      "vip_binding": null
+    }
+  ],
+  "components": [
+    {
+      "id": "tb_top",
+      "role": "clock/reset generation, interface instances, DUT wrapper, config_db, run_test"
+    },
+    {
+      "id": "dut_wrapper",
+      "role": "binds the spec-derived interfaces to the DUT ports; generated in the integration phase",
+      "phase": "integration"
+    },
+    {
+      "id": "env",
+      "role": "UVM environment: agents, adapters, scoreboard, coverage"
+    },
+    {
+      "id": "vip_adapters",
+      "role": "one adapter per VIP-driven interface: VIP transaction to a VIP-independent transaction",
+      "rule": "DUT-DV-019"
+    },
+    {
+      "id": "scoreboard",
+      "role": "spec-driven reference model (transaction-level memory model)",
+      "rules": [
+        "SBR-001",
+        "SBR-002",
+        "SBR-003",
+        "SBR-004",
+        "SBR-005",
+        "SBR-006",
+        "SBR-007",
+        "SBR-008",
+        "SBR-009"
+      ]
+    },
+    {
+      "id": "coverage",
+      "role": "functional coverage subscriber",
+      "goals": [
+        "COV-001",
+        "COV-002",
+        "COV-003",
+        "COV-004",
+        "COV-005",
+        "COV-006",
+        "COV-007",
+        "COV-008",
+        "COV-009"
+      ]
+    },
+    {
+      "id": "assertions",
+      "role": "assertion bind point; properties derive from the specification only",
+      "phase": "later"
+    },
+    {
+      "id": "tests",
+      "role": "base test, smoke test, test library",
+      "tests": [
+        "TC-001",
+        "TC-002",
+        "TC-003",
+        "TC-004",
+        "TC-005",
+        "TC-006",
+        "TC-007",
+        "TC-008",
+        "TC-009",
+        "TC-010",
+        "TC-011",
+        "TC-012"
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "tc_id": "TC-001",
+      "name": "smoke_write_read",
+      "kind": "smoke",
+      "milestone": "v0_1",
+      "requirement_ids": [
+        "REQ-001",
+        "REQ-003",
+        "REQ-004",
+        "REQ-005",
+        "REQ-006",
+        "REQ-007",
+        "REQ-008",
+        "REQ-014",
+        "REQ-045",
+        "REQ-047",
+        "REQ-048"
+      ],
+      "rule_ids": [
+        "SBR-001",
+        "SBR-002",
+        "SBR-003",
+        "SBR-008"
+      ]
+    },
+    {
+      "tc_id": "TC-002",
+      "name": "incr_bursts",
+      "kind": "directed",
+      "milestone": "later",
+      "requirement_ids": [
+        "REQ-014",
+        "REQ-020",
+        "REQ-022"
+      ],
+      "rule_ids": [
+        "SBR-001",
+        "SBR-004"
+      ]
+    },
+    {
+      "tc_id": "TC-003",
+      "name": "fixed_bursts",
+      "kind": "directed",
+      "milestone": "later",
+      "requirement_ids": [
+        "REQ-020"
+      ],
+      "rule_ids": [
+        "SBR-004"
+      ]
+    },
+    {
+      "tc_id": "TC-004",
+      "name": "wrap_bursts",
+      "kind": "directed",
+      "milestone": "later",
+      "requirement_ids": [
+        "REQ-021"
+      ],
+      "rule_ids": [
+        "SBR-004"
+      ]
+    },
+    {
+      "tc_id": "TC-005",
+      "name": "narrow_and_strobes",
+      "kind": "directed",
+      "milestone": "later",
+      "requirement_ids": [
+        "REQ-024",
+        "REQ-025"
+      ],
+      "rule_ids": [
+        "SBR-001"
+      ]
+    },
+    {
+      "tc_id": "TC-006",
+      "name": "error_bursts",
+      "kind": "negative",
+      "milestone": "later",
+      "requirement_ids": [
+        "REQ-013",
+        "REQ-026",
+        "REQ-027",
+        "REQ-028"
+      ],
+      "rule_ids": [
+        "SBR-005"
+      ]
+    },
+    {
+      "tc_id": "TC-007",
+      "name": "backpressure",
+      "kind": "directed",
+      "milestone": "later",
+      "requirement_ids": [
+        "REQ-011",
+        "REQ-012",
+        "REQ-050",
+        "REQ-009",
+        "REQ-010"
+      ],
+      "rule_ids": [
+        "SBR-006"
+      ]
+    },
+    {
+      "tc_id": "TC-008",
+      "name": "id_ordering",
+      "kind": "directed",
+      "milestone": "later",
+      "requirement_ids": [
+        "REQ-029"
+      ],
+      "rule_ids": [
+        "SBR-002",
+        "SBR-003"
+      ]
+    },
+    {
+      "tc_id": "TC-009",
+      "name": "max_length_bursts",
+      "kind": "directed",
+      "milestone": "later",
+      "requirement_ids": [
+        "REQ-022"
+      ],
+      "rule_ids": [
+        "SBR-001",
+        "SBR-004"
+      ]
+    },
+    {
+      "tc_id": "TC-010",
+      "name": "random_mixed",
+      "kind": "random",
+      "milestone": "later",
+      "requirement_ids": [
+        "REQ-019",
+        "REQ-040",
+        "REQ-050",
+        "REQ-029",
+        "REQ-014"
+      ],
+      "rule_ids": [
+        "SBR-001",
+        "SBR-002",
+        "SBR-003",
+        "SBR-006",
+        "SBR-008"
+      ]
+    },
+    {
+      "tc_id": "TC-011",
+      "name": "timing_latency",
+      "kind": "directed",
+      "milestone": "later",
+      "requirement_ids": [
+        "REQ-052",
+        "REQ-053",
+        "REQ-054",
+        "REQ-055",
+        "REQ-056",
+        "REQ-057",
+        "REQ-018"
+      ],
+      "rule_ids": [
+        "SBR-007",
+        "SBR-008"
+      ]
+    },
+    {
+      "tc_id": "TC-012",
+      "name": "incr_cross_4kb",
+      "kind": "directed",
+      "milestone": "later",
+      "requirement_ids": [
+        "REQ-020"
+      ],
+      "rule_ids": [
+        "SBR-004",
+        "SBR-001"
+      ]
+    }
+  ],
+  "smoke_test": {
+    "tc_id": "TC-001",
+    "name": "smoke_write_read",
+    "rule_ids": [
+      "SBR-001",
+      "SBR-002",
+      "SBR-003",
+      "SBR-008"
+    ]
+  },
+  "build": {
+    "simulator": "vcs",
+    "top": "tb_top",
+    "smoke_test_class": "dut_smoke_test"
+  },
+  "integration": {
+    "status": "pending",
+    "note": "RTL is read only in the integration phase, after this architecture is frozen (DUT-DV-026)"
+  }
+}

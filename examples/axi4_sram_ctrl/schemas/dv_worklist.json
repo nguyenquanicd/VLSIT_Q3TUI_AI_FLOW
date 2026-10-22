@@ -1,0 +1,579 @@
+{
+  "schema_version": 1,
+  "contract_hash": "3d3d7bc64241ba197f200b37d30754b8fc5f049a7d27c69d79f6aff8603de949",
+  "summary": {
+    "regions": 39,
+    "open": 10,
+    "agent_or_user_owned": 29,
+    "implemented": 29
+  },
+  "items": [
+    {
+      "id": "assertions",
+      "kind": "assertion",
+      "file": "assertions/dut_assertions.sv",
+      "line": 8,
+      "owner": "scaffold",
+      "open": true
+    },
+    {
+      "id": "COV-001",
+      "kind": "coverage_goal",
+      "file": "coverage/dut_cov.svh",
+      "line": 102,
+      "owner": "scaffold",
+      "open": true,
+      "requirements": [
+        "REQ-003",
+        "REQ-004",
+        "REQ-005",
+        "REQ-006",
+        "REQ-007",
+        "REQ-008"
+      ],
+      "objectives": [],
+      "text": "Port connectivity and widths for all channels at default parameters"
+    },
+    {
+      "id": "COV-002",
+      "kind": "coverage_goal",
+      "file": "coverage/dut_cov.svh",
+      "line": 105,
+      "owner": "scaffold",
+      "open": true,
+      "requirements": [
+        "REQ-020",
+        "REQ-021"
+      ],
+      "objectives": [],
+      "text": "Burst types FIXED, INCR, WRAP seen on write and read"
+    },
+    {
+      "id": "COV-003",
+      "kind": "coverage_goal",
+      "file": "coverage/dut_cov.svh",
+      "line": 108,
+      "owner": "scaffold",
+      "open": true,
+      "requirements": [
+        "REQ-022"
+      ],
+      "objectives": [],
+      "text": "Burst lengths: 1, 2, 16 and 256 beats"
+    },
+    {
+      "id": "COV-004",
+      "kind": "coverage_goal",
+      "file": "coverage/dut_cov.svh",
+      "line": 111,
+      "owner": "scaffold",
+      "open": true,
+      "requirements": [
+        "REQ-024",
+        "REQ-025"
+      ],
+      "objectives": [],
+      "text": "AxSIZE narrow values and strobe patterns"
+    },
+    {
+      "id": "COV-005",
+      "kind": "coverage_goal",
+      "file": "coverage/dut_cov.svh",
+      "line": 114,
+      "owner": "scaffold",
+      "open": true,
+      "requirements": [
+        "REQ-026",
+        "REQ-027",
+        "REQ-028"
+      ],
+      "objectives": [],
+      "text": "Error cases: bad size, misaligned address, on write and read"
+    },
+    {
+      "id": "COV-006",
+      "kind": "coverage_goal",
+      "file": "coverage/dut_cov.svh",
+      "line": 117,
+      "owner": "scaffold",
+      "open": true,
+      "requirements": [
+        "REQ-050",
+        "REQ-011",
+        "REQ-012"
+      ],
+      "objectives": [],
+      "text": "Back-pressure on B and R, and FIFO-full conditions on each channel"
+    },
+    {
+      "id": "COV-007",
+      "kind": "coverage_goal",
+      "file": "coverage/dut_cov.svh",
+      "line": 120,
+      "owner": "scaffold",
+      "open": true,
+      "requirements": [
+        "REQ-019"
+      ],
+      "objectives": [],
+      "text": "Simultaneous AW and AR handshakes and simultaneous read and write contention"
+    },
+    {
+      "id": "COV-008",
+      "kind": "coverage_goal",
+      "file": "coverage/dut_cov.svh",
+      "line": 123,
+      "owner": "scaffold",
+      "open": true,
+      "requirements": [
+        "REQ-029"
+      ],
+      "objectives": [],
+      "text": "ID values, including reuse and out-of-order ID patterns"
+    },
+    {
+      "id": "COV-009",
+      "kind": "coverage_goal",
+      "file": "coverage/dut_cov.svh",
+      "line": 126,
+      "owner": "scaffold",
+      "open": true,
+      "requirements": [
+        "REQ-020"
+      ],
+      "objectives": [],
+      "text": "INCR bursts crossing a 4 KB boundary"
+    },
+    {
+      "id": "SBR-001",
+      "kind": "scoreboard_rule",
+      "file": "scoreboard/dut_scoreboard.svh",
+      "line": 56,
+      "owner": "agent",
+      "open": false,
+      "requirements": [
+        "REQ-024",
+        "REQ-025",
+        "REQ-045",
+        "REQ-017"
+      ],
+      "source": "spec \u00a74 narrow transfers and write issue",
+      "text": "Byte-addressed memory model: a write beat updates only the byte lanes selected by WSTRB of the full word; a read returns the full word; the low BYTE_LSB bits are ignored."
+    },
+    {
+      "id": "SBR-001.sram",
+      "kind": "scoreboard_rule",
+      "file": "scoreboard/dut_scoreboard.svh",
+      "line": 96,
+      "owner": "agent",
+      "open": false,
+      "requirements": [
+        "REQ-024",
+        "REQ-025",
+        "REQ-045",
+        "REQ-017"
+      ],
+      "source": "spec \u00a74 narrow transfers and write issue",
+      "text": "Byte-addressed memory model: a write beat updates only the byte lanes selected by WSTRB of the full word; a read returns the full word; the low BYTE_LSB bits are ignored. [memory-side hook: called for every SRAM access observed]"
+    },
+    {
+      "id": "SBR-002",
+      "kind": "scoreboard_rule",
+      "file": "scoreboard/dut_scoreboard.svh",
+      "line": 105,
+      "owner": "agent",
+      "open": false,
+      "requirements": [
+        "REQ-014",
+        "REQ-013",
+        "REQ-046",
+        "REQ-029"
+      ],
+      "source": "spec \u00a74 response generation",
+      "text": "Exactly one B response per accepted AW burst, with the AWID, in AW order; BRESP is OKAY or SLVERR only."
+    },
+    {
+      "id": "SBR-003",
+      "kind": "scoreboard_rule",
+      "file": "scoreboard/dut_scoreboard.svh",
+      "line": 124,
+      "owner": "agent",
+      "open": false,
+      "requirements": [
+        "REQ-014",
+        "REQ-048",
+        "REQ-007",
+        "REQ-012",
+        "REQ-029"
+      ],
+      "source": "spec \u00a74 read path",
+      "text": "Exactly AxLEN+1 R beats per accepted AR burst, in AR order, with the ARID, the memory data, and RLAST only on the last beat."
+    },
+    {
+      "id": "SBR-003.sram",
+      "kind": "scoreboard_rule",
+      "file": "scoreboard/dut_scoreboard.svh",
+      "line": 175,
+      "owner": "agent",
+      "open": false,
+      "requirements": [
+        "REQ-014",
+        "REQ-048",
+        "REQ-007",
+        "REQ-012",
+        "REQ-029"
+      ],
+      "source": "spec \u00a74 read path",
+      "text": "Exactly AxLEN+1 R beats per accepted AR burst, in AR order, with the ARID, the memory data, and RLAST only on the last beat. [memory-side hook: called for every SRAM access observed]"
+    },
+    {
+      "id": "SBR-004",
+      "kind": "scoreboard_rule",
+      "file": "scoreboard/dut_scoreboard.svh",
+      "line": 184,
+      "owner": "agent",
+      "open": false,
+      "requirements": [
+        "REQ-020",
+        "REQ-021",
+        "REQ-022"
+      ],
+      "source": "spec address generation section",
+      "text": "Beat address sequence: FIXED keeps the address; INCR adds 2**AxSIZE modulo 2**PARA_ADDR_WD with no 4 KB check; WRAP wraps within the size*len window."
+    },
+    {
+      "id": "SBR-005",
+      "kind": "scoreboard_rule",
+      "file": "scoreboard/dut_scoreboard.svh",
+      "line": 214,
+      "owner": "agent",
+      "open": false,
+      "requirements": [
+        "REQ-026",
+        "REQ-027",
+        "REQ-028"
+      ],
+      "source": "spec error handling section",
+      "text": "Error prediction: AxSIZE > MAX_SIZE or misaligned start address gives SLVERR on all beats of the burst; a write error leaves the memory unmodified; the next aligned burst is OKAY."
+    },
+    {
+      "id": "SBR-005.sram",
+      "kind": "scoreboard_rule",
+      "file": "scoreboard/dut_scoreboard.svh",
+      "line": 245,
+      "owner": "agent",
+      "open": false,
+      "requirements": [
+        "REQ-026",
+        "REQ-027",
+        "REQ-028"
+      ],
+      "source": "spec error handling section",
+      "text": "Error prediction: AxSIZE > MAX_SIZE or misaligned start address gives SLVERR on all beats of the burst; a write error leaves the memory unmodified; the next aligned burst is OKAY. [memory-side hook: called for every SRAM access observed]"
+    },
+    {
+      "id": "SBR-006",
+      "kind": "scoreboard_rule",
+      "file": "scoreboard/dut_scoreboard.svh",
+      "line": 254,
+      "owner": "agent",
+      "open": false,
+      "requirements": [
+        "REQ-009",
+        "REQ-010",
+        "REQ-011",
+        "REQ-012"
+      ],
+      "source": "spec \u00a75 handshake rules",
+      "text": "Handshake stability and READY rules: o_awready/o_arready/o_wready do not depend on VALID; B and R payload stay stable until accepted."
+    },
+    {
+      "id": "SBR-007",
+      "kind": "scoreboard_rule",
+      "file": "scoreboard/dut_scoreboard.svh",
+      "line": 263,
+      "owner": "agent",
+      "open": false,
+      "requirements": [
+        "REQ-052",
+        "REQ-053",
+        "REQ-054",
+        "REQ-055",
+        "REQ-057"
+      ],
+      "source": "spec timing section",
+      "text": "Latency model: single-beat write AW handshake to o_bvalid is at least 3 cycles; AR handshake to first o_rvalid is at least 4 cycles; reads issue at most every 2 cycles; AxREADY low for the burst duration."
+    },
+    {
+      "id": "SBR-007.sram",
+      "kind": "scoreboard_rule",
+      "file": "scoreboard/dut_scoreboard.svh",
+      "line": 271,
+      "owner": "agent",
+      "open": false,
+      "requirements": [
+        "REQ-052",
+        "REQ-053",
+        "REQ-054",
+        "REQ-055",
+        "REQ-057"
+      ],
+      "source": "spec timing section",
+      "text": "Latency model: single-beat write AW handshake to o_bvalid is at least 3 cycles; AR handshake to first o_rvalid is at least 4 cycles; reads issue at most every 2 cycles; AxREADY low for the burst duration. [memory-side hook: called for every SRAM access observed]"
+    },
+    {
+      "id": "SBR-008",
+      "kind": "scoreboard_rule",
+      "file": "scoreboard/dut_scoreboard.svh",
+      "line": 280,
+      "owner": "agent",
+      "open": false,
+      "requirements": [
+        "REQ-018",
+        "REQ-025"
+      ],
+      "source": "spec SRAM interface",
+      "text": "o_sram_we and o_sram_oe are never both 1 for a bank; o_sram_wstrb is zero whenever o_sram_we is 0."
+    },
+    {
+      "id": "SBR-008.sram",
+      "kind": "scoreboard_rule",
+      "file": "scoreboard/dut_scoreboard.svh",
+      "line": 287,
+      "owner": "agent",
+      "open": false,
+      "requirements": [
+        "REQ-018",
+        "REQ-025"
+      ],
+      "source": "spec SRAM interface",
+      "text": "o_sram_we and o_sram_oe are never both 1 for a bank; o_sram_wstrb is zero whenever o_sram_we is 0. [memory-side hook: called for every SRAM access observed]"
+    },
+    {
+      "id": "SBR-009",
+      "kind": "scoreboard_rule",
+      "file": "scoreboard/dut_scoreboard.svh",
+      "line": 302,
+      "owner": "agent",
+      "open": false,
+      "requirements": [
+        "REQ-041",
+        "REQ-042",
+        "REQ-049"
+      ],
+      "source": "spec reset section (assumption)",
+      "text": "Reset and idle soft checks: ready 1, valid 0 and payloads 0 after reset (soft only, per OI-002)."
+    },
+    {
+      "id": "SBR-009.sram",
+      "kind": "scoreboard_rule",
+      "file": "scoreboard/dut_scoreboard.svh",
+      "line": 310,
+      "owner": "agent",
+      "open": false,
+      "requirements": [
+        "REQ-041",
+        "REQ-042",
+        "REQ-049"
+      ],
+      "source": "spec reset section (assumption)",
+      "text": "Reset and idle soft checks: ready 1, valid 0 and payloads 0 after reset (soft only, per OI-002). [memory-side hook: called for every SRAM access observed]"
+    },
+    {
+      "id": "seq.smoke",
+      "kind": "sequence",
+      "file": "sequences/dut_seq_lib.svh",
+      "line": 22,
+      "owner": "agent",
+      "open": false,
+      "requirements": [
+        "REQ-001",
+        "REQ-003",
+        "REQ-004",
+        "REQ-005",
+        "REQ-006",
+        "REQ-007",
+        "REQ-008",
+        "REQ-014",
+        "REQ-045",
+        "REQ-047",
+        "REQ-048"
+      ],
+      "rules": [
+        "SBR-001",
+        "SBR-002",
+        "SBR-003",
+        "SBR-008"
+      ],
+      "text": "Reset, then one aligned single-beat INCR write and a read back of the same location. Relies on SBR-001, SBR-002, SBR-003, SBR-008."
+    },
+    {
+      "id": "sram.monitor",
+      "kind": "sram_model",
+      "file": "sram/dut_sram_agent.svh",
+      "line": 21,
+      "owner": "agent",
+      "open": false
+    },
+    {
+      "id": "sram.responder",
+      "kind": "sram_model",
+      "file": "sram/dut_sram_agent.svh",
+      "line": 77,
+      "owner": "agent",
+      "open": false
+    },
+    {
+      "id": "test.TC-002",
+      "kind": "test",
+      "file": "tests/dut_test_lib.svh",
+      "line": 76,
+      "owner": "agent",
+      "open": false,
+      "requirements": [
+        "REQ-014",
+        "REQ-020",
+        "REQ-022"
+      ],
+      "text": "INCR bursts of various lengths, write then read back."
+    },
+    {
+      "id": "test.TC-003",
+      "kind": "test",
+      "file": "tests/dut_test_lib.svh",
+      "line": 107,
+      "owner": "agent",
+      "open": false,
+      "requirements": [
+        "REQ-020"
+      ],
+      "text": "FIXED bursts on write and read."
+    },
+    {
+      "id": "test.TC-004",
+      "kind": "test",
+      "file": "tests/dut_test_lib.svh",
+      "line": 138,
+      "owner": "agent",
+      "open": false,
+      "requirements": [
+        "REQ-021"
+      ],
+      "text": "WRAP bursts of 2, 4, 8 and 16 beats from unaligned-in-window start addresses; AxBURST=2'b11 is not stimulated."
+    },
+    {
+      "id": "test.TC-005",
+      "kind": "test",
+      "file": "tests/dut_test_lib.svh",
+      "line": 176,
+      "owner": "agent",
+      "open": false,
+      "requirements": [
+        "REQ-024",
+        "REQ-025"
+      ],
+      "text": "Narrow AxSIZE transfers and sparse WSTRB patterns."
+    },
+    {
+      "id": "test.TC-006",
+      "kind": "test",
+      "file": "tests/dut_test_lib.svh",
+      "line": 236,
+      "owner": "agent",
+      "open": false,
+      "requirements": [
+        "REQ-013",
+        "REQ-026",
+        "REQ-027",
+        "REQ-028"
+      ],
+      "text": "AxSIZE above max and misaligned addresses on write and read; check SLVERR, the memory unchanged, and OKAY on the following aligned burst."
+    },
+    {
+      "id": "test.TC-007",
+      "kind": "test",
+      "file": "tests/dut_test_lib.svh",
+      "line": 289,
+      "owner": "agent",
+      "open": false,
+      "requirements": [
+        "REQ-011",
+        "REQ-012",
+        "REQ-050",
+        "REQ-009",
+        "REQ-010"
+      ],
+      "text": "Hold i_bready and i_rready low to fill the FIFOs and check stability and no overflow."
+    },
+    {
+      "id": "test.TC-008",
+      "kind": "test",
+      "file": "tests/dut_test_lib.svh",
+      "line": 322,
+      "owner": "agent",
+      "open": false,
+      "requirements": [
+        "REQ-029"
+      ],
+      "text": "ID reuse and distinct IDs, in-order B and R responses."
+    },
+    {
+      "id": "test.TC-009",
+      "kind": "test",
+      "file": "tests/dut_test_lib.svh",
+      "line": 358,
+      "owner": "agent",
+      "open": false,
+      "requirements": [
+        "REQ-022"
+      ],
+      "text": "256-beat write and read bursts."
+    },
+    {
+      "id": "test.TC-010",
+      "kind": "test",
+      "file": "tests/dut_test_lib.svh",
+      "line": 392,
+      "owner": "agent",
+      "open": false,
+      "requirements": [
+        "REQ-019",
+        "REQ-040",
+        "REQ-050",
+        "REQ-029",
+        "REQ-014"
+      ],
+      "text": "Random concurrent reads and writes with random back-pressure; checked against the scoreboard."
+    },
+    {
+      "id": "test.TC-011",
+      "kind": "test",
+      "file": "tests/dut_test_lib.svh",
+      "line": 453,
+      "owner": "agent",
+      "open": false,
+      "requirements": [
+        "REQ-052",
+        "REQ-053",
+        "REQ-054",
+        "REQ-055",
+        "REQ-056",
+        "REQ-057",
+        "REQ-018"
+      ],
+      "text": "Minimum latencies and throughput: write c3, read c4, read rate 0.5, write rate 1, AxREADY interval."
+    },
+    {
+      "id": "test.TC-012",
+      "kind": "test",
+      "file": "tests/dut_test_lib.svh",
+      "line": 500,
+      "owner": "agent",
+      "open": false,
+      "requirements": [
+        "REQ-020"
+      ],
+      "text": "INCR write and read bursts that cross a 4 KB boundary: no error, OKAY, address keeps incrementing modulo 2**PARA_ADDR_WD (approved by Q-TB-OI-006)."
+    }
+  ]
+}

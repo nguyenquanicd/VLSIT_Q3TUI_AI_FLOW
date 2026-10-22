@@ -1,0 +1,4 @@
+name: dut_tb
+# The tb step alone: the specification, configuration and RTL are already approved inputs of this example (docs/spec/dut-dv.md).
+steps:
+  - {id: tb, kind: dv_tb, gate: auto, deps: []}

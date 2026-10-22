@@ -1,0 +1,147 @@
+{
+  "schema_version": 1,
+  "generated_at": "2026-10-20T22:57:18",
+  "contract_hash": "3d3d7bc64241ba197f200b37d30754b8fc5f049a7d27c69d79f6aff8603de949",
+  "contract_status": "frozen",
+  "issues": [
+    {
+      "issue_id": "OI-001",
+      "question_id": "Q-TB-OI-001",
+      "kind": "OPEN",
+      "requirement_ids": [
+        "REQ-002"
+      ],
+      "question": "Reset behavior (async assert, sync deassert) is an assumption; is it normative?",
+      "source": "spec/spec.md:77",
+      "class": "user_accepted_default",
+      "resolved_in_contract": false,
+      "resolution": "",
+      "by": "thaphan@nvidia.com",
+      "at": "2026-10-19",
+      "note": "reviewed in chat: the default is fine",
+      "default": "TB asserts asynchronously and deasserts synchronously; no checks beyond that."
+    },
+    {
+      "issue_id": "OI-002",
+      "question_id": "Q-TB-OI-002",
+      "kind": "OPEN",
+      "requirement_ids": [
+        "REQ-041",
+        "REQ-042",
+        "REQ-049"
+      ],
+      "question": "Are the reset values and idle output values (ready=1, payloads 0, o_sram_addr 0 when idle, reset discards in-flight transactions) golden?",
+      "source": "spec/spec.md:90,103,110-145,192",
+      "class": "user_accepted_default",
+      "resolved_in_contract": false,
+      "resolution": "",
+      "by": "thaphan@nvidia.com",
+      "at": "2026-10-19",
+      "note": "reviewed in chat: the default is fine",
+      "default": "Checked as soft checks only; not blocking pass/fail."
+    },
+    {
+      "issue_id": "OI-003",
+      "question_id": "Q-TB-OI-003",
+      "kind": "OPEN",
+      "requirement_ids": [
+        "REQ-017"
+      ],
+      "question": "Is the SRAM behavior contract (one-cycle read latency, byte-lane write) golden?",
+      "source": "spec/spec.md:144,170",
+      "class": "user_accepted_default",
+      "resolved_in_contract": false,
+      "resolution": "",
+      "by": "thaphan@nvidia.com",
+      "at": "2026-10-19",
+      "note": "reviewed in chat: the default is fine",
+      "default": "The TB SRAM model implements it as stated."
+    },
+    {
+      "issue_id": "OI-004",
+      "question_id": "Q-TB-OI-004",
+      "kind": "OPEN",
+      "requirement_ids": [
+        "REQ-035",
+        "REQ-058",
+        "REQ-059",
+        "REQ-062",
+        "REQ-063",
+        "REQ-065"
+      ],
+      "question": "Bank hash for PARA_NUM_BANKS>1 and constraints C1, C2, C5, C6, C8 are marked as assumptions; are they golden? Only PARA_NUM_BANKS=1 is run.",
+      "source": "spec/spec.md:40,56,62,170",
+      "class": "user_accepted_default",
+      "resolved_in_contract": false,
+      "resolution": "",
+      "by": "thaphan@nvidia.com",
+      "at": "2026-10-19",
+      "note": "reviewed in chat: the default is fine; re-bound to the renamed text after the parameter rename approved by the verification owner on 2026-10-19 (only PR_* -> PARA_* changed)",
+      "default": "Not checked; only the default configuration is verified."
+    },
+    {
+      "issue_id": "OI-005",
+      "question_id": "Q-TB-OI-005",
+      "kind": "OPEN",
+      "requirement_ids": [
+        "REQ-021"
+      ],
+      "question": "WRAP address behavior for the reserved AxBURST=2'b11 is an assumption; is it golden?",
+      "source": "spec/spec.md:247",
+      "class": "user_accepted_default",
+      "resolved_in_contract": false,
+      "resolution": "",
+      "by": "thaphan@nvidia.com",
+      "at": "2026-10-19",
+      "note": "reviewed in chat: the default is fine",
+      "default": "Not stimulated, because the master should not use 2'b11."
+    },
+    {
+      "issue_id": "OI-006",
+      "question_id": "Q-TB-OI-006",
+      "kind": "OPEN",
+      "requirement_ids": [
+        "REQ-020"
+      ],
+      "question": "Address increment modulo 2**PARA_ADDR_WD and absence of a 4 KB boundary check come from an assumption; is it golden?",
+      "source": "spec/spec.md:431",
+      "class": "user_answered",
+      "resolved_in_contract": true,
+      "resolution": "Approved by the user's answer Q-TB-OI-006: INCR bursts that cross a 4 KB boundary are tested. Expected behavior: no error, OKAY response, address keeps incrementing modulo 2**PARA_ADDR_WD. Test TC-012 added.",
+      "answer": "Approved: add a directed test for INCR bursts that cross a 4 KB boundary. The specification's statement for this case is the expected behavior: no error, the response is OKAY, and the address keeps incrementing (modulo 2**PR_ADDR_WD). Decision of the verification owner, 2026-10-19."
+    }
+  ],
+  "summary": {
+    "user_answered": 1,
+    "user_accepted_default": 5,
+    "auto_default": 0,
+    "pending": 0
+  },
+  "requirements": {
+    "planned": 34,
+    "open": 12,
+    "blocked": 0,
+    "not_observable": 14,
+    "excluded": 6,
+    "withdrawn": 0,
+    "draft": 0
+  },
+  "assumption_candidates_decided_normative": [
+    {
+      "req_id": "REQ-008",
+      "reason": "The port set, widths and the single-SRAM mapping at PARA_NUM_BANKS=1 are stated; only reset and idle values carry assumptions, tracked under REQ-042 and REQ-049. Traced by TC-001 and COV-001."
+    },
+    {
+      "req_id": "REQ-020",
+      "reason": "Approved by the user's answer Q-TB-OI-006."
+    },
+    {
+      "req_id": "REQ-045",
+      "reason": "The write issue behavior is stated normatively; the assumption at spec.md:144 concerns only the SRAM port conventions."
+    },
+    {
+      "req_id": "REQ-047",
+      "reason": "The read issue behavior is stated normatively; the assumption at spec.md:144 concerns only the SRAM port conventions."
+    }
+  ]
+}

@@ -168,7 +168,7 @@ class WaiverStep(SanityStep):
             batch = todo[n:n + size]
             stage = Stage(name=f"{role}_waivers_{n // size + 1}", system_prompt=self.system, prompt=self._prompt(engine, batch, answers, modules, prev_by_sig),
                           cwd=project.root, builtin_tools=["Read", "Grep", "Glob"], output_model=Review,
-                          deny_dirs=[project.model_dir])
+                          deny_dirs=[project.src_dir / "tb", project.src_dir / "sva", project.tb_dir, project.model_dir])
             out: Review = (await ctx.llm(stage)).output
             for it in self._validate(engine, out, batch, modules, answers):
                 old = prev_by_sig.get(it["sig"])

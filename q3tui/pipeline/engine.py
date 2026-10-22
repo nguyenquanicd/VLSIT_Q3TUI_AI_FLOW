@@ -349,7 +349,7 @@ class Engine:
             raise EngineError(f"cannot approve '{name}': blocking question(s) {ids} need an answer (or approve with force)")
         if not force and not auto and not self.auto_confirm_reviews():
             # `auto` (gate mode "auto", or --yes/auto-answer's own force=True call): the gate still signs itself —
-            # unconfirmed items simply do not count, same as a human who approves with none reviewed
+            # unconfirmed items simply do not count (RTM condition 2, "SVA traced"), same as a human who signs with none reviewed
             pending = step.pending_reviews(self)
             if pending:
                 shown = ", ".join(pending[:5]) + (f", … ({len(pending)} total)" if len(pending) > 5 else "")
@@ -529,8 +529,8 @@ class Engine:
         the answer stays in `origin` (design choice, or a gap toward itself / a later step)."""
         from q3tui.steps.common import GAP_TARGETS
 
-        # no kind given: a gap in the spec
-        kind = q.get("kind") or "spec_gap"
+        # no kind given: the testbench's question is about its own work (a design choice), anyone else's a gap
+        kind = q.get("kind") or ("design_choice" if origin.split(":")[-1] == "tb" else "spec_gap")
         target = self.flow.gap_targets.get(kind, GAP_TARGETS.get(kind))
         order = [s.name for s in self.steps]
         if target not in order or origin not in order or order.index(target) >= order.index(origin):
@@ -753,8 +753,8 @@ class Engine:
         return list(dict.fromkeys(out))
 
     def import_path(self, path: Path, kinds: set[str] | None = None) -> dict:
-        """Import a folder (or one file): spec documents and RTL into the step of the flow that takes them
-        (`StepDef.import_dir`; spec documents without such a step go to spec/ as they are). Sorted by code (core/importer.py). Returns {kind: [targets],
+        """Import a folder (or one file): spec documents into spec/, RTL / testbench and tests / SVA into the step of the
+        flow that takes them (`StepDef.import_dir`). Sorted by code (core/importer.py). Returns {kind: [targets],
         skipped: [files not imported], not_taken: {kind: [files no step of this flow takes]}}."""
         from q3tui.core import importer
         from q3tui.core.project import write_json
@@ -789,8 +789,14 @@ class Engine:
     def _copy_import(self, kind: str, files: list[Path], root: Path, dest: Path, old: dict) -> list[Path]:
         from q3tui.core import importer
 
-        names = importer.flat_names(files, root)  # one flat folder: module files / documents by name
-        targets = [dest / names[f] for f in files]
+        if kind in ("rtl", "spec"):  # one flat folder: module files / documents by name
+            names = importer.flat_names(files, root)
+            targets = [dest / names[f] for f in files]
+        else:  # a folder of references: the files' own structure below their common folder
+            import os
+
+            base = Path(os.path.commonpath([str(f.parent) for f in files]))
+            targets = [dest / f.relative_to(base) for f in files]
         # the previous import of this kind that this one does not bring again goes (backed up)
         stale = [self.project.root / r for r in old.get("files", {}) if (self.project.root / r) not in targets]
         self.project.backup([*stale, *targets])
@@ -974,12 +980,12 @@ class Engine:
     def auto_reviews(self) -> bool:
         """Auto approve in the wide sense (project switches `pipeline.auto_approve` / `auto_answer`, or this run's --yes):
         besides the gates, the VLSIT flow confirms its assertions and signs its ready requirements itself
-        (the step option `auto_confirm` overrides per step)."""
+        (step options `sva.auto_confirm`, `verify.auto_sign` override per step)."""
         pc = self.project.cfg.pipeline
         return bool(pc.auto_approve or pc.auto_answer or getattr(self, "_yes", False))
 
     def auto_confirm_reviews(self) -> bool:
-        """Confirm a step's own reviewable items (flagged requirements, changed parameters, …) without asking: the
+        """Confirm a step's own reviewable items (SVA assertions, flagged requirements, …) without asking: the
         dedicated `pipeline.auto_confirm_reviews` switch (Settings → General), or any wider unattended mode
         (`auto_reviews()`). Narrower than `auto_reviews()`: a project may skip per-item review while still
         stopping at every gate for a human to press Approve."""

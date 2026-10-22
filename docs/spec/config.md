@@ -51,8 +51,9 @@ project:                          # folder names inside the project (docs/spec/p
   reviews_dir: reviews            # yours, kept on reset: parse / config reviews, sanity answers
   reports_dir: reports            # readable results rendered by code
   docs_dir: docs                  # the final specification only
-  src_dir: src                    # src/ holds rtl/ only
+  src_dir: src                    # src/rtl (the rtl flow) and src/tb (the dv flow)
   rtl_dir: src/rtl                # where the rtl flow writes (its csr/, style_lint/, smoke/ are inside)
+  tb_dir: src/tb                  # the dv flow's testbench; denied to the RTL stages (independence)
   build_dir: build                # disposable tool output; gitignored by `q3tui init`
   syn_dir: build/syn              #   build/syn/fpga, build/syn/asic
   sim_dir: build/sim              #   lint / synthesis / simulation logs
@@ -83,6 +84,12 @@ spec:
 tui:
   icons: unicode                  # unicode (✔ ⚑ ◐ …) | nerd (a "… Nerd Font Mono" font) | ascii (any font)
   language: en                    # en | vi | ko
+
+tb:                               # the dv flow's tb step (docs/spec/dv-flow.md)
+  max_fix_attempts: 3             # extra rounds when the plan / TB checks still fail
+  max_turns: 30                   # agent turns per TB stage
+  tests_per_agent: 6              # test cases per agent (agents run in parallel)
+  parallel: 4                     # test-case agents at once
 
 rtl:                              # the rtl flow's rtl step
   max_fix_attempts: 3             # extra rounds when Q3TUI's own checks (rules, lint, synthesis) still fail

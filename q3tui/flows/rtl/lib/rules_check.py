@@ -262,7 +262,7 @@ def check_source(text: str, module: str, prof: Profile, is_package: bool = False
         for m in re.finditer(r"^\s*(reg|wire|integer)\b", code, re.M):
             bad("R7/P20", f"`{m.group(1)}` declaration: declare signals as logic", _line_of(code, m))
     for m in re.finditer(r"\bassert\s+property\b|\bcover\s+property\b|\bassume\s+property\b", code):
-        bad("P19", "SVA in the RTL source set (assertions do not belong in the RTL source set)", _line_of(code, m))
+        bad("P19", "SVA in the RTL source set (assertions belong to src/sva)", _line_of(code, m))
 
     if not facts.parsed:
         return out

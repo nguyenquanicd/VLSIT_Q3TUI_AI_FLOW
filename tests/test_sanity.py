@@ -205,6 +205,7 @@ async def test_the_review_decides_every_violation_and_the_table_follows(proj, mo
     (stage,) = fake.stages
     assert set(stage.builtin_tools) == {"Read", "Grep", "Glob"} and stage.write_dirs is None and stage.output_model.__name__ == "Review"
     assert "K1 — Valid / data crossing" in stage.prompt and "u_a/reg_req/Q" in stage.prompt and "RTL modules" in stage.prompt  # (the knowledge, the facts)
+    assert any(d.name == "tb" for d in stage.deny_dirs) and any(d.name == "sva" for d in stage.deny_dirs)  # independence
     assert proj.model_dir in stage.deny_dirs and proj.state_dir in stage.deny_dirs  # (the old outputs are never read)
     assert "sdc/sdc.tcl" in stage.prompt and "You never change the SDC yourself" in stage.system_prompt
     plan = json.loads((proj.schemas_dir / "cdc_waivers.json").read_text())

@@ -25,8 +25,11 @@ class Layout:
 
     schemas: Path
     rtl: Path
+    sva: Path
+    tb: Path
     docs: Path
     sim: Path  # simulation / lint / synthesis work area (logs, simv): build/sim
+    reports: Path = Path("reports")  # readable results rendered by code (the dv flow's review / conformance / test-result reports)
 
     def artifact(self, name: str) -> Path:
         return self.schemas / name
@@ -34,7 +37,7 @@ class Layout:
 
 def layout(engine) -> Layout:
     p = engine.project
-    return Layout(p.schemas_dir, p.rtl_dir, p.docs_dir, p.sim_dir)
+    return Layout(p.schemas_dir, p.rtl_dir, p.src_dir / "sva", p.tb_dir, p.docs_dir, p.sim_dir, p.reports_dir)
 
 
 def rules_text(names: list[str] | None = None, project_root: Path | None = None) -> str:

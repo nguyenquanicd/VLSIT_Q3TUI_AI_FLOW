@@ -5,6 +5,8 @@
 | schemas/structured_spec.json | structured_spec_schema.json | parse (Gate 1) |
 | schemas/final_config.json | final_config_schema.json | config (Gate 2) |
 | schemas/synth_report.json | (none) | rtl (rtl flow) |
+| schemas/selected_testplan.json | (inline: TESTPLAN_SCHEMA) | tb (dv flow) |
+| schemas/golden_manifest.json, verification_contract.json, tb_architecture.json, vip_integration.json, dut_integration.json | (their pydantic models in flows/dv/tb/uvm/) | tb, backend `uvm_vip` (dv flow) |
 """
 
 from __future__ import annotations
@@ -21,6 +23,29 @@ NAMES = {  # artifact file -> schema file (None: not validated against a file)
     "structured_spec.json": "structured_spec_schema.json",
     "final_config.json": "final_config_schema.json",
     "synth_report.json": None,
+    "selected_testplan.json": None,
+    # the dv flow's `uvm_vip` tb backend (docs/spec/dv-flow.md): validated by their pydantic models in flows/dv/tb/uvm/
+    "golden_manifest.json": None,
+    "verification_contract.json": None,
+    "tb_architecture.json": None,
+    "vip_integration.json": None,
+    "dut_integration.json": None,
+}
+
+# selected_testplan.json (tb_generator.md "Schema output"): written by the dv flow's tb step
+TESTPLAN_SCHEMA = {
+    "type": "object",
+    "required": ["metadata", "test_cases"],
+    "properties": {
+        "metadata": {"type": "object", "required": ["ip_name", "gate_4_approved"],
+                     "properties": {"ip_name": {"type": "string"}, "gate_4_approved": {"type": "boolean"},
+                                    "gate_4_at": {"type": ["string", "null"]}}},
+        "test_cases": {"type": "array", "items": {
+            "type": "object", "required": ["tc_id", "req_ids"],
+            "properties": {"tc_id": {"type": "string"}, "title": {"type": "string"},
+                           "req_ids": {"type": "array", "items": {"type": "string"}},
+                           "selected": {"type": "boolean"}, "file": {"type": "string"}}}},
+    },
 }
 
 def path(project: Project, name: str) -> Path:
@@ -28,6 +53,8 @@ def path(project: Project, name: str) -> Path:
 
 
 def schema_for(name: str) -> dict | None:
+    if name == "selected_testplan.json":
+        return TESTPLAN_SCHEMA
     fname = NAMES.get(name)
     schema = json.loads(next(d / fname for d in SCHEMA_DIRS if (d / fname).is_file()).read_text()) if fname else None
     if name == "final_config.json" and schema:  # the original pins each constraint's rule to one design's (rv32im) text

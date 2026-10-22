@@ -10,6 +10,8 @@ KINDS: dict[str, str] = {
     # the spec flow (docs/spec/spec-flow.md)
     "vlsit_parse": "q3tui.flows.spec.parse.step:ParseStep",
     "vlsit_config": "q3tui.flows.spec.config.step:ConfigStep",
+    # the dv flow (docs/spec/dv-flow.md)
+    "dv_tb": "q3tui.flows.dv.tb.step:TbGenStep",
 }
 
 

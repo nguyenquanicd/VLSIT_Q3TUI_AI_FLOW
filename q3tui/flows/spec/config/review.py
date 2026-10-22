@@ -4,7 +4,7 @@ Code only, never an LLM stage.
 - `pending_ids`: parameters changed from their default that you have not confirmed yet. A parameter kept at its
   default needs no review — nothing about it to check. Reviews are kept in reviews/config_reviews.json (survive a
   reset) and are not an input of the config step: confirming a parameter does not make anything stale, same as
-  parse/review.py.
+  sva/review.py and parse/review.py.
 - Gate 2 is "auto" by default (FLOW.md: it signs itself when its constraints pass) — this only matters when you end
   up pressing Approve yourself (a blocking question stopped the auto-sign, or you switched the gate to human).
 """

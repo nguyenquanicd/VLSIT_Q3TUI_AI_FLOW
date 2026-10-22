@@ -60,7 +60,7 @@ def test_settings_of_the_removed_flows_are_ignored(tmp_path):
         "rtl: {rules: [a], review: false, parallel: 2}\ntb: {seed: 3, max_turns: 9}\npipeline: {parallel_rtl_tb: true}\n"
         "llm: {steps: {tb_stimulus: {model: claude-haiku-4-5}, rtl: {effort: low}}}\n")
     cfg = load_config(cwd=tmp_path)
-    assert cfg.rtl.parallel == 2 and not hasattr(cfg, "tb") and cfg.project.rtl_dir == "hw"
+    assert cfg.rtl.parallel == 2 and cfg.tb.max_turns == 9 and cfg.project.rtl_dir == "hw"
     assert cfg.llm.steps.rtl.effort == "low" and not hasattr(cfg, "units")
 
 

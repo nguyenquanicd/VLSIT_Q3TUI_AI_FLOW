@@ -1,0 +1,14 @@
+{
+  "_comment": "Tool roles of the axi4_sram_ctrl example (Synopsys VCS). The UVM roles are written for VCS X-2025.06 and are verified at milestones M7/M8; see the README status table.",
+  "modules": ["synopsys/vcs/X-2025.06"],
+  "timeout_s": 900,
+  "roles": {
+    "lint":  {"cmd": "vcs -full64 -sverilog +lint=all -top {top} -f {filelist} -Mdir={workdir}/csrc_lint_{top} -o {workdir}/simv_lint_{top}", "parse": "vcs"},
+    "sim":   {"cmd": "vcs -full64 -sverilog -timescale=1ns/1ps -debug_access+all -top {top} -f {filelist} -Mdir={workdir}/csrc -o {workdir}/simv", "parse": "vcs", "supports": ["sva"]},
+    "run":   {"cmd": "{workdir}/simv +TC={tc} -assert nopostproc", "parse": "vcs"},
+    "sim_uvm": {"cmd": "vcs -full64 -sverilog -ntb_opts uvm-ieee-2020-2.0 -timescale=1ns/1ps {extra_args} -debug_access+all -top {top} -f {filelist} -Mdir={workdir}/csrc -o {workdir}/simv", "parse": "vcs",
+                "description": "compile the UVM DUT testbench, the VIP and the RTL with VCS (UVM from the VCS install)"},
+    "run_uvm": {"cmd": "{workdir}/simv +UVM_TESTNAME={test} +ntb_random_seed={seed} +UVM_NO_RELNOTES", "parse": "vcs",
+                "description": "run one UVM test; the UVM report summary gives UVM_ERROR / UVM_FATAL counts"}
+  }
+}

@@ -17,8 +17,8 @@ MODELS = [
     ("claude-fable-5-1", "Fable 5.1 — most capable, most expensive"),
 ]
 EFFORTS = ["low", "medium", "high", "xhigh", "max"]
-GATES = ["spec", "parse", "config", "rtl"]
-STEP_LABELS = (("spec", "Spec"), ("parse", "Parse"), ("config", "Config"), ("rtl", "RTL"), ("assistant", "Assistant"))
+GATES = ["spec", "parse", "config", "rtl", "tb"]
+STEP_LABELS = (("spec", "Spec"), ("parse", "Parse"), ("config", "Config"), ("rtl", "RTL"), ("tb", "TB"), ("assistant", "Assistant"))
 
 
 @dataclass(frozen=True)
@@ -100,11 +100,17 @@ TABS: tuple[Tab, ...] = (
         Setting("rtl.max_fix_attempts", "Fix rounds", "int", "Extra rounds when lint or synthesis still fail."),
         Setting("rtl.max_turns", "Turns per module", "int", "Agent turns for one module (write, compile, fix)."),
     )),
+    Tab("tb", "TB", (
+        Setting("tb.tests_per_agent", "Tests per agent", "int", "Test cases written by one agent; agents run in parallel."),
+        Setting("tb.parallel", "Agents at once", "int", "How many test-case agents run in parallel."),
+        Setting("tb.max_fix_attempts", "Fix rounds", "int", "Extra rounds when the plan or TB checks still fail."),
+        Setting("tb.max_turns", "Turns per stage", "int", "Agent turns for one TB stage."),
+    )),
     Tab("models", "Models per step", tuple(
         s for key, label in STEP_LABELS for s in step_model_settings(key, label))),
 )
 
-_STEP_TABS = ("spec", "rtl")  # per-step settings tabs (config sections), shown when the flow has that step
+_STEP_TABS = ("spec", "rtl", "tb")  # per-step settings tabs (config sections), shown when the flow has that step
 
 
 STEP_OPTIONS = "pipeline.step_options."  # + <step>.<key>: a step's option, shown by a flow's add-on (addons.AddonAPI.setting)

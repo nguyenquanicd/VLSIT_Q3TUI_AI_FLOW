@@ -1,0 +1,3 @@
+{
+  "Q-TB-OI-006": "Approved: add a directed test for INCR bursts that cross a 4 KB boundary. The specification's statement for this case is the expected behavior: no error, the response is OKAY, and the address keeps incrementing (modulo 2**PR_ADDR_WD). Decision of the verification owner, 2026-10-19."
+}

@@ -2,7 +2,7 @@
 
 Bản khác: [English](en.md).
 
-Q3TUI chạy **flow spec**: `spec → parse → config`, và **flow rtl** (`rules → csr → rtl → format → style_lint → smoke` sau cùng 3 step đó). Các step testbench, SVA, verify và doc đã bị gỡ. Tài liệu này hướng dẫn
+Q3TUI chạy **flow spec**: `spec → parse → config`, và **flow rtl** (`rules → csr → rtl → format → style_lint → smoke` sau cùng 3 step đó). Step testbench nằm trong flow `dv`; các step SVA, verify và doc đã bị gỡ. Tài liệu này hướng dẫn
 cách cài đặt, chạy 1 project từ đầu tới cuối, hệ thống rule kiểm tra RTL, toàn bộ setting, và mọi lệnh/phím
 bạn sẽ dùng hàng ngày.
 
@@ -79,6 +79,11 @@ spec ─► parse ─► config
 
 RTL do flow `rtl` tạo (`pipeline.flow: rtl`, `q3tui --flow rtl run`): flow này dùng lại 3 step trên và thêm rules, CSR, RTL,
 format + style lint bằng Verible, và smoke test (docs/spec/rtl-flow.md).
+
+Testbench do flow `dv` tạo (`pipeline.flow: dv`, `q3tui --flow dv run`): cùng 3 step đầu rồi thêm `tb`, viết testbench chỉ từ spec, không bao giờ từ RTL:
+một testbench SystemVerilog thuần (mặc định, `src/tb/`, test plan ở `schemas/selected_testplan.json`) hoặc, với `pipeline.step_options.tb.backend: uvm_vip`, một testbench UVM
+dựng từ VIP có sẵn và tích hợp RTL làm DUT (report ở `reports/`; docs/spec/dv-flow.md, docs/spec/dut-dv.md, ví dụ `examples/axi4_sram_ctrl`).
+SVA, verify và document sinh tự động vẫn đã bị gỡ; chưa import được file testbench vào `tb`.
 
 **Update, không chạy lại từ đầu:** sửa 1 requirement, 1 parameter, hay gửi change request chỉ khiến đúng
 phần bị ảnh hưởng chạy lại — các step trước và approval đã duyệt vẫn giữ nguyên, trừ khi thay đổi lan tới đó.

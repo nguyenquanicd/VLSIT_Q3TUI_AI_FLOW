@@ -1,0 +1,37 @@
+{
+  "Q-TB-OI-001": {
+    "decision": "accept_default",
+    "by": "thaphan@nvidia.com",
+    "at": "2026-10-19",
+    "note": "reviewed in chat: the default is fine",
+    "issue_sha": "0787dd0d4c8e4390"
+  },
+  "Q-TB-OI-002": {
+    "decision": "accept_default",
+    "by": "thaphan@nvidia.com",
+    "at": "2026-10-19",
+    "note": "reviewed in chat: the default is fine",
+    "issue_sha": "7d7ad403024a21b8"
+  },
+  "Q-TB-OI-003": {
+    "decision": "accept_default",
+    "by": "thaphan@nvidia.com",
+    "at": "2026-10-19",
+    "note": "reviewed in chat: the default is fine",
+    "issue_sha": "6c14d0172d2766a9"
+  },
+  "Q-TB-OI-004": {
+    "decision": "accept_default",
+    "by": "thaphan@nvidia.com",
+    "at": "2026-10-19",
+    "note": "reviewed in chat: the default is fine; re-bound to the renamed text after the parameter rename approved by the verification owner on 2026-10-19 (only PR_* -> PARA_* changed)",
+    "issue_sha": "a860ef620719646b"
+  },
+  "Q-TB-OI-005": {
+    "decision": "accept_default",
+    "by": "thaphan@nvidia.com",
+    "at": "2026-10-19",
+    "note": "reviewed in chat: the default is fine",
+    "issue_sha": "dcc5453a7f4383d2"
+  }
+}

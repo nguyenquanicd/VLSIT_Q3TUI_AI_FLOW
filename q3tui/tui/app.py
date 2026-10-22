@@ -1423,7 +1423,7 @@ class Q3TUIApp(App):
                     self._log_line(f"LLM cost: {self.ops.cost_text()} · /cost reset to clear")
             elif cmd == "import":
                 if not args:
-                    raise EngineError("usage: /import <path> [all|spec|rtl]  (a folder: everything in it, sorted by code)")
+                    raise EngineError("usage: /import <path> [all|spec|rtl|tb|sva]  (a folder: everything in it, sorted by code)")
                 self.ops.import_files(args[1] if len(args) > 1 else "all", args[0])  # (the summary goes to the log)
                 self.refresh_all()
             elif cmd == "reset":

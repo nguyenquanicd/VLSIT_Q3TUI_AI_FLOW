@@ -61,7 +61,7 @@ def run(engine, **kw):
 
 
 def test_builtin_flows_are_valid():
-    assert set(flows.list_flows()) == {"spec", "example", "fpga", "asic", "project", "rtl", "sanity"}
+    assert set(flows.list_flows()) == {"spec", "example", "fpga", "asic", "project", "rtl", "sanity", "dv"}
     example = flows.load_flow("example")
     assert flows.validate(example) == [] and [s.id for s in example.steps] == ["spec", "parse"]
 

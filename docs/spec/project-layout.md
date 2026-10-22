@@ -26,13 +26,14 @@ it any time). Internal state lives in `.q3tui/`. A step names no folder: it asks
 │   └── sdc/                ← sdc.json (source of truth) and the Tcl files rendered from it                  generated, you edit
 ├── src/
 │   ├── rtl/                ← RTL (+ filelist.f); rtl flow: also csr/, style_lint/, smoke/ (below)           generated
-│   ├── tb/  sva/           ← testbench and assertions (no flow writes them now)
+│   ├── tb/                 ← the dv flow's testbench (plain SystemVerilog, or the uvm_vip scaffold and tests)      generated
+│   └── sva/                ← (reserved: no flow writes assertions now)
 ├── schemas/                ← JSON artifacts: structured_spec.json, final_config.json, synth_report.json,    generated
 │                             fpga_synth / ppa / asic_* / cdc_* / rdc_* …; structured_spec.md;
 │                             questions/<step>.{json,answers.json,md} for every step, the spec step included; NOTES.md (flow session)
 ├── reviews/                ← what you decided: parse_reviews.json, config_reviews.json,                     yours, kept on reset
 │                             <role>_answers.json (sanity)
-├── reports/                ← readable results rendered by code (sanity <role>_report.md / .csv)             generated
+├── reports/                ← readable results rendered by code (sanity <role>_report.md / .csv; the dv flow's tb_architecture.md, dv_review_report.md, dut_conformance_report.md, dv_test_results.md)             generated
 ├── docs/                   ← the final specification only (specification.md / .pdf; no flow writes it now)  generated
 ├── build/                  ← tool output, safe to delete                                                    disposable
 │   ├── syn/fpga/  syn/asic/    synth.tcl / synth.ys / lec.tcl, reports/*.rpt, netlist/ (.v, .ddc, .svf), sdc/ (the ASIC's own)
@@ -52,10 +53,10 @@ it any time). Internal state lives in `.q3tui/`. A step names no folder: it asks
 
 The rtl flow keeps its own working files inside the RTL folder: `src/rtl/csr/` (register map, report, provided modules),
 `src/rtl/style_lint/` (Verible flags, findings) and `src/rtl/smoke/` (the smoke testbench and its report); see
-[rtl-flow.md](rtl-flow.md) "Layout". The tb, sva, verify and doc steps were removed with their outputs (`src/tb`, `src/sva`, `selected_testplan.json`, `rtm.json`,
-`verification_report.json`, `docs/specification.md`): `src/` holds only `rtl/`. `reviews/`, `reports/` and `docs/` are in the layout but mostly
-empty: `reviews/` and `reports/` hold only what is listed above, and `docs/` is reserved for a final specification that no built-in
-flow writes now.
+[rtl-flow.md](rtl-flow.md) "Layout". The dv flow ([dv-flow.md](dv-flow.md)) writes `src/tb/` (`project.tb_dir`), `schemas/selected_testplan.json` (`plain_sv`) or the `uvm_vip` artifacts
+(`golden_manifest.json`, `verification_contract.json`, `tb_architecture.json`, `vip_integration.json`, `dut_integration.json`, `dv_*.json`) and the
+`reports/dv_*` / conformance reports. The sva, verify and doc steps were removed with their outputs (`src/sva`, `rtm.json`, `verification_report.json`,
+`docs/specification.md`). `reviews/` holds only what is listed above, and `docs/` is reserved for a final specification that no built-in flow writes now.
 
 `build/` is the one place where tool output is meant to be read (by you and by the stages that ask for a report); the
 per-step scratch of a run stays in `.q3tui/`. Folder names are configurable (`project.*` in config); these are the defaults.
