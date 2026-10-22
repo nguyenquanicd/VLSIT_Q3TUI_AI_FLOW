@@ -360,3 +360,17 @@ async def test_a_gate_offers_the_handoff(proj, monkeypatch):
     await eng.run(yes=True, stop="cdc_waivers")
     offer = eng.by_name["cdc_waivers"].follow_up(eng)
     assert offer["action"] == "sanity_handoff" and offer["switch"] == "rtl" and "V2" in offer["detail"] and "V3" not in offer["detail"]
+
+
+def test_the_tool_runs_in_its_work_folder_not_in_the_project(tmp_path):
+    """VC Static writes elab_summary.rpt / .vcstPref into its working directory: the script moves to the work folder and reads an
+    absolute filelist, so nothing is left in the project folder."""
+    (tmp_path / "src" / "rtl").mkdir(parents=True)
+    (tmp_path / "src" / "rtl" / "a.sv").write_text("module a; endmodule\n")
+    fl = tmp_path / "src" / "rtl" / "filelist.f"
+    fl.write_text("// files\n+incdir+src/rtl\nsrc/rtl/a.sv\n")
+    work = tmp_path / ".q3tui" / "sanity" / "cdc"
+    absf = script.absolute_filelist(fl, tmp_path, work)
+    assert absf.read_text().splitlines() == ["// files", f"+incdir+{tmp_path / 'src' / 'rtl'}", str(tmp_path / "src" / "rtl" / "a.sv")]
+    t = script.text("cdc", "a", tmp_path, absf, work, tmp_path / "s.tcl", {})
+    assert t.splitlines()[1] == f"cd {work}" and f'-f {absf}' in t and f"cd {tmp_path}\n" not in t

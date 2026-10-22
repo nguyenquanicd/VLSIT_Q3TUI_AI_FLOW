@@ -291,3 +291,16 @@ def test_the_real_generator(tmp_path):
     assert {"i_bus_clk", "o_pready", "i_reg_clk", "o_ctrl_en", "o_ctrl_mode", "i_hw_wdata_ctrl_mode", "i_hw_we_ctrl_mode", "i_stat_busy", "o_stat_done",
             "i_hw_we_stat_done"} <= set(names)
     assert not any("reserved" in n for n in names) and (work / "RTL" / "models" / "m_vlsi_synch.sv").is_file()
+
+
+def test_the_generator_is_found_through_the_csr_gen_role_env(tmp_path, monkeypatch):
+    """CSR_GEN_HOME in the `csr_gen` role's env (tools.json) is enough: it need not be exported in the shell."""
+    monkeypatch.delenv("CSR_GEN_HOME", raising=False)
+    monkeypatch.setenv("Q3TUI_HOME", str(tmp_path / "home"))
+    tool = tmp_path / "gen"
+    (tool / "models").mkdir(parents=True)
+    (tool / csr.SCRIPT).write_text("")
+    (tool / "models" / f"{csr.SYNC_MODEL}.sv").write_text("")
+    assert csr.find_tool(tmp_path) is None
+    assert csr.find_tool(tmp_path, None, str(tool)) == tool
+    assert csr.find_tool(tmp_path, str(tmp_path / "nope"), str(tool)) == tool  # (an option that points nowhere is skipped)

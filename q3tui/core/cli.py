@@ -352,7 +352,7 @@ def cost(c: Ctx, do_reset: bool) -> None:
     summary = engine.cost_summary()
     console.print(f"[bold]${summary['total_usd']:.2f}[/bold] total LLM cost for this project")
     for name, usd in summary["steps"].items():
-        console.print(f"  {name:8} ${usd:.2f}  [dim](last run)[/dim]")
+        console.print(f"  {name:8} ${usd:.2f}  [dim](all its runs)[/dim]")
     for r in summary["resets"]:
         console.print(f"  [dim]reset {r['at']}: ${r['amount_usd']:.2f} cleared[/dim]")
 

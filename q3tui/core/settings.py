@@ -12,6 +12,7 @@ from typing import Any
 MODELS = [
     ("claude-opus-5-5", "Opus 5.5 — best quality"),
     ("claude-sonnet-5-5", "Sonnet 5.5 — fast, cheaper (default)"),
+    ("claude-haiku-5-5", "Haiku 5.5 — cheap and fast; thinks at length before it answers"),
     ("claude-haiku-4-5", "Haiku 4.5 — cheapest, for trying the flow (no effort setting)"),
     ("claude-fable-5-1", "Fable 5.1 — most capable, most expensive"),
 ]

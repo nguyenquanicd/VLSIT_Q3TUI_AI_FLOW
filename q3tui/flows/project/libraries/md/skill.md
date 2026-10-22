@@ -4,9 +4,9 @@ title: Libraries
 deps: []
 gate: none
 options: {}
-view: [pdks.json]
+view: [config/pdks.json]
 ---
-The standard-cell libraries the ASIC flow can use: technologies and their corners (`.db` files). `a` adds one: you give the folder, a read-only LLM stage reads it (the file names, a README, the `.lib` headers next to the `.db`) and fills in the id, name, node, which files are the cells' corners (`include`), the default corner and the estimate's probe period; you review the form and save. Enter or `e` edits, `d` removes, `u` picks the corner used as the ASIC library. The built-in catalog lists open-source PDKs; yours are in `<project>/pdks.json`.
+The standard-cell libraries the ASIC flow can use: technologies and their corners (`.db` files). `a` adds one: you give the folder, a read-only LLM stage reads it (the file names, a README, the `.lib` headers next to the `.db`) and fills in the id, name, node, which files are the cells' corners (`include`), the default corner and the estimate's probe period; you review the form and save. Enter or `e` edits, `d` removes, `u` picks the corner used as the ASIC library. The built-in catalog lists open-source PDKs; yours are in `<project>/config/pdks.json`.
 
 <!-- SYSTEM -->
 You identify a standard-cell library folder for Q3TUI's ASIC flow. You are given what code found (the folders that hold Design Compiler `.db` files, with their file names): that is ground truth, never invent a file or a folder. Fill in an entry of the library catalog.

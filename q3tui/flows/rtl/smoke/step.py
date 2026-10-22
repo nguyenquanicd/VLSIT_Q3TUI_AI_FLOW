@@ -108,7 +108,7 @@ class Step(RtlFlowStep):
         p = engine.project
         rtl = self.rtl_dir(engine)
         files = [f for f in sorted(rtl.iterdir()) if f.is_file()] if rtl.is_dir() else []
-        return [*files, self.style_dir(engine), rtl / "csr", p.model_dir, p.src_dir / "rtl"]
+        return [*files, self.style_dir(engine), rtl / "csr", p.model_dir, p.build_dir]
 
     async def _write_tb(self, ctx: StepContext, snap: dict, old: dict | None, feedback: list[str]) -> SmokePlan:
         engine, project = ctx.engine, ctx.project

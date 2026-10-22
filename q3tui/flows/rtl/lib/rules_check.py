@@ -68,6 +68,36 @@ PROFILES = {
                          inst_re=r"\w+", gen_re=r"\w+", proc_ff_re=r"\w+", proc_comb_re=r"\w+"),
 }
 KNOWN_FILES = {"rtl_rule.md": "project", "rtl_rule_default.md": "default"}
+
+# what each on/off check of a profile does exactly: the rules step shows this (not the raw flags) to the judge, so it does not
+# read "forbid_wire_reg" as "no `wire` anywhere" and call the rule text (TYP-02: `input wire`) a contradiction
+CHECK_MEANING = {
+    "forbid_wire_reg": "a declaration that starts with `reg`, `wire` or `integer` is a violation (R7, P20: declare internal signals as logic); "
+                       "`wire` / `logic` on a port declaration (`input wire i_a`) is not checked and is accepted",
+    "forbid_signed": "`signed`, `$signed` and signed literals are violations (P22)",
+    "forbid_two_state": "a signal declared bit / byte / shortint / int / longint is a violation (P21); a for-header loop index "
+                        "(`for (int idx = 0; …)`) is not a signal and is accepted",
+    "forbid_define": "`define / `undef are violations (P12); macros defined by the flow may be referenced",
+    "forbid_casez": "`casez` is a violation (P3)",
+    "state_prefix": "flop outputs must start with `reg_`, other internal signals with `w_`",
+    "allow_package": "packages may be declared in RTL files",
+}
+
+
+def describe(prof: "Profile") -> dict[str, str]:
+    """The profile as the checker applies it: the patterns as they are, each on/off check with its exact meaning."""
+    out: dict[str, str] = {}
+    for k, v in prof.__dict__.items():
+        if v in (None, ""):
+            continue
+        if isinstance(v, bool):
+            if v and k in CHECK_MEANING:
+                out[k] = CHECK_MEANING[k]
+            elif k == "allow_package" and not v:
+                out[k] = "packages are not allowed in RTL files"
+            continue
+        out[k] = str(v)
+    return out
 OVERRIDES = {"two_state": "forbid_two_state", "signed": "forbid_signed", "max_len": "max_len"}
 
 

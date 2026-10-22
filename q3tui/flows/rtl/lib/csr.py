@@ -26,9 +26,11 @@ _VOLATILE = re.compile(r"^//\s*(Generator|Date and time):.*$", re.M)
 
 # -- where the tool is ------------------------------------------------------------------------------------------------
 
-def tool_dirs(project_root: Path, option: str | None = None) -> list[Path]:
+def tool_dirs(project_root: Path, option: str | None = None, role_env: str | None = None) -> list[Path]:
+    """Where the generator may be, first wins: `options.tool_dir`, `env.CSR_GEN_HOME` of the `csr_gen` tool role (tools.json), the
+    process's `$CSR_GEN_HOME`, `~/.q3tui/tools/`, `<project>/tools/`."""
     home = Path(os.environ.get("Q3TUI_HOME") or "~/.q3tui").expanduser()
-    cands = [option, os.environ.get("CSR_GEN_HOME"), home / "tools" / "APB-CSR-Generator", project_root / "tools" / "APB-CSR-Generator"]
+    cands = [option, role_env, os.environ.get("CSR_GEN_HOME"), home / "tools" / "APB-CSR-Generator", project_root / "tools" / "APB-CSR-Generator"]
     out = []
     for c in cands:
         if c:
@@ -37,8 +39,8 @@ def tool_dirs(project_root: Path, option: str | None = None) -> list[Path]:
     return out
 
 
-def find_tool(project_root: Path, option: str | None = None) -> Path | None:
-    return next((d for d in tool_dirs(project_root, option) if (d / SCRIPT).is_file() and (d / "models" / f"{SYNC_MODEL}.sv").is_file()), None)
+def find_tool(project_root: Path, option: str | None = None, role_env: str | None = None) -> Path | None:
+    return next((d for d in tool_dirs(project_root, option, role_env) if (d / SCRIPT).is_file() and (d / "models" / f"{SYNC_MODEL}.sv").is_file()), None)
 
 
 # -- the register map -------------------------------------------------------------------------------------------------
