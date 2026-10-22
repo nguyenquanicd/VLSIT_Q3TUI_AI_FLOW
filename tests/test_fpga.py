@@ -71,7 +71,10 @@ def test_default_config_and_files():
     io = files["io_constraints.tcl"]
     assert "set_input_delay -clock [get_clocks i_clk] -max 1.5 [get_ports {i_a[*] i_v}]" in io
     assert "set_output_delay -clock [get_clocks i_clk] -max 1.5 [get_ports {o_y[*] o_r}]" in io
-    assert "i_clk" not in io.replace("[get_clocks i_clk]", "") and "i_rst_n" not in io  # clock and reset get no I/O delay
+    assert "i_clk" not in io.replace("[get_clocks i_clk]", "")  # the clock port gets no I/O delay
+    # a reset is a false path, but its port still gets an input delay (CDC tools call a port with none "partially constrained")
+    assert "set_input_delay -clock [get_clocks i_clk] -max 1.5 [get_ports {i_rst_n}]" in io and "-min 0 [get_ports {i_rst_n}]" in io
+    assert "(none)" in files["extra.tcl"] and "source $_d/extra.tcl" in files["sdc.tcl"]
     assert "single clock domain" in files["clock_groups.tcl"]
     assert "source $_d/clocks.tcl" in files["sdc.tcl"]
 
@@ -1016,3 +1019,19 @@ def test_the_asic_library_is_a_setting_of_this_flow_too(proj):
     assert ops.settings()[path] == "/pdk/other__ss_n40C_4v50.db" and hints.asic_library(proj) == "/pdk/other__ss_n40C_4v50.db"
     assert "other__ss_n40C_4v50.db" in (proj.root / "q3tui.yaml").read_text()
     assert Ops(Engine(Project.open(proj.root))).settings()[path] == "/pdk/other__ss_n40C_4v50.db"  # the next start (and the ASIC flow) read it
+
+
+def test_a_reset_gets_the_input_delay_of_its_own_clock_and_extra_tcl_is_sourced_last():
+    cfg = sdc.SdcConfig(clocks=[sdc.Clock(name="i_clk_a", port="i_clk_a", period_ns=10.0), sdc.Clock(name="i_clk_b", port="i_clk_b", period_ns=4.0)],
+                        io=sdc.IOBudget(clock="i_clk_a"), resets=["i_rst_n_b", "i_rst_n_x"])
+    ports = [{"name": n, "dir": "input", "vector": ""} for n in ("i_clk_a", "i_clk_b", "i_rst_n_b", "i_rst_n_x", "i_d")]
+    io = sdc.render(cfg, ports)["io_constraints.tcl"]
+    assert "set_input_delay -clock [get_clocks i_clk_b] -max 1.2 [get_ports {i_rst_n_b}]" in io  # (ends like i_clk_b: 30% of 4 ns)
+    assert "set_input_delay -clock [get_clocks i_clk_a] -max 3 [get_ports {i_rst_n_x}]" in io  # (no match: the I/O clock)
+    assert sdc.extra_lines("set_false_path -from [get_ports i_d]\n# a comment\nset_max_delay 3 -to [get_ports i_d]") == [
+        "set_false_path -from [get_ports i_d]", "set_max_delay 3 -to [get_ports i_d]"]
+    for bad in ("exec rm -rf x", "set_false_path -from [get_ports i_d]; exec ls", "set_max_delay 3 -to [get_ports {i_d]", "", "source other.tcl"):
+        assert sdc.extra_lines(bad) is None
+    cfg.extra_tcl = ["set_false_path -from [get_ports i_d]"]
+    assert sdc.add_extra(cfg, ["set_false_path -from [get_ports i_d]", "set_max_delay 3 -to [get_ports i_d]"]) == ["set_max_delay 3 -to [get_ports i_d]"]
+    assert sdc.render(cfg, ports)["extra.tcl"].endswith("set_max_delay 3 -to [get_ports i_d]\n")

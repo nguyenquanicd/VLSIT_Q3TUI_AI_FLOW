@@ -25,7 +25,9 @@ def comment(d: dict | None) -> str:
         case "spec":
             return f"Spec question: {d['change']}{where}"
         case "sdc":
-            return f"SDC update needed (yours to decide): {d.get('sdc_request') or d['reason']}{answer}"
+            if sent:
+                return f"SDC updated (constraints/sdc/extra.tcl): {d.get('sdc_request') or d['reason']}"
+            return f"SDC update needed: {d.get('sdc_request') or d['reason']}{answer} — apply it with sanity_handoff, or edit constraints/sdc/sdc.json"
         case _:
             return f"Question for you: {d.get('question') or d['reason']}{answer}"
 

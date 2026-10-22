@@ -206,7 +206,7 @@ async def test_the_review_decides_every_violation_and_the_table_follows(proj, mo
     assert set(stage.builtin_tools) == {"Read", "Grep", "Glob"} and stage.write_dirs is None and stage.output_model.__name__ == "Review"
     assert "K1 — Valid / data crossing" in stage.prompt and "u_a/reg_req/Q" in stage.prompt and "RTL modules" in stage.prompt  # (the knowledge, the facts)
     assert proj.model_dir in stage.deny_dirs and proj.state_dir in stage.deny_dirs  # (the old outputs are never read)
-    assert "sdc/sdc.tcl" in stage.prompt and "SDC is the user's" in stage.system_prompt
+    assert "sdc/sdc.tcl" in stage.prompt and "You never change the SDC yourself" in stage.system_prompt
     plan = json.loads((proj.schemas_dir / "cdc_waivers.json").read_text())
     assert [(i["id"], i["action"]) for i in plan["items"]] == [("V1", "waive"), ("V2", "fix_rtl"), ("V3", "sdc")]
     rows = table.rows(json.loads((proj.schemas_dir / "cdc_report.json").read_text()), plan)
@@ -326,6 +326,44 @@ async def test_an_sdc_json_is_rendered_like_the_other_flows(proj):
     assert st["cdc"] == "stale"  # a changed constraint makes the analysis run again
 
 
+async def test_the_handoff_adds_an_sdc_request_to_extra_tcl_when_there_is_an_sdc_json(proj, monkeypatch):
+    from q3tui.llm import runtime
+
+    (proj.root / "constraints" / "sdc" / "sdc.tcl").unlink()  # (no hand-written SDC: the flow renders constraints/sdc from sdc.json)
+    monkeypatch.setattr(runtime, "run_stage", ReviewLLM(_decide))
+    eng = Engine(proj)
+    await eng.run(yes=True, stop="cdc_waivers")
+    ops = Ops(eng)
+    pending = [i["id"] for i in eng.by_name["cdc_waivers"].pending_handoff(eng)]
+    assert pending == ["V2", "V3"]  # (the RTL fix and the SDC request: a plain SDC command can be applied here)
+    msg = ops.run_action("sanity_handoff", ids="cdc:V3")
+    assert "cdc:V3 → sdc: set_input_delay 2.0 -clock A [get_ports i_d]" in msg
+    extra = (proj.root / "constraints" / "sdc" / "extra.tcl").read_text()
+    assert "set_input_delay 2.0 -clock A [get_ports i_d]" in extra and "source $_d/extra.tcl" in (proj.root / "constraints" / "sdc" / "sdc.tcl").read_text()
+    assert json.loads((proj.root / "constraints" / "sdc" / "sdc.json").read_text())["extra_tcl"] == ["set_input_delay 2.0 -clock A [get_ports i_d]"]
+    plan = json.loads((proj.schemas_dir / "cdc_waivers.json").read_text())
+    assert plan["items"][2]["handed_off"]["step"] == "sdc" and plan["items"][1].get("handed_off") is None
+    assert "SDC updated (constraints/sdc/extra.tcl)" in (proj.root / "reports" / "cdc_report.md").read_text()
+    assert eng.by_name["cdc_waivers"].question_list(eng) == []  # (nothing is waiting for you any more for V3)
+    assert {v.name: v.status for v in Engine(proj).status()}["cdc"] == "stale"  # the analysis runs again on the changed SDC
+
+
+async def test_a_request_that_is_not_an_sdc_command_stays_yours(proj, monkeypatch):
+    from q3tui.llm import runtime
+
+    (proj.root / "constraints" / "sdc" / "sdc.tcl").unlink()
+    def decide(i):
+        return dict(action="sdc", reason="x", sdc_request="exec rm -rf /", question="ok?") if i == "V3" else _decide(i)
+
+    monkeypatch.setattr(runtime, "run_stage", ReviewLLM(decide))
+    eng = Engine(proj)
+    await eng.run(yes=True, stop="cdc_waivers")
+    assert [i["id"] for i in eng.by_name["cdc_waivers"].pending_handoff(eng)] == ["V2"]
+    with pytest.raises(EngineError, match="no fix to hand off"):
+        Ops(eng).run_action("sanity_handoff", ids="cdc:V3")
+    assert not (proj.root / "constraints" / "sdc" / "extra.tcl").is_file() or "exec" not in (proj.root / "constraints" / "sdc" / "extra.tcl").read_text()
+
+
 # -- the hand-off ---------------------------------------------------------------------------------------------------------------
 
 
@@ -374,3 +412,65 @@ def test_the_tool_runs_in_its_work_folder_not_in_the_project(tmp_path):
     assert absf.read_text().splitlines() == ["// files", f"+incdir+{tmp_path / 'src' / 'rtl'}", str(tmp_path / "src" / "rtl" / "a.sv")]
     t = script.text("cdc", "a", tmp_path, absf, work, tmp_path / "s.tcl", {})
     assert t.splitlines()[1] == f"cd {work}" and f'-f {absf}' in t and f"cd {tmp_path}\n" not in t
+
+
+# -- memory: what was tried is remembered, a repeat becomes a question --------------------------------------------------------------
+
+
+def test_memory_blocks_the_same_request_and_the_third_attempt(tmp_path):
+    from q3tui.flows.sanity.lib import memory
+
+    project = Project.open(tmp_path)
+    assert memory.repeated(project, "CDC-1", "fix_rtl", "add a synchronizer") == []
+    memory.record(project, "CDC-1", "fix_rtl", "add a synchronizer", "blk")
+    assert memory.repeated(project, "CDC-1", "fix_rtl", "Add a  synchronizer")  # (the same request, whatever the spacing and case)
+    assert memory.repeated(project, "CDC-1", "fix_rtl", "use a handshake") == []  # a different one may still be tried
+    memory.record(project, "CDC-1", "fix_rtl", "use a handshake", "blk")
+    assert len(memory.repeated(project, "CDC-1", "fix_rtl", "use an async fifo")) == 2  # (MAX_TRIES reached)
+    assert memory.repeated(project, "CDC-1", "sdc", "set_false_path") == [] and memory.repeated(project, "CDC-2", "spec", "x") == []
+    assert memory.conflicts_with_requirement("REQ-RESET-004 forbids a synchronous clear", "make it asynchronous")
+    assert not memory.conflicts_with_requirement("the data is not synchronized", "add a two-flop synchronizer") and \
+        not memory.conflicts_with_requirement("this goes against the rules", "x")  # (no requirement cited)
+
+
+async def test_a_handed_off_fix_is_remembered_and_the_repeat_becomes_a_question(proj, monkeypatch):
+    from q3tui.flows.sanity.lib import memory
+    from q3tui.llm import runtime
+
+    (proj.root / "flows").mkdir(exist_ok=True)
+    (proj.root / "flows" / "owner.yaml").write_text("name: owner\nsteps:\n  - {id: spec, kind: reads}\n  - {id: rtl, kind: reads, deps: [spec]}\n")
+    _tools(proj.root, extra="  step_options:\n    cdc_waivers:\n      handoff_flow: owner\n")
+    llm = ReviewLLM(_decide)
+    monkeypatch.setattr(runtime, "run_stage", llm)
+    eng = Engine(Project.open(proj.root))
+    await eng.run(yes=True, stop="cdc_waivers")
+    sig = next(i["sig"] for i in eng.by_name["cdc_waivers"].items(eng) if i["id"] == "V2")
+    Ops(eng).run_action("sanity_handoff", ids="cdc:V2")
+    (att,) = memory.attempts(proj, sig)
+    assert att["kind"] == "fix_rtl" and att["module"] == "blk" and "two-flop synchronizer on r_a" in att["text"]
+    # the RTL changed, the violation is still there: the review is told, and its same proposal does not go out again
+    (proj.root / "src" / "rtl" / "blk.sv").write_text((proj.root / "src" / "rtl" / "blk.sv").read_text() + "// round 2\n")
+    llm.stages.clear()
+    await Engine(Project.open(proj.root)).run(yes=True, stop="cdc_waivers")
+    prompt = llm.stages[0].prompt
+    assert "Already tried for this violation (1 time(s))" in prompt and "two-flop synchronizer on r_a" in prompt
+    assert "Your earlier decision for it: waive (K1)" in prompt and "keep the decision if it still holds" in prompt
+    plan = json.loads((proj.schemas_dir / "cdc_waivers.json").read_text())
+    v2 = next(i for i in plan["items"] if i["id"] == "V2")
+    assert v2["action"] == "ask" and "still open after 1 hand-off" in v2["question"] and len(v2["options"]) == 3 and v2["handed_off"] is None
+    assert "Question for you" in (proj.root / "reports" / "cdc_report.md").read_text()
+
+
+async def test_a_fix_that_goes_against_a_requirement_becomes_a_spec_decision(proj, monkeypatch):
+    from q3tui.llm import runtime
+
+    def decide(i):
+        if i == "V2":
+            return dict(action="fix_rtl", module="blk", change="make the toggle reset asynchronous", reason="REQ-RESET-004 forbids it, but the RDC tool wants it")
+        return _decide(i)
+
+    monkeypatch.setattr(runtime, "run_stage", ReviewLLM(decide))
+    eng = Engine(proj)
+    await eng.run(yes=True, stop="cdc_waivers")
+    v2 = next(i for i in eng.by_name["cdc_waivers"].items(eng) if i["id"] == "V2")
+    assert v2["action"] == "spec" and "go against a requirement" in v2["change"]

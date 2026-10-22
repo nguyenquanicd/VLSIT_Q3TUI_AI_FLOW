@@ -292,3 +292,7 @@ spec → parse → config → rules → csr → rtl → format → style_lint �
 Công cụ: Verible (`verible_lint`, `verible_format`) và generator CSR có cấu hình mặc định theo flow; `sim` / `run` / `lint` / `synth` lấy từ `config/tools.json` của bạn (preset Synopsys nếu chưa có).
 Thiếu tool thì step chờ và nêu tên role. **Skill:** các stage LLM đọc playbook (`config/skills/<tên>/SKILL.md`); đặt skill của bạn trong `<project>/config/skills/` để thêm hoặc thay.
 `q3tui act style_show` và `q3tui act csr_show` in ra những gì flow đã quyết định.
+
+**Vòng sửa lỗi CDC / RDC.** `q3tui --flow sanity loop [--owner rtl] [--max-rounds N] [--max-cost USD]` chạy phân tích Sanity, chuyển các fix mà review đề xuất sang flow rtl, để flow đó
+cập nhật RTL rồi phân tích lại, cho đến khi hết violation, một vòng không tốt hơn vòng tốt nhất, không còn gì để chuyển, một flow bị lỗi hoặc chạm giới hạn chi phí. RTL của vòng tốt nhất được giữ lại;
+`q3tui loop --restore-best` đặt nó về chỗ cũ. `q3tui act sanity_handoff` cũng thêm các lệnh SDC thuần của review vào `constraints/sdc/extra.tcl` (khi SDC sinh từ `sdc.json`).

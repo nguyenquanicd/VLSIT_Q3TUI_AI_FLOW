@@ -10,7 +10,7 @@ sdc ─► fpga_synth ─► timing_util_report [gate: human] ─► ppa_optimiz
 
 | Step | Kind | Does | Writes |
 |---|---|---|---|
-| `sdc` | `fpga.sdc` | `constraints/sdc/sdc.json` → the SDC Tcl files (code only) | `constraints/sdc/{clocks,clock_groups,exceptions,io_constraints,env,sdc}.tcl` |
+| `sdc` | `fpga.sdc` | `constraints/sdc/sdc.json` → the SDC Tcl files (code only) | `constraints/sdc/{clocks,clock_groups,exceptions,io_constraints,env,extra,sdc}.tcl` |
 | `fpga_synth` | `fpga.fpga_synth` | the template's script (code) + its tool roles: Vivado `synth_design -mode out_of_context`, or Yosys + nextpnr | `build/syn/fpga/synth.tcl` (or `synth.ys`), `build/syn/fpga/reports/*.rpt`, `schemas/fpga_synth.json` |
 | `timing_util_report` | `fpga.timing_util_report` | reads the reports: LUT / FF / BRAM / DSP, WNS / Fmax, worst path, unconstrained ports; verdict vs targets | `schemas/ppa_report.json` |
 | `ppa_optimize` | `fpga.ppa_optimize` | when a target is missed: one read-only LLM stage proposes fixes (below) | `schemas/ppa_plan.json` |
@@ -26,10 +26,11 @@ Top module: `options.top` or `schemas/structured_spec.json` `metadata.top_module
 |---|---|
 | `clocks.tcl` | `create_clock` (name, port, period, duty), `set_clock_uncertainty` |
 | `clock_groups.tcl` | `set_clock_groups` (asynchronous / exclusive); a comment for a single clock |
-| `io_constraints.tcl` | `set_input_delay` / `set_output_delay` (max = share of the period, min 0) on every port of the top module except clocks, resets and `io.exclude` |
+| `io_constraints.tcl` | `set_input_delay` / `set_output_delay` (max = share of the period, min 0) on every port of the top module except clocks, resets and `io.exclude`; each reset input also gets a `set_input_delay` (same budget) on the clock whose name ends like the reset (`i_rst_n_pclk` ↔ `i_clk_pclk`), else on the I/O clock — a port with only a false path is "partially constrained" to the CDC tools |
 | `exceptions.tcl` | `set_false_path` from every asynchronous reset, plus false / multicycle / min / max delay exceptions |
 | `env.tcl` | `set_driving_cell`, `set_load`, `set_max_fanout`, `set_max_transition` (ASIC tools; the FPGA tools skip it) |
-| `sdc.tcl` | sources the above in order (`env.tcl` only where its commands exist), so Design Compiler can `source` the same constraints |
+| `extra.tcl` | the lines of `sdc.json: extra_tcl`: SDC commands of your own or applied from a review (`sanity_handoff`); only constraint commands (`EXTRA_COMMANDS` in `lib/sdc.py`: `set_input_delay`, `set_output_delay`, `set_false_path`, `set_max_delay`, `set_min_delay`, `set_multicycle_path`, `set_clock_groups`, `set_clock_uncertainty`, …) |
+| `sdc.tcl` | sources the above in order (`env.tcl` only where its commands exist, `extra.tcl` last), so Design Compiler can `source` the same constraints |
 
 First run: clocks = input ports named like a clock, resets = reset-named inputs, the period from the spec ("target frequency
 100 MHz"; `options.period_ns` overrides; 10 ns if the spec says nothing), I/O delay 30 % of the period. After that `sdc.json` is yours.

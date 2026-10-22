@@ -38,7 +38,7 @@ In the TUI: step `cdc_waivers` / `rdc_waivers` → Files tab.
 | `waive` | safe, evidence cited (RTL line, SDC, spec, knowledge rule K1–K5) | a `waive_*` command, applied by `*_check` |
 | `fix_rtl` | the RTL is unprotected | a scoped change request for the owner flow's `rtl` step |
 | `spec` | the spec owner has to decide | a change request for its `spec` step |
-| `sdc` | a constraint is missing or wrong | **you**: a question, the SDC is yours |
+| `sdc` | a constraint is missing or wrong | the SDC command(s) in the request; `sanity_handoff` adds plain constraint commands to `constraints/sdc/extra.tcl` (with `sdc.json`), else it stays yours |
 | `ask` | something cannot be verified | **you**: a question with suggested answers |
 
 - The CDC knowledge is `cdc_waivers/md/knowledge.md` (K1–K5). Add your own rules in the project: `config/sanity/cdc_knowledge.md`,
@@ -51,7 +51,7 @@ In the TUI: step `cdc_waivers` / `rdc_waivers` → Files tab.
 
 - After you approve a gate with `fix_rtl` / `spec` decisions, the TUI offers to hand them to the owner flow (option `handoff_flow`,
   default `vlsit`) and switch to it. Without the TUI: `q3tui act sanity_handoff`. Then run the owner flow, come back and run `sanity` again.
-- SDC requests are **never** handed off. Answer the question: "I will update the SDC" (change `constraints/sdc/sdc.json`, the SDC tab, then run again) or
+- An SDC request is applied by `sanity_handoff` only when it is plain constraint commands and the SDC comes from `sdc.json` (added to `constraints/sdc/extra.tcl`); otherwise it stays yours. Answer the question: "I will update the SDC" (change `constraints/sdc/sdc.json`, the SDC tab, then run again) or
   "No SDC change: decide again".
 
 ## Settings (`pipeline.step_options.<cdc|rdc>.…` in `q3tui.yaml`, or the Settings dialog)

@@ -17,7 +17,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from q3tui.core.project import read_json, sha256_json, write_json
-from q3tui.flows.sanity.lib import table, waivers
+from q3tui.flows.sanity.lib import memory, table, waivers
 from q3tui.flows.sanity.lib.base import SanityStep, report_json, waivers_json
 from q3tui.flows.sanity.lib.waivers import Decision, Review
 from q3tui.llm.runtime import Stage
@@ -82,7 +82,7 @@ class WaiverStep(SanityStep):
         end = next((i for i, x in enumerate(lines) if x.startswith("check_")), None)
         return "\n".join(lines[start + 1:end]) if start is not None and end is not None else ""
 
-    def _prompt(self, engine, batch: list[dict], answers: dict[str, str], modules: list[str]) -> str:
+    def _prompt(self, engine, batch: list[dict], answers: dict[str, str], modules: list[str], prev_by_sig: dict | None = None) -> str:
         role = self.role
         lines = [f"## {role.upper()} violations to decide (the tool's report: ground truth)",
                  f"Top `{self.top(engine)}`; RTL modules (src/rtl/<module>.sv): {', '.join(modules)}.",
@@ -95,10 +95,24 @@ class WaiverStep(SanityStep):
         for v in batch:
             fields = "; ".join(f"{k}={str(x)[:160]}" for k, x in (v.get("fields") or {}).items())
             lines.append(f"- **{v['id']}** {v['severity']} `{v['tag']}`: {v['message'][:300]}" + (f"\n  fields: {fields}" if fields else ""))
-            if answers.get(waivers.sig_id(role, v)):
-                lines.append(f"  The user answered: {answers[waivers.sig_id(role, v)]} (settled: follow it, do not ask again)")
+            sig = waivers.sig_id(role, v)
+            if answers.get(sig):
+                lines.append(f"  The user answered: {answers[sig]} (settled: follow it, do not ask again)")
+            lines += memory.tried_lines(engine.project, sig)
+            p = (prev_by_sig or {}).get(sig)
+            if p:  # the same violation was decided before the RTL / SDC changed: the decision is the starting point, not a blank page
+                lines.append(f"  Your earlier decision for it: {p['action']}"
+                             + (f" ({p.get('rule')})" if p.get("rule") else "") + f" — {(p.get('reason') or '')[:260]}. The RTL or SDC changed since: "
+                             "check the evidence again and keep the decision if it still holds; change it only for a reason you can cite.")
         lines += ["", waivers.knowledge(self.knowledge_file(), engine.project.config_dir, role)]
         return "\n".join(lines)
+
+    def _ask_repeated(self, d: Decision, v: dict, tries: list[dict]) -> Decision:
+        last = tries[-1]
+        return Decision(id=d.id, action="ask", reason=f"{len(tries)} RTL / spec request(s) were handed off for this violation and it is still open. "
+                        f"Last: {last['kind']}{' in ' + last['module'] if last.get('module') else ''}: {last['text'][:200]}. The review wanted: {d.change or d.reason}"[:600],
+                        question=f"{v['tag']} is still open after {len(tries)} hand-off(s) (last: {last['text'][:140]}). How should it be settled?",
+                        options=["Decide it in the spec: say what the design must do", "Waive it: give the design reason", "Try another RTL fix: give a hint"])
 
     def _validate(self, engine, out: Review, batch: list[dict], modules: list[str], answers: dict[str, str]) -> list[dict]:
         by_id = {d.id: d for d in out.decisions}
@@ -108,6 +122,13 @@ class WaiverStep(SanityStep):
                                                question=f"The review made no decision for {v['tag']}: {v['message'][:120]}. How should it be handled?")
             if d.action == "fix_rtl" and d.module not in modules:
                 d = Decision(id=d.id, action="spec", reason=d.reason, change=f"{d.change} (the review named the module '{d.module}', which is not in the RTL)")
+            if d.action == "fix_rtl" and memory.conflicts_with_requirement(d.reason, d.change):
+                # its own text says the change goes against a requirement: that is the spec's decision (or yours), never a silent RTL change
+                d = Decision(id=d.id, action="spec", reason=d.reason, change=f"{d.change} (an RTL change here would go against a requirement the reason cites: decide the requirement first)")
+            if d.action in ("fix_rtl", "spec"):
+                tries = memory.repeated(engine.project, waivers.sig_id(self.role, v), d.action, d.change or d.reason)
+                if tries:
+                    d = self._ask_repeated(d, v, tries)
             if d.action == "waive" and not d.reason.strip():
                 d = Decision(id=d.id, action="ask", reason="a waiver needs its evidence and none was given", question=f"Waive {v['tag']}: {v['message'][:120]}?")
             if d.action == "waive" and waivers.waive_command(v, {"id": v["id"], **d.model_dump()}, self.role) is None:
@@ -145,7 +166,7 @@ class WaiverStep(SanityStep):
         size = int(self.options.get("batch") or BATCH)
         for n in range(0, len(todo), size):
             batch = todo[n:n + size]
-            stage = Stage(name=f"{role}_waivers_{n // size + 1}", system_prompt=self.system, prompt=self._prompt(engine, batch, answers, modules),
+            stage = Stage(name=f"{role}_waivers_{n // size + 1}", system_prompt=self.system, prompt=self._prompt(engine, batch, answers, modules, prev_by_sig),
                           cwd=project.root, builtin_tools=["Read", "Grep", "Glob"], output_model=Review,
                           deny_dirs=[project.model_dir])
             out: Review = (await ctx.llm(stage)).output
@@ -159,7 +180,7 @@ class WaiverStep(SanityStep):
         write_json(self.artifact(engine, waivers_json(role)), plan)
         table.write(self.table_files(engine), role, report, plan)
         n_waive = sum(i["action"] == "waive" for i in items)
-        asking = [i["id"] for i in items if i["action"] in waivers.OPEN_ASKING and not i["answer"]]
+        asking = [i["id"] for i in items if i["action"] in waivers.OPEN_ASKING and not i["answer"] and not i.get("handed_off")]
         sent = sum(i["action"] in ("fix_rtl", "spec") for i in items)
         ctx.emit("log", message=f"{role.upper()} review: {len(items)} violation(s): {n_waive} waived, {sent} for the RTL / spec, "
                                 f"{sum(i['action'] == 'sdc' for i in items)} SDC request(s), {len(asking)} question(s) for you"
@@ -170,7 +191,7 @@ class WaiverStep(SanityStep):
     def _asking(self, engine) -> list[dict]:
         """The decisions that wait for you, each with your latest answer (the answers file is ahead of the plan until the review runs again)."""
         answers = self.answers(engine)
-        return [{**i, "answer": answers.get(i["sig"], i.get("answer", ""))} for i in self.items(engine) if i["action"] in waivers.OPEN_ASKING]
+        return [{**i, "answer": answers.get(i["sig"], i.get("answer", ""))} for i in self.items(engine) if i["action"] in waivers.OPEN_ASKING and not i.get("handed_off")]
 
     def question_list(self, engine) -> list[dict]:
         out = []
@@ -198,7 +219,11 @@ class WaiverStep(SanityStep):
     # -- after the gate ---------------------------------------------------------------------------
 
     def pending_handoff(self, engine) -> list[dict]:
-        return [i for i in self.items(engine) if i["action"] in ("fix_rtl", "spec") and not i.get("handed_off")]
+        from q3tui.flows.fpga.lib import sdc as sdcmod
+
+        has_json = sdcmod.load(engine.project) is not None  # (a hand-written SDC has no sdc.json to add to: its requests stay yours)
+        return [i for i in self.items(engine) if not i.get("handed_off")
+                and (i["action"] in ("fix_rtl", "spec") or (has_json and i["action"] == "sdc" and sdcmod.extra_lines(i.get("sdc_request", "")) is not None))]
 
     def follow_up(self, engine):
         """Gate approved, RTL / spec fixes proposed: offer to hand them to the flow that owns them and move there."""
@@ -207,6 +232,7 @@ class WaiverStep(SanityStep):
             return None
         owner = str(self.options.get("handoff_flow") or "rtl")
         return {"title": f"Hand {len(pending)} {self.role.upper()} fix(es) to '{owner}' and switch to it?",
-                "detail": f"{', '.join(i['id'] for i in pending)}: each becomes a scoped change request of the {owner} step that owns it (rtl / spec); run it there "
+                "detail": f"{', '.join(i['id'] for i in pending)}: each becomes a scoped change request of the {owner} step that owns it (rtl / spec); an SDC request is added to "
+                          f"constraints/sdc/extra.tcl here; run {owner} to apply the rest "
                           f"to apply them, then come back and run {engine.flow.name} again. No keeps them proposed (hand off later with sanity_handoff).",
                 "action": "sanity_handoff", "switch": owner}

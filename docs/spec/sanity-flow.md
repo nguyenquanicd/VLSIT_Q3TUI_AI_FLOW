@@ -47,9 +47,9 @@ Every violation gets exactly one decision:
 | Action | Meaning | Then |
 |---|---|---|
 | `waive` | safe, under a knowledge rule whose conditions were all verified and cited (`rule`: K3, U1, …) or by a design reason with its evidence | a `waive_cdc` / `waive_rdc` command in `build/sanity/<role>_waive.tcl`, applied by `<role>_check`. A waiver the report cannot express (no objects named) becomes an `ask`, never an assumption |
-| `fix_rtl` | the RTL is unprotected: one module, one structural change | scoped change request `[rtl:<module>] …` for the owner flow's `rtl` step |
-| `spec` | the spec owner has to decide | change request for the owner flow's `spec` step |
-| `sdc` | a constraint is missing or wrong in the SDC (e.g. a `set_max_delay` on a data path, a clock group, a reset) | **a request to you**: the exact Tcl command and a question; the SDC is yours, the review never edits it |
+| `fix_rtl` | the RTL is unprotected (the usual answer for a structural problem): one module, the smallest structural change, reusing the synchronizers the design already has; the review checks that it removes the violation and creates no new crossing | scoped change request `[rtl:<module>] …` for the owner flow's `rtl` step |
+| `spec` | only when the spec text is missing, ambiguous or contradicts what the design must do (not to restate what the RTL should already do); `change` is the exact new requirement text | change request for the owner flow's `spec` step, asking to change only the affected requirements |
+| `sdc` | a constraint is missing or wrong in the SDC (e.g. a `set_max_delay` on a data path, a clock group, a reset input delay) | the exact SDC command(s) in `sdc_request` and a question; `sanity_handoff` adds plain constraint commands to `constraints/sdc/extra.tcl` (see Hand-off); anything else stays yours |
 | `ask` | a condition cannot be verified, no rule covers it | one question for you with 2–4 suggested answers |
 
 `sdc` and `ask` are engine questions (the Questions tab, the picker, `Ops.answer`); open ones hold the gate (`pending_reviews`; `--yes` or auto-approve passes
@@ -73,7 +73,31 @@ A rule applies only when **all** its conditions are verified in the RTL, the SDC
 
 `sanity_handoff` (`q3tui act sanity_handoff [ids=V1,cdc:V2]`, the assistant, the gate's offer after you approve) sends every `fix_rtl` and `spec` decision
 to `options.handoff_flow` (default `rtl`, per review) as change requests, the way `asic_handoff` does; that flow updates the RTL and this flow's analysis
-is stale and runs again. SDC requests and questions are not handed off. The hand-off is recorded in the decision and in the table, not as an edit of the step.
+is stale and runs again. An `sdc` decision whose `sdc_request` is only allowed SDC constraint commands (`EXTRA_COMMANDS`, docs/spec/fpga-flow.md) is applied here: the
+lines are added to `sdc.json: extra_tcl` and rendered to `constraints/sdc/extra.tcl`, the decision is marked handed off to `sdc`, and the analysis runs again on the changed SDC. It needs `sdc.json`:
+with a hand-written SDC (no `sdc.json`) the request stays yours, and so does anything that is not a plain constraint command. Questions (`ask`) are never handed off. The hand-off is recorded in the decision and in the table, not as an edit of the step.
+
+## Memory
+
+What was tried is kept by code, not in a chat session (`lib/memory.py`, `.q3tui/sanity/handoffs.json`, keyed by the violation's stable id).
+
+- Every RTL, spec or SDC request handed off is recorded.
+- The waiver review is told, per violation that is still open, what was already tried and what it decided before the RTL or SDC changed
+  ("Already tried for this violation …", "Your earlier decision for it …"). An unchanged violation keeps its decision unless the review cites a reason.
+- A request that was already sent (same text), or a third RTL / spec request for the same violation, is not sent again: the decision becomes a
+  question for you (`ask`, with the earlier attempts and three options).
+- A `fix_rtl` whose own reason cites a requirement it would go against (`REQ-…` with "conflicts / contradicts / forbids / violates") becomes a
+  `spec` decision: the requirement is decided first.
+
+## The fix loop
+
+`q3tui --flow sanity loop [--owner FLOW] [--max-rounds N] [--max-cost USD] [--restore-best]` (`core/loop.py`; unattended, `auto_answer`) repeats:
+the analysis flow (analysis + review), `sanity_handoff`, the owner flow (`options.handoff_flow`, default `rtl`: it updates the RTL), the analysis again.
+A round is measured by the violations still open after the waivers (`open` in `schemas/<lane>_check.json`, all lanes). It stops when nothing is open
+(`clean`), when a round is not better than the best one (`no improvement`: a regression is never followed), when nothing can be handed off, when a flow
+ends in a failure, at `--max-cost` dollars spent by the loop, or after `--max-rounds` (default `pipeline.max_fix_iterations`). The RTL of the best round is kept
+in `.q3tui/loop/best_rtl/`; `--restore-best` puts it back (what it replaces is backed up; the restored files count as your own edits). The table printed at the end shows the
+open and found counts and the cost of each round.
 
 ## Tools
 
