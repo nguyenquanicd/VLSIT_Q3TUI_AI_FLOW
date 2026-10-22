@@ -134,9 +134,12 @@ class Step(RtlFlowStep):
         engine, project, cfg = ctx.engine, ctx.project, ctx.cfg
         f = self._files(engine)
         meta = engine.state.step_meta.setdefault(self.name, {})
-        run_id = getattr(engine, "_run_id", None)
-        if meta.get("run") != run_id or "rounds" not in meta:
-            meta["run"], meta["rounds"] = run_id, 0
+        # the fix rounds are counted until the smoke test passes (or you regenerate it, or answer its questions: new information), not per
+        # run: a limit that every `q3tui run` starts over can never be reached, and the loop would go on for ever
+        answered = len(load_answers(self._q_paths(engine)[1]))
+        if ctx.regenerate or "rounds" not in meta or meta.get("answered") != answered:
+            meta["rounds"] = 0
+        meta["answered"] = answered
         meta["loop"] = False
         snap = self._snapshot(engine)
         if not snap["reqs"] and not project.spec_documents():
@@ -159,6 +162,7 @@ class Step(RtlFlowStep):
                   "rounds": meta["rounds"], "triage": []}
         ctx.unchanged = not wrote and out.status == "pass"
         if out.status == "pass" and not errors:
+            meta["rounds"] = 0
             write_json(f["report"], report)
             ctx.emit("log", message=f"smoke: PASS ({len(out.results)} behaviour(s))")
             return
@@ -230,3 +234,6 @@ class Step(RtlFlowStep):
             meta["loop"], meta["rounds"] = True, rounds + 1
         elif not asks:
             raise StepFailed(f"smoke: the triage gave no verdict to act on:\n{summary}")
+        else:  # nothing to hand over, only questions: the test is failing and stays failing until you answer — never "done"
+            ids = ", ".join(q["id"] for q in engine.questions() if q["step"] == self.name and q["status"] == "open")
+            raise StepFailed(f"smoke: the test is failing and needs your decision on {ids or 'the open questions'} (answer them, then run again):\n{summary}")

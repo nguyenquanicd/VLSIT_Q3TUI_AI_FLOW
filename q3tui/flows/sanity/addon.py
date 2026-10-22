@@ -4,6 +4,7 @@ spec questions to the flow that owns them, as the ASIC flow's `asic_handoff` doe
 from __future__ import annotations
 
 from q3tui.flows.fpga import addon as fpga_addon
+from q3tui.flows.fpga.lib import sdc as sdcmod
 
 
 def _handoff(ops, ids: str) -> str:
@@ -34,7 +35,20 @@ def _handoff(ops, ids: str) -> str:
         by_id = {v["id"]: v for v in (step.read(ops.engine, report_json(step.role), {}) or {}).get("violations", [])}
         for d in plan.get("items", []):
             tag, plain = f"{step.role}:{d['id']}".upper(), d["id"].upper()
-            if d["action"] not in ("fix_rtl", "spec") or d.get("handed_off") or (wanted and not ({tag, plain} & wanted)):
+            if d.get("handed_off") or (wanted and not ({tag, plain} & wanted)):
+                continue
+            if d["action"] == "sdc":  # a constraint the review found missing: applied to the SDC here (only plain SDC commands; else it stays yours)
+                lines = sdcmod.extra_lines(d.get("sdc_request", ""))
+                if lines is not None:
+                    try:
+                        fpga_addon._edit(ops, lambda cfg, lines=lines: f"added to extra.tcl: {'; '.join(sdcmod.add_extra(cfg, lines)) or 'already there'}")
+                    except EngineError as exc:  # (a hand-written SDC has no sdc.json to add to)
+                        sent.append(f"{step.role}:{d['id']} not applied ({exc})")
+                        continue
+                    d["handed_off"] = {"flow": ops.engine.flow.name, "step": "sdc", "at": datetime.now().isoformat(timespec="seconds"), "applied": lines}
+                    sent.append(f"{step.role}:{d['id']} → sdc: {lines[0][:70]}")
+                continue
+            if d["action"] not in ("fix_rtl", "spec"):
                 continue
             target, text = waivers.handoff_text(step.role, d, by_id[d["id"]])
             if target not in other.by_name:
@@ -46,7 +60,7 @@ def _handoff(ops, ids: str) -> str:
         from q3tui.flows.sanity.lib import table
 
         table.write(step.table_files(ops.engine), step.role, step.read(ops.engine, report_json(step.role), {}) or {}, plan)
-    if not sent:
+    if not any("not applied" not in s for s in sent):
         raise EngineError("no fix to hand off (run a waiver step first, or they were handed off already)")
     ops.engine.reload()
     for step in steps:  # (the hand-off is recorded in the output: not a user edit of the step's output)
@@ -54,14 +68,15 @@ def _handoff(ops, ids: str) -> str:
         if rec is not None:
             rec.outputs = ops.engine._hash_files(step.outputs(ops.engine))
     ops.engine.save()
-    return ops._log(steps[0].name, f"Sanity: handed off {', '.join(sent)}; run the flow(s) {', '.join(f'{n!r}' for n in others)} to apply them "
-                                   f"({'; '.join(f'q3tui --flow {n} run' for n in others)})")
+    return ops._log(steps[0].name, f"Sanity: handed off {', '.join(sent)}" + (f"; run the flow(s) {', '.join(f'{n!r}' for n in others)} to apply the RTL / spec ones "
+                                   f"({'; '.join(f'q3tui --flow {n} run' for n in others)})" if others else "") + f"; then run {ops.engine.flow.name} again")
 
 
 def register(api) -> None:
     @api.action("sanity_handoff", "Hand the CDC / RDC fixes the waiver review proposed to the flow that owns the RTL and the spec: an RTL fix becomes a "
                 "scoped change request for its rtl step, a spec question a change request for its spec step. That flow then updates the RTL (run it), "
-                "and this flow's analysis runs again on the new RTL. SDC requests are not handed off: the SDC is yours.",
+                "and this flow's analysis runs again on the new RTL. An SDC request that is plain SDC commands is added to constraints/sdc/extra.tcl (sdc.json: extra_tcl) here, and the analysis runs again on it; "
+                "anything else stays yours to apply.",
                 {"ids": "violation ids separated by commas (V1,V2 or cdc:V1); empty: every fix not handed off yet"}, optional=("ids",))
     def sanity_handoff(ops, ids: str = "") -> str:
         return _handoff(ops, ids)

@@ -333,6 +333,19 @@ def test_rtl_unchanged_rerun_uses_no_llm_and_updates_are_targeted(tmp_path, tool
     new = llm.calls[n:]
     assert [c.name for c in new] == ["rtl_leaf_b"]
     assert "REQ-002 changed: b is registered twice (was: b is registered)" in new[0].prompt and "cập nhật" in new[0].prompt
+    # the spec parser rewords the descriptions of every module: not a change (no LLM stage); with a real change the new wording comes along
+    data = artifacts.read(project, "structured_spec.json")
+    for m in data["modules"]:
+        m["description"] = "reworded: " + m["description"]
+    artifacts.write(project, "structured_spec.json", data, check=False)
+    n = len(llm.calls)
+    run_step(eng, "rtl")
+    assert len(llm.calls) == n
+    data["requirements"][1]["text"] = "b is registered three times"
+    artifacts.write(project, "structured_spec.json", data, check=False)
+    run_step(eng, "rtl")
+    new = llm.calls[n:]
+    assert [c.name for c in new] == ["rtl_leaf_b"] and "the module's description is now: reworded: the leaf_b" in new[0].prompt
     # a scoped change request reaches only that module
     n = len(llm.calls)
     eng.request_change("rtl", "[rtl:leaf_a] use a wider register")

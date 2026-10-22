@@ -296,3 +296,7 @@ spec → parse → config → rules → csr → rtl → format → style_lint �
 Tools: Verible (`verible_lint`, `verible_format`) and the CSR generator come with the flow's defaults; `sim` / `run` / `lint` / `synth` come from your `config/tools.json` (the Synopsys
 preset when you have none). A missing tool makes its step wait and name the role. **Skills:** the LLM stages read playbooks (`config/skills/<name>/SKILL.md`); put your own in
 `<project>/config/skills/` to add or replace one. `q3tui act style_show` and `q3tui act csr_show` print what the flow decided.
+
+**Fix loop for CDC / RDC.** `q3tui --flow sanity loop [--owner rtl] [--max-rounds N] [--max-cost USD]` runs the Sanity analysis, hands the review's fixes to the rtl flow, lets it
+update the RTL and analyses again, until nothing is open, a round is not better than the best one, nothing can be handed off, a flow fails or the spend limit is reached. The best round's
+RTL is kept; `q3tui loop --restore-best` puts it back. `q3tui act sanity_handoff` also adds the review's plain SDC commands to `constraints/sdc/extra.tcl` (when the SDC comes from `sdc.json`).

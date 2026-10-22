@@ -206,7 +206,7 @@ async def test_the_review_decides_every_violation_and_the_table_follows(proj, mo
     assert set(stage.builtin_tools) == {"Read", "Grep", "Glob"} and stage.write_dirs is None and stage.output_model.__name__ == "Review"
     assert "K1 — Valid / data crossing" in stage.prompt and "u_a/reg_req/Q" in stage.prompt and "RTL modules" in stage.prompt  # (the knowledge, the facts)
     assert proj.model_dir in stage.deny_dirs and proj.state_dir in stage.deny_dirs  # (the old outputs are never read)
-    assert "sdc/sdc.tcl" in stage.prompt and "SDC is the user's" in stage.system_prompt
+    assert "sdc/sdc.tcl" in stage.prompt and "You never change the SDC yourself" in stage.system_prompt
     plan = json.loads((proj.schemas_dir / "cdc_waivers.json").read_text())
     assert [(i["id"], i["action"]) for i in plan["items"]] == [("V1", "waive"), ("V2", "fix_rtl"), ("V3", "sdc")]
     rows = table.rows(json.loads((proj.schemas_dir / "cdc_report.json").read_text()), plan)
@@ -324,6 +324,44 @@ async def test_an_sdc_json_is_rendered_like_the_other_flows(proj):
     Ops(eng).run_action("sdc_set", key="clock.i_clk_a.freq_mhz", value="200")
     st = {v.name: v.status for v in Engine(proj).status()}
     assert st["cdc"] == "stale"  # a changed constraint makes the analysis run again
+
+
+async def test_the_handoff_adds_an_sdc_request_to_extra_tcl_when_there_is_an_sdc_json(proj, monkeypatch):
+    from q3tui.llm import runtime
+
+    (proj.root / "constraints" / "sdc" / "sdc.tcl").unlink()  # (no hand-written SDC: the flow renders constraints/sdc from sdc.json)
+    monkeypatch.setattr(runtime, "run_stage", ReviewLLM(_decide))
+    eng = Engine(proj)
+    await eng.run(yes=True, stop="cdc_waivers")
+    ops = Ops(eng)
+    pending = [i["id"] for i in eng.by_name["cdc_waivers"].pending_handoff(eng)]
+    assert pending == ["V2", "V3"]  # (the RTL fix and the SDC request: a plain SDC command can be applied here)
+    msg = ops.run_action("sanity_handoff", ids="cdc:V3")
+    assert "cdc:V3 → sdc: set_input_delay 2.0 -clock A [get_ports i_d]" in msg
+    extra = (proj.root / "constraints" / "sdc" / "extra.tcl").read_text()
+    assert "set_input_delay 2.0 -clock A [get_ports i_d]" in extra and "source $_d/extra.tcl" in (proj.root / "constraints" / "sdc" / "sdc.tcl").read_text()
+    assert json.loads((proj.root / "constraints" / "sdc" / "sdc.json").read_text())["extra_tcl"] == ["set_input_delay 2.0 -clock A [get_ports i_d]"]
+    plan = json.loads((proj.schemas_dir / "cdc_waivers.json").read_text())
+    assert plan["items"][2]["handed_off"]["step"] == "sdc" and plan["items"][1].get("handed_off") is None
+    assert "SDC updated (constraints/sdc/extra.tcl)" in (proj.root / "reports" / "cdc_report.md").read_text()
+    assert eng.by_name["cdc_waivers"].question_list(eng) == []  # (nothing is waiting for you any more for V3)
+    assert {v.name: v.status for v in Engine(proj).status()}["cdc"] == "stale"  # the analysis runs again on the changed SDC
+
+
+async def test_a_request_that_is_not_an_sdc_command_stays_yours(proj, monkeypatch):
+    from q3tui.llm import runtime
+
+    (proj.root / "constraints" / "sdc" / "sdc.tcl").unlink()
+    def decide(i):
+        return dict(action="sdc", reason="x", sdc_request="exec rm -rf /", question="ok?") if i == "V3" else _decide(i)
+
+    monkeypatch.setattr(runtime, "run_stage", ReviewLLM(decide))
+    eng = Engine(proj)
+    await eng.run(yes=True, stop="cdc_waivers")
+    assert [i["id"] for i in eng.by_name["cdc_waivers"].pending_handoff(eng)] == ["V2"]
+    with pytest.raises(EngineError, match="no fix to hand off"):
+        Ops(eng).run_action("sanity_handoff", ids="cdc:V3")
+    assert not (proj.root / "constraints" / "sdc" / "extra.tcl").is_file() or "exec" not in (proj.root / "constraints" / "sdc" / "extra.tcl").read_text()
 
 
 # -- the hand-off ---------------------------------------------------------------------------------------------------------------

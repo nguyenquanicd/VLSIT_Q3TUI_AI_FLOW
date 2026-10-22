@@ -581,7 +581,8 @@ def test_a_spec_issue_is_a_blocking_question_and_a_compile_error_is_triaged(smok
     root, eng, fake = smoke_proj
     (root / "src" / "rtl" / "m.sv").write_text("module m; // COMPILE_ERR\nendmodule\n")
     fake.answers["smoke_triage"] = lambda s: SmokeTriage(verdicts=[Verdict(id="compile", verdict="spec_issue", summary="the spec never names the enable port")])
-    _run(eng, "smoke")
+    with pytest.raises(StepFailed, match="needs your decision on SM1"):  # (a failing test is never "done", whoever must act)
+        _run(eng, "smoke")
     assert "port i_x not found" in fake.calls[-1].prompt
     q = eng.by_name["smoke"].questions_list(eng)
     assert len(q) == 1 and q[0].blocking and q[0].kind == "spec_gap" and "enable port" in q[0].question
@@ -723,6 +724,26 @@ def test_a_failure_that_keeps_coming_back_becomes_a_question_not_another_round(s
     _run(eng, "smoke")  # round 2: handed back again (escalate_after_repeats = 2)
     assert len(eng.state.feedback["rtl"]) == 2 and "Already handed back" in fake.calls[-1].prompt and "rtl_bug|m|S2" in fake.calls[-1].prompt
     eng.state.feedback.pop("rtl")
-    _run(eng, "smoke")  # the same verdict a third time: the user decides
+    with pytest.raises(StepFailed, match="needs your decision"):  # the same verdict a third time: the user decides
+        _run(eng, "smoke")
     q = eng.by_name["smoke"].questions_list(eng)
     assert len(q) == 1 and q[0].blocking and "keeps failing" in q[0].question and "3 times" in q[0].question and "rtl" not in eng.state.feedback
+
+
+def test_the_fix_rounds_are_counted_across_runs_until_the_test_passes(smoke_proj):
+    """Every `q3tui run` used to start the count over, so the limit could never be reached by running again."""
+    root, eng, fake = smoke_proj
+    (root / "src" / "rtl" / "m.sv").write_text("module m; // RTL_BUG\nendmodule\n")
+    fake.answers["smoke_triage"] = lambda s: SmokeTriage(verdicts=[Verdict(id="S2", verdict="rtl_bug", module="m", summary="off by one", request="fix the delay")])
+    eng.by_name["smoke"].options["max_rounds"] = 2
+    for run_id in ("r1", "r2"):
+        eng._run_id = run_id  # (a new `q3tui run` each time)
+        eng.state.feedback.pop("rtl", None)
+        _run(eng, "smoke")
+    assert eng.state.step_meta["smoke"]["rounds"] == 2
+    eng._run_id = "r3"
+    with pytest.raises(StepFailed, match="still failing after 2 fix round"):
+        _run(eng, "smoke")
+    (root / "src" / "rtl" / "m.sv").write_text("module m;\nendmodule\n")  # fixed: the test passes, the count starts over
+    anyio.run(lambda: eng.run_step(eng.by_name["smoke"], regenerate=True))
+    assert eng.state.step_meta["smoke"]["rounds"] == 0

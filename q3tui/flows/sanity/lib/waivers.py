@@ -21,7 +21,7 @@ class Decision(BaseModel):
     action: Literal["waive", "fix_rtl", "spec", "sdc", "ask"] = Field(
         description="waive: safe, under a knowledge rule whose conditions you verified, or by a design reason with its evidence; "
                     "fix_rtl: change one RTL module; spec: the spec owner has to decide; "
-                    "sdc: a constraint is missing or wrong in the SDC (the user owns the SDC: they are asked to change it); "
+                    "sdc: a constraint is missing or wrong in the SDC (a plain SDC command in sdc_request is added to constraints/sdc/extra.tcl on hand-off; the user decides otherwise); "
                     "ask: you cannot verify a condition and nothing else settles it: ask the user")
     module: str = Field("", description="action fix_rtl: the module (file name without extension); empty otherwise")
     reason: str = Field(description="waive: why it is safe, citing the evidence (file:line, signal) for each condition; "
@@ -100,4 +100,5 @@ def handoff_text(role: str, d: dict, v: dict) -> tuple[str, str]:
     if d["action"] == "fix_rtl":
         return "rtl", (f"[rtl:{d['module']}] {what} — {d['change']}. Evidence: {d['reason']} "
                        "Keep the behaviour, the ports and every requirement tag unchanged; lint stays clean.")
-    return "spec", f"{what} — needs a decision of the spec: {d['change']}. Context: {d['reason']}"
+    return "spec", (f"{what} — the spec must say: {d['change']}. Context: {d['reason']} Change only the requirements this affects (the RTL is updated "
+                    "from those requirements module by module: do not reword or restructure the rest of the spec).")

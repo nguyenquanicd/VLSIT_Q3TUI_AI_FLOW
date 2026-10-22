@@ -23,7 +23,11 @@ spec ─► rules ─► parse ─► config ─► csr ─► rtl ─► format
 The chain runs by itself: `rtl → format → style_lint`, and when `style_lint` finds something to fix it hands it back to `rtl` (scoped change request
 `[rtl:<module>] …`), which updates that module only, then `format` and `style_lint` run again; then `smoke`, whose failures go back the same way. The
 engine's fix loop does this (`meta["loop"]`, as `verify`), bounded by `options.max_rounds` of `style_lint` and of `smoke` (else
-`pipeline.max_fix_iterations`). A bound reached fails the step: leftovers are never passed.
+`pipeline.max_fix_iterations`). A bound reached fails the step: leftovers are never passed. The rounds of `smoke` are counted until the test passes (a pass, `--regenerate smoke` or new
+answers to its questions start the count over), not per `q3tui run`: running again on the same failing RTL does not give it new rounds.
+
+The `rtl` step updates a module when what it was built from changed (requirements, parameters, child files, answers, rules); a reworded module
+description alone is not a change (the hash ignores it), so a spec update that makes the parser reword every description does not start an LLM update of every module.
 
 ## Layout
 
@@ -74,7 +78,9 @@ Markdown, one rule per bullet `- **ID** text`. The stack, **first file wins**: y
 `rtl_rule_default.md`. The same id in both is an override. The same stack goes to three readers: the RTL generator (the `rtl` step's prompt;
 your file is also one of its inputs, so editing it updates the modules), the `rules` step (→ flags) and the style judge. Q3TUI's own naming check
 (`rules_check.py`) is a profile by code; a rule that changes a name pattern is half applied unless `options.naming` of `rtl` says the same: the
-`rules` step warns about it.
+`rules` step warns about it. The judge is not shown the raw profile flags: `rules_check.describe` gives it what each on/off check does exactly
+(`forbid_wire_reg`: a declaration starting with `reg` / `wire` / `integer` is a violation, `wire` on a port is accepted; `forbid_two_state`: a signal
+declared `int` / `bit` … is a violation, a for-header loop index is not), so it does not call the rule text a contradiction of the code.
 
 `rules`: one LLM stage, skills `verible-flags` and `rule-consistency`, tools `verible_help` / `verible_check_flags`. It answers with findings,
 the lint flags, the format flags, the rule→Verible mapping and the rules Verible cannot check. An `error` finding (a contradiction) fails the step
@@ -107,7 +113,8 @@ again after the writer. On a failure a second LLM (skill `smoke-triage`, may rea
 `[rtl:<module>] …` to `rtl`; `tb_bug` → a change request to `smoke`; `spec_issue` / `unsure` → a blocking question (kind `spec_gap` / `design_choice`).
 Update, not re-run: the testbench is rewritten only when the spec, the requirements, the parameters or your answers changed (the task says what);
 a changed RTL only compiles and runs again. While a fix handed to `rtl` / `rules` is pending the step waits (`missing_input`), so it never looks at
-RTL that is about to change.
+RTL that is about to change. **A failing smoke test is never "done"**: when the triage hands nothing over and only produces questions, the step fails and
+names them (`needs your decision on SM1, …`); `auto_answer` does not approve them. The step ends done only when the test passes.
 
 ## Skills
 

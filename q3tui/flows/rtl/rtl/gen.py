@@ -37,6 +37,13 @@ class VModuleResult(BaseModel):
         "req_gap (the requirement is wrong or missing), or design_choice"))
 
 
+def snapshot_hash(snap: dict) -> str:
+    """What decides that a module must be updated: everything it was built from except the wording of its description (the spec parser
+    rewords the descriptions of every module whenever the spec changes; a module whose requirements, parameters, children and answers are the
+    same does not need an LLM stage for that — a run of that kind updated all nine modules of a design for nothing, and made them worse)."""
+    return sha256_json({k: v for k, v in snap.items() if k != "description"})
+
+
 def describe_changes(old: dict, new: dict) -> list[str]:
     """What a module was built from, before and after (the update prompt names only this)."""
     out = []
@@ -347,7 +354,7 @@ class RtlGenStep(VlsitStep):
         # your file (imported, or there before this step built it): checked first, kept when it follows the rules,
         # else updated by the fix rounds below — never rewritten from the spec
         adopt = not mm and not todo and pm.name in run.imported and run.file(pm.name).is_file() and bool(run.file(pm.name).read_text().strip())
-        if not todo and not adopt and not (mm.get("hash") == sha256_json(snap)):
+        if not todo and not adopt and not (mm.get("hash") == snapshot_hash(snap)):
             todo = True
         problems: list[str] = []
         if adopt:
@@ -374,7 +381,7 @@ class RtlGenStep(VlsitStep):
         res = run.results.get(pm.name)
         prev = mm or {}
         run.meta["modules"][pm.name] = {
-            "hash": sha256_json(snap), "built_from": snap,
+            "hash": snapshot_hash(snap), "built_from": snap,
             "summary": res.summary if res else prev.get("summary", ""),
             "requirements": res.requirements if res else prev.get("requirements", [])}
         return problems

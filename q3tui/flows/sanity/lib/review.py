@@ -159,7 +159,7 @@ class WaiverStep(SanityStep):
         write_json(self.artifact(engine, waivers_json(role)), plan)
         table.write(self.table_files(engine), role, report, plan)
         n_waive = sum(i["action"] == "waive" for i in items)
-        asking = [i["id"] for i in items if i["action"] in waivers.OPEN_ASKING and not i["answer"]]
+        asking = [i["id"] for i in items if i["action"] in waivers.OPEN_ASKING and not i["answer"] and not i.get("handed_off")]
         sent = sum(i["action"] in ("fix_rtl", "spec") for i in items)
         ctx.emit("log", message=f"{role.upper()} review: {len(items)} violation(s): {n_waive} waived, {sent} for the RTL / spec, "
                                 f"{sum(i['action'] == 'sdc' for i in items)} SDC request(s), {len(asking)} question(s) for you"
@@ -170,7 +170,7 @@ class WaiverStep(SanityStep):
     def _asking(self, engine) -> list[dict]:
         """The decisions that wait for you, each with your latest answer (the answers file is ahead of the plan until the review runs again)."""
         answers = self.answers(engine)
-        return [{**i, "answer": answers.get(i["sig"], i.get("answer", ""))} for i in self.items(engine) if i["action"] in waivers.OPEN_ASKING]
+        return [{**i, "answer": answers.get(i["sig"], i.get("answer", ""))} for i in self.items(engine) if i["action"] in waivers.OPEN_ASKING and not i.get("handed_off")]
 
     def question_list(self, engine) -> list[dict]:
         out = []
@@ -198,7 +198,11 @@ class WaiverStep(SanityStep):
     # -- after the gate ---------------------------------------------------------------------------
 
     def pending_handoff(self, engine) -> list[dict]:
-        return [i for i in self.items(engine) if i["action"] in ("fix_rtl", "spec") and not i.get("handed_off")]
+        from q3tui.flows.fpga.lib import sdc as sdcmod
+
+        has_json = sdcmod.load(engine.project) is not None  # (a hand-written SDC has no sdc.json to add to: its requests stay yours)
+        return [i for i in self.items(engine) if not i.get("handed_off")
+                and (i["action"] in ("fix_rtl", "spec") or (has_json and i["action"] == "sdc" and sdcmod.extra_lines(i.get("sdc_request", "")) is not None))]
 
     def follow_up(self, engine):
         """Gate approved, RTL / spec fixes proposed: offer to hand them to the flow that owns them and move there."""
@@ -207,6 +211,7 @@ class WaiverStep(SanityStep):
             return None
         owner = str(self.options.get("handoff_flow") or "rtl")
         return {"title": f"Hand {len(pending)} {self.role.upper()} fix(es) to '{owner}' and switch to it?",
-                "detail": f"{', '.join(i['id'] for i in pending)}: each becomes a scoped change request of the {owner} step that owns it (rtl / spec); run it there "
+                "detail": f"{', '.join(i['id'] for i in pending)}: each becomes a scoped change request of the {owner} step that owns it (rtl / spec); an SDC request is added to "
+                          f"constraints/sdc/extra.tcl here; run {owner} to apply the rest "
                           f"to apply them, then come back and run {engine.flow.name} again. No keeps them proposed (hand off later with sanity_handoff).",
                 "action": "sanity_handoff", "switch": owner}

@@ -249,6 +249,30 @@ def run(c: Ctx, intent, intent_file, specs, imports, start, stop, only, regenera
     sys.exit(0 if outcome in ("complete", "gate", "unavailable") else 1)
 
 
+@main.command("loop")
+@click.option("--owner", help="The flow that owns the RTL and the spec (default: the waiver steps' handoff_flow, rtl).")
+@click.option("--max-rounds", type=click.IntRange(1, 20), help="Most rounds (default pipeline.max_fix_iterations).")
+@click.option("--max-cost", type=float, help="Stop when this many dollars were spent by the loop.")
+@click.option("--restore-best", is_flag=True, help="Put the RTL of the best round of the last loop back (the files count as your edits).")
+@pass_ctx
+def loop_cmd(c: Ctx, owner: str | None, max_rounds: int | None, max_cost: float | None, restore_best: bool) -> None:
+    """Fix loop of the Sanity flow: analyse → hand the fixes to the owner flow → it updates the RTL → analyse again.
+
+    Stops when nothing is open, when a round is not better than the best one (the best RTL is kept), when nothing can be handed off,
+    when a flow fails, or at the spend limit. Run it with `--flow sanity`."""
+    from q3tui.core import loop
+
+    if restore_best:
+        console.print(loop.restore_best(c.project))
+        return
+    c.project.cfg.pipeline.auto_answer = True  # (unattended: that is what a loop is)
+    bus = EventBus()
+    bus.subscribe(print_event)
+    result = anyio.run(lambda: loop.fix_loop(c.project, bus, c.project.flow_ref(), owner, max_rounds, max_cost))
+    console.print(loop.summary(result), markup=False, highlight=False)
+    sys.exit(0 if result.ok else 1)
+
+
 def _status_table(views: list[StepView]) -> Table:
     t = Table(box=None, pad_edge=False, show_header=True, header_style="dim")
     for col in ("", "step", "status", "review", "questions", "notes"):
