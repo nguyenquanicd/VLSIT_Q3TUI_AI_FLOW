@@ -1,0 +1,3122 @@
+{
+  "schema_version": 1,
+  "metadata": {
+    "ip_name": "axi4_sram_ctrl",
+    "top_module": "m_vlsi_axi4_sram",
+    "spec_revision": "spec_update_3 (VLSIT instance names in section 6); parameters renamed PR_* to PARA_* to match the released RTL (verification owner, 2026-10-19)",
+    "status": "frozen",
+    "contract_hash": "3d3d7bc64241ba197f200b37d30754b8fc5f049a7d27c69d79f6aff8603de949",
+    "frozen_at": "2026-10-19T10:55:33"
+  },
+  "interface_contract": {
+    "top_module": "m_vlsi_axi4_sram",
+    "clock": "i_clk",
+    "reset": "i_rst_n",
+    "reset_active_low": true,
+    "ports": [
+      {
+        "name": "i_clk",
+        "direction": "in",
+        "width": "1",
+        "reset_value": "\u2013",
+        "description": "System clock, 100 MHz target; all logic is clocked on its rising edge",
+        "section": "Clock and reset",
+        "source": "spec/spec.md:81",
+        "assumed": false
+      },
+      {
+        "name": "i_rst_n",
+        "direction": "in",
+        "width": "1",
+        "reset_value": "\u2013",
+        "description": "Active-low reset",
+        "section": "Clock and reset",
+        "source": "spec/spec.md:82",
+        "assumed": false
+      },
+      {
+        "name": "i_awaddr",
+        "direction": "in",
+        "width": "PARA_ADDR_WD",
+        "reset_value": "\u2013",
+        "description": "Write burst start byte address",
+        "section": "AXI write address channel (AW)",
+        "source": "spec/spec.md:88",
+        "assumed": false
+      },
+      {
+        "name": "i_awvalid",
+        "direction": "in",
+        "width": "1",
+        "reset_value": "\u2013",
+        "description": "Write address valid",
+        "section": "AXI write address channel (AW)",
+        "source": "spec/spec.md:89",
+        "assumed": false
+      },
+      {
+        "name": "o_awready",
+        "direction": "out",
+        "width": "1",
+        "reset_value": "1 (Assumption, see \u00a75.1)",
+        "description": "Write address ready. Combinational: write FSM in S_IDLE AND AWFIFO not full.",
+        "section": "AXI write address channel (AW)",
+        "source": "spec/spec.md:90",
+        "assumed": true
+      },
+      {
+        "name": "i_awburst",
+        "direction": "in",
+        "width": "2",
+        "reset_value": "\u2013",
+        "description": "Burst type: 00 = FIXED, 01 = INCR, 10 = WRAP; reserved 11 is addressed like WRAP",
+        "section": "AXI write address channel (AW)",
+        "source": "spec/spec.md:91",
+        "assumed": false
+      },
+      {
+        "name": "i_awlen",
+        "direction": "in",
+        "width": "PARA_LEN_WD",
+        "reset_value": "\u2013",
+        "description": "Burst length \u2212 1 (number of beats \u2212 1)",
+        "section": "AXI write address channel (AW)",
+        "source": "spec/spec.md:92",
+        "assumed": false
+      },
+      {
+        "name": "i_awid",
+        "direction": "in",
+        "width": "PARA_ID_WD",
+        "reset_value": "\u2013",
+        "description": "Write transaction ID",
+        "section": "AXI write address channel (AW)",
+        "source": "spec/spec.md:93",
+        "assumed": false
+      },
+      {
+        "name": "i_awsize",
+        "direction": "in",
+        "width": "3",
+        "reset_value": "\u2013",
+        "description": "Bytes per beat = 2i_awsize; values > MAX_SIZE are an error (F07)",
+        "section": "AXI write address channel (AW)",
+        "source": "spec/spec.md:94",
+        "assumed": false
+      },
+      {
+        "name": "i_wdata",
+        "direction": "in",
+        "width": "PARA_DATA_WD",
+        "reset_value": "\u2013",
+        "description": "Write data",
+        "section": "AXI write data channel (W)",
+        "source": "spec/spec.md:100",
+        "assumed": false
+      },
+      {
+        "name": "i_wstrb",
+        "direction": "in",
+        "width": "PARA_DATA_WD/8",
+        "reset_value": "\u2013",
+        "description": "Write strobe, one bit per byte lane. Only asserted lanes are written to SRAM.",
+        "section": "AXI write data channel (W)",
+        "source": "spec/spec.md:101",
+        "assumed": false
+      },
+      {
+        "name": "i_wvalid",
+        "direction": "in",
+        "width": "1",
+        "reset_value": "\u2013",
+        "description": "Write data valid",
+        "section": "AXI write data channel (W)",
+        "source": "spec/spec.md:102",
+        "assumed": false
+      },
+      {
+        "name": "o_wready",
+        "direction": "out",
+        "width": "1",
+        "reset_value": "1 (Assumption)",
+        "description": "Write data ready = WFIFO not full",
+        "section": "AXI write data channel (W)",
+        "source": "spec/spec.md:103",
+        "assumed": true
+      },
+      {
+        "name": "i_wlast",
+        "direction": "in",
+        "width": "1",
+        "reset_value": "\u2013",
+        "description": "Last write beat. Present but not used internally.",
+        "section": "AXI write data channel (W)",
+        "source": "spec/spec.md:104",
+        "assumed": false
+      },
+      {
+        "name": "o_bid",
+        "direction": "out",
+        "width": "PARA_ID_WD",
+        "reset_value": "0 (Assumption)",
+        "description": "Write response ID (the burst's AWID)",
+        "section": "AXI write response channel (B)",
+        "source": "spec/spec.md:110",
+        "assumed": true
+      },
+      {
+        "name": "o_bresp",
+        "direction": "out",
+        "width": "2",
+        "reset_value": "0 (Assumption)",
+        "description": "2'b00 OKAY, or 2'b10 SLVERR if the burst's start address was misaligned to 2AWSIZE or AWSIZE exceeded the bus width",
+        "section": "AXI write response channel (B)",
+        "source": "spec/spec.md:111",
+        "assumed": true
+      },
+      {
+        "name": "o_bvalid",
+        "direction": "out",
+        "width": "1",
+        "reset_value": "0",
+        "description": "Write response valid = BFIFO not empty",
+        "section": "AXI write response channel (B)",
+        "source": "spec/spec.md:112",
+        "assumed": false
+      },
+      {
+        "name": "i_bready",
+        "direction": "in",
+        "width": "1",
+        "reset_value": "\u2013",
+        "description": "Write response ready",
+        "section": "AXI write response channel (B)",
+        "source": "spec/spec.md:113",
+        "assumed": false
+      },
+      {
+        "name": "i_araddr",
+        "direction": "in",
+        "width": "PARA_ADDR_WD",
+        "reset_value": "\u2013",
+        "description": "Read burst start byte address",
+        "section": "AXI read address channel (AR)",
+        "source": "spec/spec.md:119",
+        "assumed": false
+      },
+      {
+        "name": "i_arvalid",
+        "direction": "in",
+        "width": "1",
+        "reset_value": "\u2013",
+        "description": "Read address valid",
+        "section": "AXI read address channel (AR)",
+        "source": "spec/spec.md:120",
+        "assumed": false
+      },
+      {
+        "name": "o_arready",
+        "direction": "out",
+        "width": "1",
+        "reset_value": "1 (Assumption)",
+        "description": "Read address ready. Combinational: read FSM in S_IDLE AND ARFIFO not full.",
+        "section": "AXI read address channel (AR)",
+        "source": "spec/spec.md:121",
+        "assumed": true
+      },
+      {
+        "name": "i_arburst",
+        "direction": "in",
+        "width": "2",
+        "reset_value": "\u2013",
+        "description": "Burst type (same encoding as i_awburst)",
+        "section": "AXI read address channel (AR)",
+        "source": "spec/spec.md:122",
+        "assumed": false
+      },
+      {
+        "name": "i_arlen",
+        "direction": "in",
+        "width": "PARA_LEN_WD",
+        "reset_value": "\u2013",
+        "description": "Burst length \u2212 1",
+        "section": "AXI read address channel (AR)",
+        "source": "spec/spec.md:123",
+        "assumed": false
+      },
+      {
+        "name": "i_arid",
+        "direction": "in",
+        "width": "PARA_ID_WD",
+        "reset_value": "\u2013",
+        "description": "Read transaction ID",
+        "section": "AXI read address channel (AR)",
+        "source": "spec/spec.md:124",
+        "assumed": false
+      },
+      {
+        "name": "i_arsize",
+        "direction": "in",
+        "width": "3",
+        "reset_value": "\u2013",
+        "description": "Bytes per beat = 2i_arsize; same validity rule as i_awsize",
+        "section": "AXI read address channel (AR)",
+        "source": "spec/spec.md:125",
+        "assumed": false
+      },
+      {
+        "name": "o_rid",
+        "direction": "out",
+        "width": "PARA_ID_WD",
+        "reset_value": "0 (Assumption)",
+        "description": "Read response ID (the burst's ARID)",
+        "section": "AXI read data channel (R)",
+        "source": "spec/spec.md:131",
+        "assumed": true
+      },
+      {
+        "name": "o_rdata",
+        "direction": "out",
+        "width": "PARA_DATA_WD",
+        "reset_value": "0 (Assumption)",
+        "description": "Read data (always the full SRAM word)",
+        "section": "AXI read data channel (R)",
+        "source": "spec/spec.md:132",
+        "assumed": true
+      },
+      {
+        "name": "o_rresp",
+        "direction": "out",
+        "width": "2",
+        "reset_value": "0 (Assumption)",
+        "description": "2'b00 OKAY, or 2'b10 SLVERR if this beat's burst had a misaligned start address or an oversized ARSIZE",
+        "section": "AXI read data channel (R)",
+        "source": "spec/spec.md:133",
+        "assumed": true
+      },
+      {
+        "name": "o_rvalid",
+        "direction": "out",
+        "width": "1",
+        "reset_value": "0",
+        "description": "Read data valid = RFIFO not empty",
+        "section": "AXI read data channel (R)",
+        "source": "spec/spec.md:134",
+        "assumed": false
+      },
+      {
+        "name": "o_rlast",
+        "direction": "out",
+        "width": "1",
+        "reset_value": "0 (Assumption)",
+        "description": "Last beat of the read burst",
+        "section": "AXI read data channel (R)",
+        "source": "spec/spec.md:135",
+        "assumed": true
+      },
+      {
+        "name": "i_rready",
+        "direction": "in",
+        "width": "1",
+        "reset_value": "\u2013",
+        "description": "Read data ready",
+        "section": "AXI read data channel (R)",
+        "source": "spec/spec.md:136",
+        "assumed": false
+      },
+      {
+        "name": "o_sram_addr",
+        "direction": "out",
+        "width": "[PARA_NUM_BANKS-1:0][PARA_ADDR_WD-1:0]",
+        "reset_value": "0",
+        "description": "Per-bank SRAM byte address: the full, un-hashed AXI beat address. Assumption: 0 when the bank has neither o_sram_we[k] nor o_sram_oe[k] asserted.",
+        "section": "SRAM interface (one set per bank, `k` = 0 \u2026 `PARA_NUM_BANKS`\u22121)",
+        "source": "spec/spec.md:144",
+        "assumed": true
+      },
+      {
+        "name": "o_sram_wdata",
+        "direction": "out",
+        "width": "[PARA_NUM_BANKS-1:0][PARA_DATA_WD-1:0]",
+        "reset_value": "0 (Assumption)",
+        "description": "Per-bank write data; valid only while o_sram_we[k] = 1, don't-care otherwise",
+        "section": "SRAM interface (one set per bank, `k` = 0 \u2026 `PARA_NUM_BANKS`\u22121)",
+        "source": "spec/spec.md:145",
+        "assumed": true
+      },
+      {
+        "name": "o_sram_wstrb",
+        "direction": "out",
+        "width": "[PARA_NUM_BANKS-1:0][PARA_DATA_WD/8-1:0]",
+        "reset_value": "0",
+        "description": "Per-bank, per-byte write strobe. Pass-through of i_wstrb while o_sram_we[k] = 1. Shall be all-zero whenever o_sram_we[k] = 0, including SLVERR beats and non-selected banks.",
+        "section": "SRAM interface (one set per bank, `k` = 0 \u2026 `PARA_NUM_BANKS`\u22121)",
+        "source": "spec/spec.md:146",
+        "assumed": false
+      },
+      {
+        "name": "i_sram_rdata",
+        "direction": "in",
+        "width": "[PARA_NUM_BANKS-1:0][PARA_DATA_WD-1:0]",
+        "reset_value": "\u2013",
+        "description": "Per-bank read data, sampled in the cycle after o_sram_oe[k]",
+        "section": "SRAM interface (one set per bank, `k` = 0 \u2026 `PARA_NUM_BANKS`\u22121)",
+        "source": "spec/spec.md:147",
+        "assumed": false
+      },
+      {
+        "name": "o_sram_we",
+        "direction": "out",
+        "width": "[PARA_NUM_BANKS-1:0]",
+        "reset_value": "0",
+        "description": "Per-bank write enable, active high",
+        "section": "SRAM interface (one set per bank, `k` = 0 \u2026 `PARA_NUM_BANKS`\u22121)",
+        "source": "spec/spec.md:148",
+        "assumed": false
+      },
+      {
+        "name": "o_sram_oe",
+        "direction": "out",
+        "width": "[PARA_NUM_BANKS-1:0]",
+        "reset_value": "0",
+        "description": "Per-bank output (read) enable, active high, asserted in the read-issue cycle (also for SLVERR read beats)",
+        "section": "SRAM interface (one set per bank, `k` = 0 \u2026 `PARA_NUM_BANKS`\u22121)",
+        "source": "spec/spec.md:149",
+        "assumed": false
+      }
+    ],
+    "parameters": [
+      {
+        "name": "PARA_DATA_WD",
+        "value": "32",
+        "default": "32",
+        "legal": "8, 16, 32, \u2026, 1024 (power of 2, multiple of 8)",
+        "type": "int"
+      },
+      {
+        "name": "PARA_ADDR_WD",
+        "value": "32",
+        "default": "32",
+        "legal": "> BYTE_LSB; >= BYTE_LSB + $clog2(PARA_NUM_BANKS) when PARA_NUM_BANKS > 1; <= 64 (assumption)",
+        "type": "int"
+      },
+      {
+        "name": "PARA_ID_WD",
+        "value": "4",
+        "default": "4",
+        "legal": ">= 1",
+        "type": "int"
+      },
+      {
+        "name": "PARA_LEN_WD",
+        "value": "8",
+        "default": "8",
+        "legal": "1 \u2026 8",
+        "type": "int"
+      },
+      {
+        "name": "PARA_FIFO_DEPTH",
+        "value": "8",
+        "default": "8",
+        "legal": "power of 2, >= 2",
+        "type": "int"
+      },
+      {
+        "name": "PARA_NUM_BANKS",
+        "value": "1",
+        "default": "1",
+        "legal": "power of 2, >= 1",
+        "type": "int"
+      }
+    ],
+    "constraints": [
+      {
+        "id": "C1",
+        "rule": "PARA_DATA_WD % 8 == 0 && ((PARA_DATA_WD/8) & (PARA_DATA_WD/8 - 1)) == 0",
+        "description": "Data width is a whole number of bytes with a power-of-two lane count.",
+        "assumed": false
+      },
+      {
+        "id": "C2",
+        "rule": "PARA_DATA_WD >= 8 && PARA_DATA_WD <= 1024",
+        "description": "AXI4 data-width range (assumption).",
+        "assumed": true
+      },
+      {
+        "id": "C3",
+        "rule": "PARA_FIFO_DEPTH >= 2 && (PARA_FIFO_DEPTH & (PARA_FIFO_DEPTH - 1)) == 0",
+        "description": "FIFO depth is a power of 2, at least 2.",
+        "assumed": false
+      },
+      {
+        "id": "C4",
+        "rule": "PARA_NUM_BANKS >= 1 && (PARA_NUM_BANKS & (PARA_NUM_BANKS - 1)) == 0",
+        "description": "Bank count is a power of 2.",
+        "assumed": false
+      },
+      {
+        "id": "C5",
+        "rule": "PARA_NUM_BANKS > 1 -> PARA_ADDR_WD >= $clog2(PARA_DATA_WD/8) + $clog2(PARA_NUM_BANKS)",
+        "description": "Address wide enough for the bank hash (BYTE_LSB = $clog2(PARA_DATA_WD/8)).",
+        "assumed": false
+      },
+      {
+        "id": "C6",
+        "rule": "PARA_ADDR_WD > $clog2(PARA_DATA_WD/8)",
+        "description": "Address wider than the byte offset (BYTE_LSB).",
+        "assumed": false
+      },
+      {
+        "id": "C7",
+        "rule": "PARA_ID_WD >= 1",
+        "description": "At least one ID bit.",
+        "assumed": false
+      },
+      {
+        "id": "C8",
+        "rule": "PARA_LEN_WD >= 1 && PARA_LEN_WD <= 8",
+        "description": "Burst-length field width (assumption).",
+        "assumed": true
+      }
+    ],
+    "interfaces": [
+      {
+        "id": "IF-001",
+        "kind": "clock_reset",
+        "protocol": "single clock, active-low async-assert reset",
+        "role": "slave",
+        "ports": [
+          "i_clk",
+          "i_rst_n"
+        ],
+        "stimulus_agent": "tb_clock_reset",
+        "requirement_ids": [
+          "REQ-001",
+          "REQ-002"
+        ]
+      },
+      {
+        "id": "IF-002",
+        "kind": "axi4_slave",
+        "protocol": "AXI4 write channels AW, W, B",
+        "role": "slave",
+        "ports": [
+          "i_awaddr",
+          "i_awvalid",
+          "o_awready",
+          "i_awburst",
+          "i_awlen",
+          "i_awid",
+          "i_awsize",
+          "i_wdata",
+          "i_wstrb",
+          "i_wvalid",
+          "o_wready",
+          "i_wlast",
+          "o_bid",
+          "o_bresp",
+          "o_bvalid",
+          "i_bready"
+        ],
+        "stimulus_agent": "vip_master",
+        "requirement_ids": [
+          "REQ-003",
+          "REQ-004",
+          "REQ-005"
+        ]
+      },
+      {
+        "id": "IF-003",
+        "kind": "axi4_slave",
+        "protocol": "AXI4 read channels AR, R",
+        "role": "slave",
+        "ports": [
+          "i_araddr",
+          "i_arvalid",
+          "o_arready",
+          "i_arburst",
+          "i_arlen",
+          "i_arid",
+          "i_arsize",
+          "o_rid",
+          "o_rdata",
+          "o_rresp",
+          "o_rvalid",
+          "o_rlast",
+          "i_rready"
+        ],
+        "stimulus_agent": "vip_master",
+        "requirement_ids": [
+          "REQ-006",
+          "REQ-007"
+        ]
+      },
+      {
+        "id": "IF-004",
+        "kind": "sram",
+        "protocol": "synchronous SRAM, byte strobes, 1-cycle read latency",
+        "role": "memory master",
+        "ports": [
+          "o_sram_addr",
+          "o_sram_wdata",
+          "o_sram_wstrb",
+          "i_sram_rdata",
+          "o_sram_we",
+          "o_sram_oe"
+        ],
+        "stimulus_agent": "sram_model",
+        "requirement_ids": [
+          "REQ-008",
+          "REQ-017",
+          "REQ-018"
+        ]
+      }
+    ]
+  },
+  "requirements": [
+    {
+      "req_id": "REQ-001",
+      "text": "The design shall use a single clock domain i_clk; all sequential state shall change only on the rising edge of i_clk or on assertion of i_rst_n.",
+      "category": "interface",
+      "strength": "MUST",
+      "source_section": "4 Interface / Clock and reset",
+      "feature_id": "F01",
+      "parameters_affected": [],
+      "ambiguity_score": 0.05,
+      "check_hint": null,
+      "origin_class": "NORMATIVE",
+      "assumption_evidence": [],
+      "observability_hint": "PORT",
+      "observability": "PORT",
+      "observability_reason": "",
+      "status": "planned",
+      "status_reason": "",
+      "objective_ids": [
+        "VO-001"
+      ],
+      "rule_ids": [],
+      "test_ids": [
+        "TC-001"
+      ],
+      "coverage_ids": []
+    },
+    {
+      "req_id": "REQ-002",
+      "text": "i_rst_n shall be an active-low reset with asynchronous assertion; its deassertion shall be synchronous to i_clk (synchronizer outside the block).",
+      "category": "interface",
+      "strength": "MUST",
+      "source_section": "4 Interface / Clock and reset",
+      "feature_id": "F01",
+      "parameters_affected": [],
+      "ambiguity_score": 0.2,
+      "check_hint": "assume",
+      "origin_class": "ASSUMED",
+      "assumption_evidence": [
+        "spec/spec.md:77"
+      ],
+      "observability_hint": "PORT",
+      "observability": "PORT",
+      "observability_reason": "",
+      "status": "open",
+      "status_reason": "Assumption at spec.md:77; see OI-001. TB asserts asynchronously and deasserts synchronously, no further check.",
+      "objective_ids": [
+        "VO-001"
+      ],
+      "rule_ids": [],
+      "test_ids": [],
+      "coverage_ids": []
+    },
+    {
+      "req_id": "REQ-003",
+      "text": "The AXI write address channel shall consist of i_awaddr[PARA_ADDR_WD-1:0], i_awvalid, o_awready, i_awburst[1:0], i_awlen[PARA_LEN_WD-1:0], i_awid[PARA_ID_WD-1:0] and i_awsize[2:0].",
+      "category": "interface",
+      "strength": "MUST",
+      "source_section": "4 Interface / AW",
+      "feature_id": "F01",
+      "parameters_affected": [
+        "PARA_ADDR_WD",
+        "PARA_LEN_WD",
+        "PARA_ID_WD"
+      ],
+      "ambiguity_score": 0.05,
+      "check_hint": "static",
+      "origin_class": "NORMATIVE",
+      "assumption_evidence": [],
+      "observability_hint": "PORT",
+      "observability": "PORT",
+      "observability_reason": "",
+      "status": "planned",
+      "status_reason": "",
+      "objective_ids": [],
+      "rule_ids": [],
+      "test_ids": [
+        "TC-001"
+      ],
+      "coverage_ids": [
+        "COV-001"
+      ]
+    },
+    {
+      "req_id": "REQ-004",
+      "text": "The AXI write data channel shall consist of i_wdata[PARA_DATA_WD-1:0], i_wstrb[PARA_DATA_WD/8-1:0], i_wvalid, o_wready and i_wlast.",
+      "category": "interface",
+      "strength": "MUST",
+      "source_section": "4 Interface / W",
+      "feature_id": "F01",
+      "parameters_affected": [
+        "PARA_DATA_WD"
+      ],
+      "ambiguity_score": 0.05,
+      "check_hint": "static",
+      "origin_class": "NORMATIVE",
+      "assumption_evidence": [],
+      "observability_hint": "PORT",
+      "observability": "PORT",
+      "observability_reason": "",
+      "status": "planned",
+      "status_reason": "",
+      "objective_ids": [
+        "VO-002"
+      ],
+      "rule_ids": [],
+      "test_ids": [
+        "TC-001",
+        "TC-002",
+        "TC-005",
+        "TC-010"
+      ],
+      "coverage_ids": [
+        "COV-001"
+      ]
+    },
+    {
+      "req_id": "REQ-005",
+      "text": "The AXI write response channel shall consist of o_bid[PARA_ID_WD-1:0], o_bresp[1:0], o_bvalid and i_bready.",
+      "category": "interface",
+      "strength": "MUST",
+      "source_section": "4 Interface / B",
+      "feature_id": "F01",
+      "parameters_affected": [
+        "PARA_ID_WD"
+      ],
+      "ambiguity_score": 0.05,
+      "check_hint": "static",
+      "origin_class": "NORMATIVE",
+      "assumption_evidence": [],
+      "observability_hint": "PORT",
+      "observability": "PORT",
+      "observability_reason": "",
+      "status": "planned",
+      "status_reason": "",
+      "objective_ids": [
+        "VO-002"
+      ],
+      "rule_ids": [],
+      "test_ids": [
+        "TC-001",
+        "TC-002",
+        "TC-005",
+        "TC-010"
+      ],
+      "coverage_ids": [
+        "COV-001"
+      ]
+    },
+    {
+      "req_id": "REQ-006",
+      "text": "The AXI read address channel shall consist of i_araddr[PARA_ADDR_WD-1:0], i_arvalid, o_arready, i_arburst[1:0], i_arlen[PARA_LEN_WD-1:0], i_arid[PARA_ID_WD-1:0] and i_arsize[2:0].",
+      "category": "interface",
+      "strength": "MUST",
+      "source_section": "4 Interface / AR",
+      "feature_id": "F01",
+      "parameters_affected": [
+        "PARA_ADDR_WD",
+        "PARA_LEN_WD",
+        "PARA_ID_WD"
+      ],
+      "ambiguity_score": 0.05,
+      "check_hint": "static",
+      "origin_class": "NORMATIVE",
+      "assumption_evidence": [],
+      "observability_hint": "PORT",
+      "observability": "PORT",
+      "observability_reason": "",
+      "status": "planned",
+      "status_reason": "",
+      "objective_ids": [],
+      "rule_ids": [],
+      "test_ids": [
+        "TC-001"
+      ],
+      "coverage_ids": [
+        "COV-001"
+      ]
+    },
+    {
+      "req_id": "REQ-007",
+      "text": "The AXI read data channel shall consist of o_rid[PARA_ID_WD-1:0], o_rdata[PARA_DATA_WD-1:0], o_rresp[1:0], o_rvalid, o_rlast and i_rready; o_rdata shall always carry the full SRAM word.",
+      "category": "interface",
+      "strength": "MUST",
+      "source_section": "4 Interface / R",
+      "feature_id": "F01",
+      "parameters_affected": [
+        "PARA_ID_WD",
+        "PARA_DATA_WD"
+      ],
+      "ambiguity_score": 0.05,
+      "check_hint": "static",
+      "origin_class": "NORMATIVE",
+      "assumption_evidence": [],
+      "observability_hint": "PORT",
+      "observability": "PORT",
+      "observability_reason": "",
+      "status": "planned",
+      "status_reason": "",
+      "objective_ids": [
+        "VO-003"
+      ],
+      "rule_ids": [
+        "SBR-003"
+      ],
+      "test_ids": [
+        "TC-001",
+        "TC-002",
+        "TC-010"
+      ],
+      "coverage_ids": [
+        "COV-001"
+      ]
+    },
+    {
+      "req_id": "REQ-008",
+      "text": "The SRAM interface shall provide per-bank packed arrays o_sram_addr[PARA_NUM_BANKS-1:0][PARA_ADDR_WD-1:0], o_sram_wdata[PARA_NUM_BANKS-1:0][PARA_DATA_WD-1:0], o_sram_wstrb[PARA_NUM_BANKS-1:0][PARA_DATA_WD/8-1:0], o_sram_we[PARA_NUM_BANKS-1:0], o_sram_oe[PARA_NUM_BANKS-1:0] (active high) and input i_sram_rdata[PARA_NUM_BANKS-1:0][PARA_DATA_WD-1:0]; with PARA_NUM_BANKS = 1 it shall be bit-for-bit the single-SRAM interface.",
+      "category": "interface",
+      "strength": "MUST",
+      "source_section": "4 Interface / SRAM interface",
+      "feature_id": "F11",
+      "parameters_affected": [
+        "PARA_NUM_BANKS",
+        "PARA_ADDR_WD",
+        "PARA_DATA_WD"
+      ],
+      "ambiguity_score": 0.05,
+      "check_hint": "static",
+      "origin_class": "NORMATIVE",
+      "assumption_evidence": [
+        "spec/spec.md:144"
+      ],
+      "observability_hint": "PORT",
+      "observability": "PORT",
+      "observability_reason": "",
+      "status": "planned",
+      "status_reason": "The port set, widths and the single-SRAM mapping at PARA_NUM_BANKS=1 are stated; only reset and idle values carry assumptions, tracked under REQ-042 and REQ-049. Traced by TC-001 and COV-001.",
+      "objective_ids": [],
+      "rule_ids": [],
+      "test_ids": [
+        "TC-001"
+      ],
+      "coverage_ids": [
+        "COV-001"
+      ]
+    },
+    {
+      "req_id": "REQ-009",
+      "text": "o_awready shall be 1 exactly when the write address FSM is in S_IDLE and AWFIFO is not full (current-cycle flag); o_arready likewise for the read FSM and ARFIFO. Neither shall depend combinationally on the corresponding VALID input, and a FIFO pop in the same cycle shall not raise READY.",
+      "category": "interface",
+      "strength": "MUST",
+      "source_section": "4 Interface / B2",
+      "feature_id": "F09",
+      "parameters_affected": [
+        "PARA_FIFO_DEPTH"
+      ],
+      "ambiguity_score": 0.05,
+      "check_hint": "property",
+      "origin_class": "NORMATIVE",
+      "assumption_evidence": [],
+      "observability_hint": "PORT",
+      "observability": "PORT",
+      "observability_reason": "",
+      "status": "planned",
+      "status_reason": "",
+      "objective_ids": [
+        "VO-007"
+      ],
+      "rule_ids": [
+        "SBR-006"
+      ],
+      "test_ids": [
+        "TC-007",
+        "TC-010"
+      ],
+      "coverage_ids": []
+    },
+    {
+      "req_id": "REQ-010",
+      "text": "o_wready shall equal NOT(WFIFO full) on the current-cycle flag and shall not depend on i_wvalid; {i_wstrb, i_wdata} shall be pushed into WFIFO when i_wvalid & o_wready, and W beats may be accepted before their AW burst.",
+      "category": "interface",
+      "strength": "MUST",
+      "source_section": "4 Interface / B3; 5.5",
+      "feature_id": "F09",
+      "parameters_affected": [
+        "PARA_FIFO_DEPTH"
+      ],
+      "ambiguity_score": 0.05,
+      "check_hint": "property",
+      "origin_class": "NORMATIVE",
+      "assumption_evidence": [],
+      "observability_hint": "PORT",
+      "observability": "PORT",
+      "observability_reason": "",
+      "status": "planned",
+      "status_reason": "",
+      "objective_ids": [
+        "VO-002"
+      ],
+      "rule_ids": [
+        "SBR-006"
+      ],
+      "test_ids": [
+        "TC-007",
+        "TC-001",
+        "TC-002",
+        "TC-005",
+        "TC-010"
+      ],
+      "coverage_ids": []
+    },
+    {
+      "req_id": "REQ-011",
+      "text": "o_bvalid shall equal NOT(BFIFO empty) and o_bid/o_bresp shall be the BFIFO head entry; once o_bvalid is 1, it and the payload shall stay stable until the cycle where i_bready = 1, when the entry is popped.",
+      "category": "interface",
+      "strength": "MUST",
+      "source_section": "4 Interface / B4; 5.9",
+      "feature_id": "F09",
+      "parameters_affected": [],
+      "ambiguity_score": 0.05,
+      "check_hint": "property",
+      "origin_class": "NORMATIVE",
+      "assumption_evidence": [],
+      "observability_hint": "PORT",
+      "observability": "PORT",
+      "observability_reason": "",
+      "status": "planned",
+      "status_reason": "",
+      "objective_ids": [
+        "VO-007"
+      ],
+      "rule_ids": [
+        "SBR-006"
+      ],
+      "test_ids": [
+        "TC-007",
+        "TC-010"
+      ],
+      "coverage_ids": [
+        "COV-006"
+      ]
+    },
+    {
+      "req_id": "REQ-012",
+      "text": "o_rvalid shall equal NOT(RFIFO empty) and o_rid/o_rdata/o_rresp/o_rlast shall be the RFIFO head entry; they shall stay stable until popped in a cycle where i_rready = 1.",
+      "category": "interface",
+      "strength": "MUST",
+      "source_section": "4 Interface / B5; 5.9",
+      "feature_id": "F09",
+      "parameters_affected": [],
+      "ambiguity_score": 0.05,
+      "check_hint": "property",
+      "origin_class": "NORMATIVE",
+      "assumption_evidence": [],
+      "observability_hint": "PORT",
+      "observability": "PORT",
+      "observability_reason": "",
+      "status": "planned",
+      "status_reason": "",
+      "objective_ids": [
+        "VO-003",
+        "VO-007"
+      ],
+      "rule_ids": [
+        "SBR-003",
+        "SBR-006"
+      ],
+      "test_ids": [
+        "TC-007",
+        "TC-001",
+        "TC-002",
+        "TC-010"
+      ],
+      "coverage_ids": [
+        "COV-006"
+      ]
+    },
+    {
+      "req_id": "REQ-013",
+      "text": "Response encodings shall be OKAY = 2'b00 and SLVERR = 2'b10; EXOKAY and DECERR shall never be generated on o_bresp or o_rresp.",
+      "category": "interface",
+      "strength": "MUST",
+      "source_section": "4 Interface / B6",
+      "feature_id": "F07",
+      "parameters_affected": [],
+      "ambiguity_score": 0.0,
+      "check_hint": "property",
+      "origin_class": "NORMATIVE",
+      "assumption_evidence": [],
+      "observability_hint": "PORT",
+      "observability": "PORT",
+      "observability_reason": "",
+      "status": "planned",
+      "status_reason": "",
+      "objective_ids": [
+        "VO-005"
+      ],
+      "rule_ids": [
+        "SBR-002"
+      ],
+      "test_ids": [
+        "TC-006"
+      ],
+      "coverage_ids": []
+    },
+    {
+      "req_id": "REQ-014",
+      "text": "The controller shall return exactly one B response per accepted AW burst, and exactly AxLEN+1 R beats per accepted AR burst with o_rlast = 1 only on the last beat.",
+      "category": "interface",
+      "strength": "MUST",
+      "source_section": "4 Interface / B7",
+      "feature_id": "F01",
+      "parameters_affected": [
+        "PARA_LEN_WD"
+      ],
+      "ambiguity_score": 0.05,
+      "check_hint": "sequence",
+      "origin_class": "NORMATIVE",
+      "assumption_evidence": [],
+      "observability_hint": "PORT",
+      "observability": "PORT",
+      "observability_reason": "",
+      "status": "planned",
+      "status_reason": "",
+      "objective_ids": [
+        "VO-002",
+        "VO-003"
+      ],
+      "rule_ids": [
+        "SBR-002",
+        "SBR-003"
+      ],
+      "test_ids": [
+        "TC-001",
+        "TC-002",
+        "TC-010",
+        "TC-005"
+      ],
+      "coverage_ids": []
+    },
+    {
+      "req_id": "REQ-015",
+      "text": "The AXI master shall keep VALID and its payload stable from assertion until the handshake on every AXI input channel (AW, W, AR, and READY-side B/R are not constrained).",
+      "category": "interface",
+      "strength": "MUST",
+      "source_section": "4 Interface / B8",
+      "feature_id": "F01",
+      "parameters_affected": [],
+      "ambiguity_score": 0.05,
+      "check_hint": "assume",
+      "origin_class": "NORMATIVE",
+      "assumption_evidence": [],
+      "observability_hint": "UNKNOWN",
+      "observability": "PORT",
+      "observability_reason": "",
+      "status": "excluded",
+      "status_reason": "Master obligation; the stimulus agent honours it, it is not a DUT check.",
+      "objective_ids": [],
+      "rule_ids": [],
+      "test_ids": [],
+      "coverage_ids": []
+    },
+    {
+      "req_id": "REQ-016",
+      "text": "The AXI master shall send exactly AWLEN+1 W beats per AW burst, in AW order without write-data interleaving, shall use WRAP lengths of 2, 4, 8 or 16 beats only, and should not use AxBURST = 2'b11.",
+      "category": "interface",
+      "strength": "MUST",
+      "source_section": "4 Interface / B8",
+      "feature_id": "F02",
+      "parameters_affected": [],
+      "ambiguity_score": 0.1,
+      "check_hint": "assume",
+      "origin_class": "NORMATIVE",
+      "assumption_evidence": [],
+      "observability_hint": "UNKNOWN",
+      "observability": "PORT",
+      "observability_reason": "",
+      "status": "excluded",
+      "status_reason": "Master obligation; stimulus sends AWLEN+1 beats, WRAP lengths 2/4/8/16 only and never AxBURST=2'b11.",
+      "objective_ids": [],
+      "rule_ids": [],
+      "test_ids": [],
+      "coverage_ids": []
+    },
+    {
+      "req_id": "REQ-017",
+      "text": "Each SRAM bank k shall write o_sram_wdata[k] into the byte lanes selected by o_sram_wstrb[k] at word o_sram_addr[k][PARA_ADDR_WD-1:BYTE_LSB] at the rising edge ending a cycle with o_sram_we[k] = 1 (unselected bytes unchanged), and shall present the word addressed in a cycle with o_sram_oe[k] = 1 on i_sram_rdata[k] throughout the following cycle (exactly one-cycle read latency); the low BYTE_LSB address bits are ignored and each bank holds the full addressable range.",
+      "category": "interface",
+      "strength": "MUST",
+      "source_section": "4 Interface / B9",
+      "feature_id": "F06",
+      "parameters_affected": [
+        "PARA_DATA_WD",
+        "PARA_ADDR_WD",
+        "PARA_NUM_BANKS"
+      ],
+      "ambiguity_score": 0.15,
+      "check_hint": "assume",
+      "origin_class": "ASSUMED",
+      "assumption_evidence": [
+        "spec/spec.md:144",
+        "spec/spec.md:170"
+      ],
+      "observability_hint": "PORT",
+      "observability": "PORT",
+      "observability_reason": "",
+      "status": "open",
+      "status_reason": "SRAM behavior contract is an assumption (OI-003); the TB SRAM model implements it as stated.",
+      "objective_ids": [],
+      "rule_ids": [
+        "SBR-001"
+      ],
+      "test_ids": [],
+      "coverage_ids": []
+    },
+    {
+      "req_id": "REQ-018",
+      "text": "In any cycle, o_sram_we[k] and o_sram_oe[k] shall not both be 1 for the same bank k.",
+      "category": "interface",
+      "strength": "MUST",
+      "source_section": "4 Interface / B10",
+      "feature_id": "F10",
+      "parameters_affected": [
+        "PARA_NUM_BANKS"
+      ],
+      "ambiguity_score": 0.0,
+      "check_hint": "property",
+      "origin_class": "NORMATIVE",
+      "assumption_evidence": [],
+      "observability_hint": "PORT",
+      "observability": "PORT",
+      "observability_reason": "",
+      "status": "planned",
+      "status_reason": "",
+      "objective_ids": [
+        "VO-008"
+      ],
+      "rule_ids": [
+        "SBR-008"
+      ],
+      "test_ids": [
+        "TC-011"
+      ],
+      "coverage_ids": []
+    },
+    {
+      "req_id": "REQ-019",
+      "text": "The controller shall be an AXI4 slave with independent read and write channels: AW and AR handshakes in the same cycle shall be independent and both accepted when their READYs are 1.",
+      "category": "functional",
+      "strength": "MUST",
+      "source_section": "2 F01; 5.13",
+      "feature_id": "F01",
+      "parameters_affected": [],
+      "ambiguity_score": 0.05,
+      "check_hint": "cover",
+      "origin_class": "NORMATIVE",
+      "assumption_evidence": [],
+      "observability_hint": "UNKNOWN",
+      "observability": "PORT",
+      "observability_reason": "",
+      "status": "planned",
+      "status_reason": "",
+      "objective_ids": [
+        "VO-007"
+      ],
+      "rule_ids": [],
+      "test_ids": [
+        "TC-010",
+        "TC-007"
+      ],
+      "coverage_ids": [
+        "COV-007"
+      ]
+    },
+    {
+      "req_id": "REQ-020",
+      "text": "After each pushed beat the address FSM shall keep the next beat address unchanged for FIXED bursts (2'b00) and set it to addr + 2**AxSIZE for INCR bursts (2'b01), using the registered AxSIZE; address arithmetic shall be modulo 2**PARA_ADDR_WD with no 4 KB boundary check.",
+      "category": "functional",
+      "strength": "MUST",
+      "source_section": "5.4",
+      "feature_id": "F02",
+      "parameters_affected": [
+        "PARA_ADDR_WD"
+      ],
+      "ambiguity_score": 0.15,
+      "check_hint": "property",
+      "origin_class": "NORMATIVE",
+      "assumption_evidence": [
+        "spec/spec.md:247",
+        "spec/spec.md:431"
+      ],
+      "observability_hint": "UNKNOWN",
+      "observability": "PORT",
+      "observability_reason": "",
+      "status": "planned",
+      "status_reason": "Approved by the user's answer Q-TB-OI-006.",
+      "objective_ids": [
+        "VO-004"
+      ],
+      "rule_ids": [
+        "SBR-004"
+      ],
+      "test_ids": [
+        "TC-002",
+        "TC-003",
+        "TC-012",
+        "TC-004",
+        "TC-009"
+      ],
+      "coverage_ids": [
+        "COV-002",
+        "COV-009"
+      ]
+    },
+    {
+      "req_id": "REQ-021",
+      "text": "For WRAP bursts (2'b10) and reserved AxBURST = 2'b11, the next address shall be addr + size_bytes unless that equals wrap_lower + size_bytes*burst_len, in which case it shall be wrap_lower, where wrap_lower = start_addr & ~(size_bytes*burst_len \u2212 1) and burst_len = AxLEN+1 are computed and latched at the handshake (e.g. 4-beat 32-bit WRAP from 0x88 visits 0x88, 0x8C, 0x80, 0x84). AxBURST = 2'b11 shall not by itself cause SLVERR.",
+      "category": "functional",
+      "strength": "MUST",
+      "source_section": "5.4",
+      "feature_id": "F02",
+      "parameters_affected": [
+        "PARA_ADDR_WD"
+      ],
+      "ambiguity_score": 0.1,
+      "check_hint": "property",
+      "origin_class": "ASSUMED",
+      "assumption_evidence": [
+        "spec/spec.md:247"
+      ],
+      "observability_hint": "INTERNAL",
+      "observability": "PORT",
+      "observability_reason": "",
+      "status": "open",
+      "status_reason": "Cited as assumption at spec.md:247 (OI-005); the requirement also covers reserved AxBURST=2'b11, so it is treated as assumed. Standard WRAP (2'b10) is still stimulated in TC-004. 2'b11 is not stimulated.",
+      "objective_ids": [
+        "VO-004"
+      ],
+      "rule_ids": [
+        "SBR-004"
+      ],
+      "test_ids": [
+        "TC-004",
+        "TC-002",
+        "TC-003",
+        "TC-009",
+        "TC-012"
+      ],
+      "coverage_ids": [
+        "COV-002"
+      ]
+    },
+    {
+      "req_id": "REQ-022",
+      "text": "Bursts of AxLEN = 0 to 2**PARA_LEN_WD \u2212 1 (1 to 256 beats at the default) shall be handled completely: the beat counter shall be PARA_LEN_WD+1 bits wide, load AxLEN+1 at the handshake, decrement only while non-zero and never wrap.",
+      "category": "functional",
+      "strength": "MUST",
+      "source_section": "5.2; 5.13",
+      "feature_id": "F03",
+      "parameters_affected": [
+        "PARA_LEN_WD"
+      ],
+      "ambiguity_score": 0.05,
+      "check_hint": "property",
+      "origin_class": "NORMATIVE",
+      "assumption_evidence": [],
+      "observability_hint": "UNKNOWN",
+      "observability": "PORT",
+      "observability_reason": "",
+      "status": "planned",
+      "status_reason": "",
+      "objective_ids": [
+        "VO-004"
+      ],
+      "rule_ids": [
+        "SBR-004"
+      ],
+      "test_ids": [
+        "TC-002",
+        "TC-009",
+        "TC-003",
+        "TC-004",
+        "TC-012"
+      ],
+      "coverage_ids": [
+        "COV-003"
+      ]
+    },
+    {
+      "req_id": "REQ-023",
+      "text": "Data, address and ID widths shall be configurable through PARA_DATA_WD, PARA_ADDR_WD and PARA_ID_WD; all port, FIFO and internal widths shall be derived from them.",
+      "category": "functional",
+      "strength": "MUST",
+      "source_section": "2 F04; 3",
+      "feature_id": "F04",
+      "parameters_affected": [
+        "PARA_DATA_WD",
+        "PARA_ADDR_WD",
+        "PARA_ID_WD"
+      ],
+      "ambiguity_score": 0.05,
+      "check_hint": "static",
+      "origin_class": "NORMATIVE",
+      "assumption_evidence": [],
+      "observability_hint": "UNKNOWN",
+      "observability": "ELAB_CONFIG",
+      "observability_reason": "",
+      "status": "excluded",
+      "status_reason": "Only the default configuration is run; width derivation is not separately observable.",
+      "objective_ids": [],
+      "rule_ids": [],
+      "test_ids": [],
+      "coverage_ids": []
+    },
+    {
+      "req_id": "REQ-024",
+      "text": "Narrow transfers: AxSIZE shall only change the address stride, the WRAP window and the error check; the SRAM shall always be accessed as a full PARA_DATA_WD word, writes narrowed only by WSTRB and reads returning the full word on o_rdata.",
+      "category": "functional",
+      "strength": "MUST",
+      "source_section": "5.11",
+      "feature_id": "F05",
+      "parameters_affected": [
+        "PARA_DATA_WD"
+      ],
+      "ambiguity_score": 0.1,
+      "check_hint": "property",
+      "origin_class": "NORMATIVE",
+      "assumption_evidence": [],
+      "observability_hint": "PORT",
+      "observability": "PORT",
+      "observability_reason": "",
+      "status": "planned",
+      "status_reason": "",
+      "objective_ids": [
+        "VO-002"
+      ],
+      "rule_ids": [
+        "SBR-001"
+      ],
+      "test_ids": [
+        "TC-005",
+        "TC-001",
+        "TC-002",
+        "TC-010"
+      ],
+      "coverage_ids": [
+        "COV-004"
+      ]
+    },
+    {
+      "req_id": "REQ-025",
+      "text": "o_sram_wstrb[k] shall equal the WFIFO-head strobe (i_wstrb pass-through) while o_sram_we[k] = 1 and shall be all-zero whenever o_sram_we[k] = 0, including SLVERR beats, non-selected banks, read-only and idle cycles; the controller shall do no other byte masking.",
+      "category": "functional",
+      "strength": "MUST",
+      "source_section": "2 F06; 5.7",
+      "feature_id": "F06",
+      "parameters_affected": [
+        "PARA_DATA_WD",
+        "PARA_NUM_BANKS"
+      ],
+      "ambiguity_score": 0.05,
+      "check_hint": "property",
+      "origin_class": "NORMATIVE",
+      "assumption_evidence": [],
+      "observability_hint": "PORT",
+      "observability": "PORT",
+      "observability_reason": "",
+      "status": "planned",
+      "status_reason": "",
+      "objective_ids": [
+        "VO-002"
+      ],
+      "rule_ids": [
+        "SBR-001",
+        "SBR-008"
+      ],
+      "test_ids": [
+        "TC-005",
+        "TC-001",
+        "TC-002",
+        "TC-010"
+      ],
+      "coverage_ids": [
+        "COV-004"
+      ]
+    },
+    {
+      "req_id": "REQ-026",
+      "text": "At the AW/AR handshake the address FSM shall set err = 1 if i_axsize > MAX_SIZE or (i_axaddr & (2**i_axsize \u2212 1)) != 0, latch it for the whole burst, attach it to every beat, and still generate all AxLEN+1 beats at a 2**AxSIZE stride; there shall be no sticky error state, so later aligned bursts return OKAY.",
+      "category": "functional",
+      "strength": "MUST",
+      "source_section": "5.3; 8",
+      "feature_id": "F07",
+      "parameters_affected": [
+        "PARA_DATA_WD"
+      ],
+      "ambiguity_score": 0.05,
+      "check_hint": "property",
+      "origin_class": "NORMATIVE",
+      "assumption_evidence": [],
+      "observability_hint": "INTERNAL",
+      "observability": "INTERNAL",
+      "observability_reason": "",
+      "status": "not_observable",
+      "status_reason": "Internal err latch; its effect is checked through REQ-027 and REQ-028.",
+      "objective_ids": [
+        "VO-005"
+      ],
+      "rule_ids": [
+        "SBR-005"
+      ],
+      "test_ids": [
+        "TC-006"
+      ],
+      "coverage_ids": [
+        "COV-005"
+      ]
+    },
+    {
+      "req_id": "REQ-027",
+      "text": "For a write burst with err = 1, every beat shall pop AWFIFO and WFIFO normally with o_sram_we and o_sram_wstrb held at 0 (SRAM not modified), and exactly one B response with BRESP = SLVERR and the burst's AWID shall be posted.",
+      "category": "functional",
+      "strength": "MUST",
+      "source_section": "5.7; 8",
+      "feature_id": "F07",
+      "parameters_affected": [],
+      "ambiguity_score": 0.05,
+      "check_hint": "property",
+      "origin_class": "NORMATIVE",
+      "assumption_evidence": [],
+      "observability_hint": "PORT",
+      "observability": "PORT",
+      "observability_reason": "",
+      "status": "planned",
+      "status_reason": "",
+      "objective_ids": [
+        "VO-005"
+      ],
+      "rule_ids": [
+        "SBR-005"
+      ],
+      "test_ids": [
+        "TC-006"
+      ],
+      "coverage_ids": [
+        "COV-005"
+      ]
+    },
+    {
+      "req_id": "REQ-028",
+      "text": "For a read burst with err = 1, every beat shall be issued like any other (o_sram_oe asserted), and all AxLEN+1 beats shall be returned with RRESP = SLVERR, the burst's ARID, the SRAM word on o_rdata and o_rlast on the final beat.",
+      "category": "functional",
+      "strength": "MUST",
+      "source_section": "5.8; 8",
+      "feature_id": "F07",
+      "parameters_affected": [],
+      "ambiguity_score": 0.05,
+      "check_hint": "property",
+      "origin_class": "NORMATIVE",
+      "assumption_evidence": [],
+      "observability_hint": "PORT",
+      "observability": "PORT",
+      "observability_reason": "",
+      "status": "planned",
+      "status_reason": "",
+      "objective_ids": [
+        "VO-005"
+      ],
+      "rule_ids": [
+        "SBR-005"
+      ],
+      "test_ids": [
+        "TC-006"
+      ],
+      "coverage_ids": [
+        "COV-005"
+      ]
+    },
+    {
+      "req_id": "REQ-029",
+      "text": "The AXI ID shall be preserved end to end: AWID captured at the AW handshake shall be carried in every AWFIFO entry and returned on o_bid; ARID shall be carried in every ARFIFO entry and returned on o_rid with each beat. B responses shall come back in AW acceptance order and R beats in AR acceptance order regardless of ID values (ID reuse allowed).",
+      "category": "functional",
+      "strength": "MUST",
+      "source_section": "5.10",
+      "feature_id": "F08",
+      "parameters_affected": [
+        "PARA_ID_WD"
+      ],
+      "ambiguity_score": 0.05,
+      "check_hint": "property",
+      "origin_class": "NORMATIVE",
+      "assumption_evidence": [],
+      "observability_hint": "PORT",
+      "observability": "PORT",
+      "observability_reason": "",
+      "status": "planned",
+      "status_reason": "",
+      "objective_ids": [
+        "VO-006"
+      ],
+      "rule_ids": [
+        "SBR-002",
+        "SBR-003"
+      ],
+      "test_ids": [
+        "TC-008",
+        "TC-010"
+      ],
+      "coverage_ids": [
+        "COV-008"
+      ]
+    },
+    {
+      "req_id": "REQ-030",
+      "text": "Each AXI channel shall be buffered by its own m_vlsi_fifo instance of depth PARA_FIFO_DEPTH: AWFIFO {last, err, id, addr} (PARA_ADDR_WD+PARA_ID_WD+2 bits), WFIFO {wstrb, wdata} (PARA_DATA_WD+PARA_DATA_WD/8), ARFIFO {last, err, id, addr} (PARA_ADDR_WD+PARA_ID_WD+2), RFIFO {id, rresp, rdata, last} (PARA_DATA_WD+PARA_ID_WD+3) and BFIFO {id, bresp} (PARA_ID_WD+2).",
+      "category": "functional",
+      "strength": "MUST",
+      "source_section": "5.12",
+      "feature_id": "F09",
+      "parameters_affected": [
+        "PARA_FIFO_DEPTH",
+        "PARA_ADDR_WD",
+        "PARA_DATA_WD",
+        "PARA_ID_WD"
+      ],
+      "ambiguity_score": 0.05,
+      "check_hint": "static",
+      "origin_class": "NORMATIVE",
+      "assumption_evidence": [],
+      "observability_hint": "INTERNAL",
+      "observability": "INTERNAL",
+      "observability_reason": "",
+      "status": "not_observable",
+      "status_reason": "FIFO instance structure.",
+      "objective_ids": [],
+      "rule_ids": [],
+      "test_ids": [],
+      "coverage_ids": []
+    },
+    {
+      "req_id": "REQ-031",
+      "text": "Each FIFO shall use registered read/write pointers of $clog2(PARA_FIFO_DEPTH)+1 bits wrapping modulo 2*PARA_FIFO_DEPTH; full shall be asserted when the pointer MSBs differ and the lower bits are equal, and empty when the pointers are equal.",
+      "category": "functional",
+      "strength": "MUST",
+      "source_section": "5.12",
+      "feature_id": "F09",
+      "parameters_affected": [
+        "PARA_FIFO_DEPTH"
+      ],
+      "ambiguity_score": 0.05,
+      "check_hint": "property",
+      "origin_class": "NORMATIVE",
+      "assumption_evidence": [],
+      "observability_hint": "UNKNOWN",
+      "observability": "INTERNAL",
+      "observability_reason": "",
+      "status": "not_observable",
+      "status_reason": "Internal FIFO pointer structure.",
+      "objective_ids": [],
+      "rule_ids": [],
+      "test_ids": [],
+      "coverage_ids": []
+    },
+    {
+      "req_id": "REQ-032",
+      "text": "A FIFO push while full shall be ignored even if a pop happens in the same cycle; a pop while empty shall be ignored while a simultaneous push is still performed; push and pop together on a FIFO that is neither full nor empty shall both take effect; the head entry shall be output combinationally and a pushed entry shall be visible at the head from the cycle after the push.",
+      "category": "functional",
+      "strength": "MUST",
+      "source_section": "5.12",
+      "feature_id": "F09",
+      "parameters_affected": [
+        "PARA_FIFO_DEPTH"
+      ],
+      "ambiguity_score": 0.05,
+      "check_hint": "property",
+      "origin_class": "NORMATIVE",
+      "assumption_evidence": [],
+      "observability_hint": "UNKNOWN",
+      "observability": "INTERNAL",
+      "observability_reason": "",
+      "status": "not_observable",
+      "status_reason": "Internal FIFO push/pop corner behavior; visible only through channel behavior covered elsewhere.",
+      "objective_ids": [],
+      "rule_ids": [],
+      "test_ids": [],
+      "coverage_ids": []
+    },
+    {
+      "req_id": "REQ-033",
+      "text": "The shared arbiter (instance u_vlsi_arbiter of m_vlsi_arbiter) shall grant write when only write requests, read when only read requests, and, when both request, write if arb_toggle = 0 and read if arb_toggle = 1.",
+      "category": "functional",
+      "strength": "MUST",
+      "source_section": "5.6",
+      "feature_id": "F10",
+      "parameters_affected": [],
+      "ambiguity_score": 0.0,
+      "check_hint": "property",
+      "origin_class": "NORMATIVE",
+      "assumption_evidence": [],
+      "observability_hint": "INTERNAL",
+      "observability": "INTERNAL",
+      "observability_reason": "",
+      "status": "not_observable",
+      "status_reason": "Internal arbiter grant.",
+      "objective_ids": [],
+      "rule_ids": [],
+      "test_ids": [],
+      "coverage_ids": []
+    },
+    {
+      "req_id": "REQ-034",
+      "text": "There shall be one shared arbiter instance (u_vlsi_arbiter) for all bank configurations; its 1-bit arb_toggle shall reset to 0 and invert exactly once at the end of every cycle in which at least one request is granted (write or read), including PARA_NUM_BANKS > 1 cycles where a write and a read issue to different banks.",
+      "category": "functional",
+      "strength": "MUST",
+      "source_section": "5.6; 5.1",
+      "feature_id": "F10",
+      "parameters_affected": [
+        "PARA_NUM_BANKS"
+      ],
+      "ambiguity_score": 0.05,
+      "check_hint": "property",
+      "origin_class": "NORMATIVE",
+      "assumption_evidence": [],
+      "observability_hint": "INTERNAL",
+      "observability": "INTERNAL",
+      "observability_reason": "",
+      "status": "not_observable",
+      "status_reason": "Internal arb_toggle.",
+      "objective_ids": [],
+      "rule_ids": [],
+      "test_ids": [],
+      "coverage_ids": []
+    },
+    {
+      "req_id": "REQ-035",
+      "text": "When PARA_NUM_BANKS > 1, bank_sel_wr and bank_sel_rd shall be computed every cycle on the AWFIFO and ARFIFO head addresses as addr[BYTE_LSB +: BANK_WD] ^ addr[PARA_ADDR_WD-1 -: BANK_WD]; each beat shall be routed individually, and o_sram_addr[k] shall carry the full un-hashed beat address.",
+      "category": "functional",
+      "strength": "MUST",
+      "source_section": "5.6",
+      "feature_id": "F11",
+      "parameters_affected": [
+        "PARA_NUM_BANKS",
+        "PARA_ADDR_WD",
+        "PARA_DATA_WD"
+      ],
+      "ambiguity_score": 0.05,
+      "check_hint": "property",
+      "origin_class": "ASSUMED",
+      "assumption_evidence": [
+        "spec/spec.md:144",
+        "spec/spec.md:170"
+      ],
+      "observability_hint": "PORT",
+      "observability": "PORT",
+      "observability_reason": "",
+      "status": "open",
+      "status_reason": "Bank hash is an assumption (OI-004); only PARA_NUM_BANKS=1 is run.",
+      "objective_ids": [],
+      "rule_ids": [],
+      "test_ids": [],
+      "coverage_ids": []
+    },
+    {
+      "req_id": "REQ-036",
+      "text": "When PARA_NUM_BANKS > 1, w_wr_issue shall be req_write & (bank_conflict ? arbiter write grant : 1) and w_rd_issue shall be req_read & (bank_conflict ? arbiter read grant : 1), with bank_conflict = req_write & req_read & (bank_sel_wr == bank_sel_rd); a write and a read to different banks shall both issue in the same cycle.",
+      "category": "functional",
+      "strength": "MUST",
+      "source_section": "5.6",
+      "feature_id": "F11",
+      "parameters_affected": [
+        "PARA_NUM_BANKS"
+      ],
+      "ambiguity_score": 0.05,
+      "check_hint": "property",
+      "origin_class": "NORMATIVE",
+      "assumption_evidence": [],
+      "observability_hint": "INTERNAL",
+      "observability": "INTERNAL",
+      "observability_reason": "",
+      "status": "not_observable",
+      "status_reason": "Multi-bank internal issue logic; not run at PARA_NUM_BANKS=1.",
+      "objective_ids": [],
+      "rule_ids": [],
+      "test_ids": [],
+      "coverage_ids": []
+    },
+    {
+      "req_id": "REQ-037",
+      "text": "When PARA_NUM_BANKS = 1, w_wr_issue shall equal the arbiter write grant and w_rd_issue the arbiter read grant (never both in a cycle), implemented as its own generate branch in m_vlsi_bank_arb that reuses the original grant expressions verbatim.",
+      "category": "functional",
+      "strength": "MUST",
+      "source_section": "5.6; 6",
+      "feature_id": "F10",
+      "parameters_affected": [
+        "PARA_NUM_BANKS"
+      ],
+      "ambiguity_score": 0.05,
+      "check_hint": "property",
+      "origin_class": "NORMATIVE",
+      "assumption_evidence": [],
+      "observability_hint": "INTERNAL",
+      "observability": "INTERNAL",
+      "observability_reason": "",
+      "status": "not_observable",
+      "status_reason": "Generate-branch structure; the single-bank behavior is checked through REQ-055 and REQ-056.",
+      "objective_ids": [],
+      "rule_ids": [],
+      "test_ids": [],
+      "coverage_ids": []
+    },
+    {
+      "req_id": "REQ-038",
+      "text": "req_write shall be ~awfifo_empty & ~wfifo_empty & (~awfifo_head.last | ~bfifo_full), so the write of a burst's last beat is not granted while BFIFO is full (a BFIFO pop in the same cycle does not release the hold), while non-last beats continue to issue.",
+      "category": "functional",
+      "strength": "MUST",
+      "source_section": "5.6; 5.13",
+      "feature_id": "F12",
+      "parameters_affected": [],
+      "ambiguity_score": 0.05,
+      "check_hint": "property",
+      "origin_class": "NORMATIVE",
+      "assumption_evidence": [],
+      "observability_hint": "INTERNAL",
+      "observability": "INTERNAL",
+      "observability_reason": "",
+      "status": "not_observable",
+      "status_reason": "Internal request generation; the BFIFO-full hold is exercised through B back-pressure (TC-007) and REQ-050.",
+      "objective_ids": [],
+      "rule_ids": [],
+      "test_ids": [],
+      "coverage_ids": []
+    },
+    {
+      "req_id": "REQ-039",
+      "text": "req_read shall be ~arfifo_empty & ~rfifo_full & ~reg_rd_pending, so no read issues while RFIFO is full or a read is pending, and at most one SRAM read is in flight system-wide, even with several banks.",
+      "category": "functional",
+      "strength": "MUST",
+      "source_section": "5.6; 5.8",
+      "feature_id": "F13",
+      "parameters_affected": [
+        "PARA_NUM_BANKS"
+      ],
+      "ambiguity_score": 0.05,
+      "check_hint": "property",
+      "origin_class": "NORMATIVE",
+      "assumption_evidence": [],
+      "observability_hint": "INTERNAL",
+      "observability": "INTERNAL",
+      "observability_reason": "",
+      "status": "not_observable",
+      "status_reason": "Internal request generation; the read rate is checked through REQ-055.",
+      "objective_ids": [],
+      "rule_ids": [],
+      "test_ids": [],
+      "coverage_ids": []
+    },
+    {
+      "req_id": "REQ-040",
+      "text": "i_wlast shall be accepted but ignored; the address FSM shall track the last beat of each burst.",
+      "category": "functional",
+      "strength": "MUST",
+      "source_section": "2 F15; 5.5",
+      "feature_id": "F15",
+      "parameters_affected": [],
+      "ambiguity_score": 0.05,
+      "check_hint": "property",
+      "origin_class": "NORMATIVE",
+      "assumption_evidence": [],
+      "observability_hint": "PORT",
+      "observability": "PORT",
+      "observability_reason": "",
+      "status": "planned",
+      "status_reason": "",
+      "objective_ids": [
+        "VO-002"
+      ],
+      "rule_ids": [],
+      "test_ids": [
+        "TC-010",
+        "TC-001",
+        "TC-002",
+        "TC-005"
+      ],
+      "coverage_ids": []
+    },
+    {
+      "req_id": "REQ-041",
+      "text": "While i_rst_n = 0 and after reset until the first transaction, both address FSMs shall be in S_IDLE with counter = 0 and latched err = 0, all five FIFOs empty, arb_toggle = 0 and reg_rd_pending = 0; therefore o_awready = o_arready = o_wready = 1 (also during reset), o_bvalid = o_rvalid = 0, and o_sram_we = o_sram_oe = 0, o_sram_addr = 0 and o_sram_wstrb = 0 for every bank.",
+      "category": "functional",
+      "strength": "MUST",
+      "source_section": "5.1",
+      "feature_id": "",
+      "parameters_affected": [],
+      "ambiguity_score": 0.1,
+      "check_hint": "property",
+      "origin_class": "ASSUMED",
+      "assumption_evidence": [
+        "spec/spec.md:90",
+        "spec/spec.md:103",
+        "spec/spec.md:121",
+        "spec/spec.md:144"
+      ],
+      "observability_hint": "PORT",
+      "observability": "PORT",
+      "observability_reason": "",
+      "status": "open",
+      "status_reason": "Reset and idle values are assumptions (OI-002); soft checks only.",
+      "objective_ids": [
+        "VO-001"
+      ],
+      "rule_ids": [
+        "SBR-009"
+      ],
+      "test_ids": [],
+      "coverage_ids": []
+    },
+    {
+      "req_id": "REQ-042",
+      "text": "After reset, o_bid, o_bresp, o_rid, o_rdata, o_rresp, o_rlast and o_sram_wdata shall read 0 (FIFO storage cleared), and a transaction in progress when reset asserts shall be discarded without producing a response.",
+      "category": "functional",
+      "strength": "MUST",
+      "source_section": "5.1",
+      "feature_id": "",
+      "parameters_affected": [],
+      "ambiguity_score": 0.25,
+      "check_hint": "property",
+      "origin_class": "ASSUMED",
+      "assumption_evidence": [
+        "spec/spec.md:110",
+        "spec/spec.md:111",
+        "spec/spec.md:131",
+        "spec/spec.md:132",
+        "spec/spec.md:133",
+        "spec/spec.md:135",
+        "spec/spec.md:145",
+        "spec/spec.md:192"
+      ],
+      "observability_hint": "PORT",
+      "observability": "PORT",
+      "observability_reason": "",
+      "status": "open",
+      "status_reason": "Reset payload values are assumptions (OI-002); soft checks only.",
+      "objective_ids": [
+        "VO-001"
+      ],
+      "rule_ids": [
+        "SBR-009"
+      ],
+      "test_ids": [],
+      "coverage_ids": []
+    },
+    {
+      "req_id": "REQ-043",
+      "text": "In the handshake cycle c0 the address FSM shall capture i_axaddr, i_axlen, i_axburst, i_axid and i_axsize, load the beat counter with i_axlen + 1, compute and latch err and the WRAP window, and move to S_ADDR at the end of c0.",
+      "category": "functional",
+      "strength": "MUST",
+      "source_section": "5.2",
+      "feature_id": "F02",
+      "parameters_affected": [
+        "PARA_LEN_WD"
+      ],
+      "ambiguity_score": 0.05,
+      "check_hint": "property",
+      "origin_class": "NORMATIVE",
+      "assumption_evidence": [],
+      "observability_hint": "INTERNAL",
+      "observability": "INTERNAL",
+      "observability_reason": "",
+      "status": "not_observable",
+      "status_reason": "Internal FSM capture; its effect is checked through the timing and address rules.",
+      "objective_ids": [],
+      "rule_ids": [],
+      "test_ids": [],
+      "coverage_ids": []
+    },
+    {
+      "req_id": "REQ-044",
+      "text": "In every S_ADDR cycle with counter \u2260 0 and its FIFO not full (current-cycle flag), the address FSM shall push {last, err, id, addr} with last = 1 exactly when counter == 1, decrement the counter and update the address; when the FIFO is full it shall stall with no push and no counter or address change (a same-cycle pop does not allow a push); in the first S_ADDR cycle with counter == 0 it shall push nothing and return to S_IDLE.",
+      "category": "functional",
+      "strength": "MUST",
+      "source_section": "5.2",
+      "feature_id": "F03",
+      "parameters_affected": [
+        "PARA_FIFO_DEPTH"
+      ],
+      "ambiguity_score": 0.05,
+      "check_hint": "property",
+      "origin_class": "NORMATIVE",
+      "assumption_evidence": [],
+      "observability_hint": "INTERNAL",
+      "observability": "INTERNAL",
+      "observability_reason": "",
+      "status": "not_observable",
+      "status_reason": "Internal FSM push rules; its effect is checked through REQ-057 and the address rules.",
+      "objective_ids": [],
+      "rule_ids": [],
+      "test_ids": [],
+      "coverage_ids": []
+    },
+    {
+      "req_id": "REQ-045",
+      "text": "In a cycle where w_wr_issue = 1, AWFIFO and WFIFO shall both be popped at the end of the cycle, and bank k = bank_sel_wr (0 when single-bank) shall be driven combinationally with o_sram_addr[k] = AWFIFO head address, o_sram_wdata[k] = WFIFO head data and o_sram_we[k] = 1 unless the AWFIFO head err = 1; W beats shall pair with AW beat entries strictly in FIFO order.",
+      "category": "functional",
+      "strength": "MUST",
+      "source_section": "5.7; 5.5",
+      "feature_id": "F14",
+      "parameters_affected": [
+        "PARA_NUM_BANKS"
+      ],
+      "ambiguity_score": 0.05,
+      "check_hint": "property",
+      "origin_class": "NORMATIVE",
+      "assumption_evidence": [
+        "spec/spec.md:144"
+      ],
+      "observability_hint": "PORT",
+      "observability": "PORT",
+      "observability_reason": "",
+      "status": "planned",
+      "status_reason": "The write issue behavior is stated normatively; the assumption at spec.md:144 concerns only the SRAM port conventions.",
+      "objective_ids": [
+        "VO-002"
+      ],
+      "rule_ids": [
+        "SBR-001"
+      ],
+      "test_ids": [
+        "TC-001",
+        "TC-002",
+        "TC-005",
+        "TC-010"
+      ],
+      "coverage_ids": []
+    },
+    {
+      "req_id": "REQ-046",
+      "text": "When a write issues with AWFIFO head last = 1, {id, err ? SLVERR : OKAY} shall be pushed into BFIFO at the end of that cycle.",
+      "category": "functional",
+      "strength": "MUST",
+      "source_section": "5.7",
+      "feature_id": "F12",
+      "parameters_affected": [],
+      "ambiguity_score": 0.0,
+      "check_hint": "property",
+      "origin_class": "NORMATIVE",
+      "assumption_evidence": [],
+      "observability_hint": "UNKNOWN",
+      "observability": "PORT",
+      "observability_reason": "",
+      "status": "planned",
+      "status_reason": "",
+      "objective_ids": [
+        "VO-002"
+      ],
+      "rule_ids": [
+        "SBR-002"
+      ],
+      "test_ids": [
+        "TC-001",
+        "TC-002",
+        "TC-005",
+        "TC-010"
+      ],
+      "coverage_ids": []
+    },
+    {
+      "req_id": "REQ-047",
+      "text": "In a cycle t where w_rd_issue = 1, o_sram_oe[k] = 1 and o_sram_addr[k] = ARFIFO head address for k = bank_sel_rd, ARFIFO shall be popped at the end of t, and reg_rd_pending shall be set with the head's id, last, err and the bank index captured.",
+      "category": "functional",
+      "strength": "MUST",
+      "source_section": "5.8",
+      "feature_id": "F13",
+      "parameters_affected": [
+        "PARA_NUM_BANKS"
+      ],
+      "ambiguity_score": 0.0,
+      "check_hint": "property",
+      "origin_class": "NORMATIVE",
+      "assumption_evidence": [
+        "spec/spec.md:144"
+      ],
+      "observability_hint": "PORT",
+      "observability": "PORT",
+      "observability_reason": "",
+      "status": "planned",
+      "status_reason": "The read issue behavior is stated normatively; the assumption at spec.md:144 concerns only the SRAM port conventions.",
+      "objective_ids": [
+        "VO-003"
+      ],
+      "rule_ids": [],
+      "test_ids": [
+        "TC-001",
+        "TC-002",
+        "TC-010"
+      ],
+      "coverage_ids": []
+    },
+    {
+      "req_id": "REQ-048",
+      "text": "In cycle t+1 after a read issue, {id, err ? SLVERR : OKAY, i_sram_rdata[reg_rd_bank_d], last} shall be pushed into RFIFO (always succeeding) and reg_rd_pending shall clear at the end of t+1.",
+      "category": "functional",
+      "strength": "MUST",
+      "source_section": "5.8",
+      "feature_id": "F13",
+      "parameters_affected": [
+        "PARA_NUM_BANKS"
+      ],
+      "ambiguity_score": 0.0,
+      "check_hint": "property",
+      "origin_class": "NORMATIVE",
+      "assumption_evidence": [],
+      "observability_hint": "PORT",
+      "observability": "PORT",
+      "observability_reason": "",
+      "status": "planned",
+      "status_reason": "",
+      "objective_ids": [
+        "VO-003"
+      ],
+      "rule_ids": [
+        "SBR-003"
+      ],
+      "test_ids": [
+        "TC-001",
+        "TC-002",
+        "TC-010"
+      ],
+      "coverage_ids": []
+    },
+    {
+      "req_id": "REQ-049",
+      "text": "o_sram_addr[k] shall be 0 in any cycle where bank k has neither o_sram_we[k] nor o_sram_oe[k] asserted, and o_sram_wdata[k] is don't-care while o_sram_we[k] = 0.",
+      "category": "functional",
+      "strength": "MUST",
+      "source_section": "4 Interface / SRAM interface",
+      "feature_id": "F11",
+      "parameters_affected": [
+        "PARA_NUM_BANKS"
+      ],
+      "ambiguity_score": 0.25,
+      "check_hint": "property",
+      "origin_class": "ASSUMED",
+      "assumption_evidence": [
+        "spec/spec.md:144"
+      ],
+      "observability_hint": "PORT",
+      "observability": "PORT",
+      "observability_reason": "",
+      "status": "open",
+      "status_reason": "Idle o_sram_addr = 0 is an assumption (OI-002); soft check only.",
+      "objective_ids": [],
+      "rule_ids": [
+        "SBR-009"
+      ],
+      "test_ids": [],
+      "coverage_ids": []
+    },
+    {
+      "req_id": "REQ-050",
+      "text": "FIFO pushes and pops shall never overflow or underflow: address FSMs push only when their FIFO is not full, W is accepted only when WFIFO is not full, the last write beat is held off while BFIFO is full, a read issues only when RFIFO is not full and no read is pending, and B/R pops happen only on handshake.",
+      "category": "functional",
+      "strength": "MUST",
+      "source_section": "8 Overflow protection",
+      "feature_id": "F09",
+      "parameters_affected": [
+        "PARA_FIFO_DEPTH"
+      ],
+      "ambiguity_score": 0.0,
+      "check_hint": "property",
+      "origin_class": "NORMATIVE",
+      "assumption_evidence": [],
+      "observability_hint": "UNKNOWN",
+      "observability": "PORT",
+      "observability_reason": "",
+      "status": "planned",
+      "status_reason": "",
+      "objective_ids": [
+        "VO-007"
+      ],
+      "rule_ids": [],
+      "test_ids": [
+        "TC-007",
+        "TC-010"
+      ],
+      "coverage_ids": [
+        "COV-006"
+      ]
+    },
+    {
+      "req_id": "REQ-051",
+      "text": "The design hierarchy shall be kept as prescribed, with instance names per the VLSIT rule u_vlsi_<function>[_<index>]: m_vlsi_axi4_sram instantiates u_vlsi_axfsm_0 (AW) and u_vlsi_axfsm_1 (AR) of m_vlsi_axfsm, u_vlsi_fifo_0..4 of m_vlsi_fifo (0 = AWFIFO, 1 = WFIFO, 2 = ARFIFO, 3 = RFIFO, 4 = BFIFO), u_vlsi_arbiter of m_vlsi_arbiter and u_vlsi_sram_misc of m_vlsi_sram_misc, which instantiates u_vlsi_axi_fifopack, u_vlsi_bank_arb and u_vlsi_sram_fanout; the split of m_vlsi_sram_misc shall cause no change in behaviour or timing.",
+      "category": "functional",
+      "strength": "MUST",
+      "source_section": "6 Microarchitecture",
+      "feature_id": "",
+      "parameters_affected": [],
+      "ambiguity_score": 0.05,
+      "check_hint": "static",
+      "origin_class": "NORMATIVE",
+      "assumption_evidence": [],
+      "observability_hint": "INTERNAL",
+      "observability": "INTERNAL",
+      "observability_reason": "",
+      "status": "not_observable",
+      "status_reason": "Hierarchy and instance names.",
+      "objective_ids": [],
+      "rule_ids": [],
+      "test_ids": [],
+      "coverage_ids": []
+    },
+    {
+      "req_id": "REQ-052",
+      "text": "With no contention and W data already in WFIFO, the first beat of an AW/AR burst handshaken in c0 shall be pushed at the end of c1 and visible at the FIFO head in c2, so the first o_sram_we / o_sram_oe occurs no earlier than c2; a W beat handshaken in cycle n shall be available for issue in n+1.",
+      "category": "timing",
+      "strength": "MUST",
+      "source_section": "7",
+      "feature_id": "F09",
+      "parameters_affected": [],
+      "ambiguity_score": 0.05,
+      "check_hint": "property",
+      "origin_class": "NORMATIVE",
+      "assumption_evidence": [],
+      "observability_hint": "PORT",
+      "observability": "PORT",
+      "observability_reason": "",
+      "status": "planned",
+      "status_reason": "",
+      "objective_ids": [
+        "VO-008"
+      ],
+      "rule_ids": [
+        "SBR-007"
+      ],
+      "test_ids": [
+        "TC-011"
+      ],
+      "coverage_ids": []
+    },
+    {
+      "req_id": "REQ-053",
+      "text": "When the last write beat of a burst issues in cycle t, o_bvalid shall be asserted in t+1; for a single-beat write the minimum AW handshake \u2192 o_bvalid latency shall be c3.",
+      "category": "timing",
+      "strength": "MUST",
+      "source_section": "7",
+      "feature_id": "F12",
+      "parameters_affected": [],
+      "ambiguity_score": 0.05,
+      "check_hint": "property",
+      "origin_class": "NORMATIVE",
+      "assumption_evidence": [],
+      "observability_hint": "PORT",
+      "observability": "PORT",
+      "observability_reason": "",
+      "status": "planned",
+      "status_reason": "",
+      "objective_ids": [
+        "VO-008"
+      ],
+      "rule_ids": [
+        "SBR-007"
+      ],
+      "test_ids": [
+        "TC-011"
+      ],
+      "coverage_ids": []
+    },
+    {
+      "req_id": "REQ-054",
+      "text": "For a read issued in cycle t (o_sram_oe in t), the SRAM data shall be sampled and pushed into RFIFO in t+1 and o_rvalid shall be asserted in t+2; the minimum AR handshake \u2192 first o_rvalid latency shall be c4.",
+      "category": "timing",
+      "strength": "MUST",
+      "source_section": "7",
+      "feature_id": "F13",
+      "parameters_affected": [],
+      "ambiguity_score": 0.05,
+      "check_hint": "property",
+      "origin_class": "NORMATIVE",
+      "assumption_evidence": [],
+      "observability_hint": "PORT",
+      "observability": "PORT",
+      "observability_reason": "",
+      "status": "planned",
+      "status_reason": "",
+      "objective_ids": [
+        "VO-008"
+      ],
+      "rule_ids": [
+        "SBR-007"
+      ],
+      "test_ids": [
+        "TC-011"
+      ],
+      "coverage_ids": []
+    },
+    {
+      "req_id": "REQ-055",
+      "text": "Reads shall issue at most once per 2 cycles (0.5 beat/cycle) independent of PARA_NUM_BANKS; with continuous back-to-back reads and RFIFO never full, reads shall issue every 2 cycles.",
+      "category": "timing",
+      "strength": "MUST",
+      "source_section": "7; 5.13",
+      "feature_id": "F13",
+      "parameters_affected": [
+        "PARA_NUM_BANKS"
+      ],
+      "ambiguity_score": 0.05,
+      "check_hint": "property",
+      "origin_class": "NORMATIVE",
+      "assumption_evidence": [],
+      "observability_hint": "UNKNOWN",
+      "observability": "PORT",
+      "observability_reason": "",
+      "status": "planned",
+      "status_reason": "",
+      "objective_ids": [
+        "VO-008"
+      ],
+      "rule_ids": [
+        "SBR-007"
+      ],
+      "test_ids": [
+        "TC-011"
+      ],
+      "coverage_ids": []
+    },
+    {
+      "req_id": "REQ-056",
+      "text": "Writes shall be able to issue at up to 1 beat per cycle.",
+      "category": "timing",
+      "strength": "MUST",
+      "source_section": "7; 2 F14",
+      "feature_id": "F14",
+      "parameters_affected": [],
+      "ambiguity_score": 0.05,
+      "check_hint": "cover",
+      "origin_class": "NORMATIVE",
+      "assumption_evidence": [],
+      "observability_hint": "UNKNOWN",
+      "observability": "PORT",
+      "observability_reason": "",
+      "status": "planned",
+      "status_reason": "",
+      "objective_ids": [
+        "VO-008"
+      ],
+      "rule_ids": [],
+      "test_ids": [
+        "TC-011"
+      ],
+      "coverage_ids": []
+    },
+    {
+      "req_id": "REQ-057",
+      "text": "Each address FSM shall generate 1 beat per cycle while its FIFO is not full; for a burst with AxLEN = L and no back-pressure it shall push in c1\u2026c(L+1), hold AxREADY = 0 in c1\u2026c(L+2) and be able to accept the next burst in c(L+3) (minimum interval AxLEN + 3 cycles).",
+      "category": "timing",
+      "strength": "MUST",
+      "source_section": "7; 5.2",
+      "feature_id": "F03",
+      "parameters_affected": [
+        "PARA_LEN_WD"
+      ],
+      "ambiguity_score": 0.05,
+      "check_hint": "sequence",
+      "origin_class": "NORMATIVE",
+      "assumption_evidence": [],
+      "observability_hint": "UNKNOWN",
+      "observability": "PORT",
+      "observability_reason": "",
+      "status": "planned",
+      "status_reason": "",
+      "objective_ids": [
+        "VO-008"
+      ],
+      "rule_ids": [
+        "SBR-007"
+      ],
+      "test_ids": [
+        "TC-011"
+      ],
+      "coverage_ids": []
+    },
+    {
+      "req_id": "REQ-058",
+      "text": "C1: PARA_DATA_WD shall be a multiple of 8 with a power-of-two number of byte lanes: PARA_DATA_WD % 8 == 0 && ((PARA_DATA_WD/8) & (PARA_DATA_WD/8 - 1)) == 0.",
+      "category": "constraint",
+      "strength": "MUST",
+      "source_section": "3 Elaboration constraints",
+      "feature_id": "F04",
+      "parameters_affected": [
+        "PARA_DATA_WD"
+      ],
+      "ambiguity_score": 0.0,
+      "check_hint": "static",
+      "origin_class": "ASSUMED",
+      "assumption_evidence": [
+        "spec/spec.md:40"
+      ],
+      "observability_hint": "ELAB_CONFIG",
+      "observability": "ELAB_CONFIG",
+      "observability_reason": "",
+      "status": "open",
+      "status_reason": "C1 is an assumption (OI-004); the default configuration satisfies it.",
+      "objective_ids": [],
+      "rule_ids": [],
+      "test_ids": [],
+      "coverage_ids": []
+    },
+    {
+      "req_id": "REQ-059",
+      "text": "C2: PARA_DATA_WD shall be within 8 \u2026 1024: PARA_DATA_WD >= 8 && PARA_DATA_WD <= 1024.",
+      "category": "constraint",
+      "strength": "MUST",
+      "source_section": "3 Elaboration constraints",
+      "feature_id": "F04",
+      "parameters_affected": [
+        "PARA_DATA_WD"
+      ],
+      "ambiguity_score": 0.2,
+      "check_hint": "static",
+      "origin_class": "ASSUMED",
+      "assumption_evidence": [
+        "spec/spec.md:56"
+      ],
+      "observability_hint": "ELAB_CONFIG",
+      "observability": "ELAB_CONFIG",
+      "observability_reason": "",
+      "status": "open",
+      "status_reason": "C2 is an assumption (OI-004); the default configuration satisfies it.",
+      "objective_ids": [],
+      "rule_ids": [],
+      "test_ids": [],
+      "coverage_ids": []
+    },
+    {
+      "req_id": "REQ-060",
+      "text": "C3: PARA_FIFO_DEPTH shall be a power of 2 and at least 2: PARA_FIFO_DEPTH >= 2 && (PARA_FIFO_DEPTH & (PARA_FIFO_DEPTH - 1)) == 0.",
+      "category": "constraint",
+      "strength": "MUST",
+      "source_section": "3 Elaboration constraints",
+      "feature_id": "F09",
+      "parameters_affected": [
+        "PARA_FIFO_DEPTH"
+      ],
+      "ambiguity_score": 0.0,
+      "check_hint": "static",
+      "origin_class": "CONSTRAINT",
+      "assumption_evidence": [],
+      "observability_hint": "ELAB_CONFIG",
+      "observability": "ELAB_CONFIG",
+      "observability_reason": "",
+      "status": "excluded",
+      "status_reason": "Legal-parameter constraint; the default PARA_FIFO_DEPTH=8 satisfies it.",
+      "objective_ids": [],
+      "rule_ids": [],
+      "test_ids": [],
+      "coverage_ids": []
+    },
+    {
+      "req_id": "REQ-061",
+      "text": "C4: PARA_NUM_BANKS shall be a power of 2 and at least 1: PARA_NUM_BANKS >= 1 && (PARA_NUM_BANKS & (PARA_NUM_BANKS - 1)) == 0.",
+      "category": "constraint",
+      "strength": "MUST",
+      "source_section": "3 Elaboration constraints",
+      "feature_id": "F11",
+      "parameters_affected": [
+        "PARA_NUM_BANKS"
+      ],
+      "ambiguity_score": 0.0,
+      "check_hint": "static",
+      "origin_class": "CONSTRAINT",
+      "assumption_evidence": [],
+      "observability_hint": "ELAB_CONFIG",
+      "observability": "ELAB_CONFIG",
+      "observability_reason": "",
+      "status": "excluded",
+      "status_reason": "Legal-parameter constraint; the default PARA_NUM_BANKS=1 satisfies it.",
+      "objective_ids": [],
+      "rule_ids": [],
+      "test_ids": [],
+      "coverage_ids": []
+    },
+    {
+      "req_id": "REQ-062",
+      "text": "C5: with multiple banks the address shall be wide enough for the bank hash: PARA_NUM_BANKS > 1 -> PARA_ADDR_WD >= BYTE_LSB + $clog2(PARA_NUM_BANKS).",
+      "category": "constraint",
+      "strength": "MUST",
+      "source_section": "3 Elaboration constraints",
+      "feature_id": "F11",
+      "parameters_affected": [
+        "PARA_NUM_BANKS",
+        "PARA_ADDR_WD",
+        "PARA_DATA_WD"
+      ],
+      "ambiguity_score": 0.0,
+      "check_hint": "static",
+      "origin_class": "ASSUMED",
+      "assumption_evidence": [
+        "spec/spec.md:170"
+      ],
+      "observability_hint": "ELAB_CONFIG",
+      "observability": "ELAB_CONFIG",
+      "observability_reason": "",
+      "status": "open",
+      "status_reason": "C5 is an assumption (OI-004); it applies only to PARA_NUM_BANKS>1, which is not run.",
+      "objective_ids": [],
+      "rule_ids": [],
+      "test_ids": [],
+      "coverage_ids": []
+    },
+    {
+      "req_id": "REQ-063",
+      "text": "C6: PARA_ADDR_WD shall be wider than the byte offset: PARA_ADDR_WD > BYTE_LSB.",
+      "category": "constraint",
+      "strength": "MUST",
+      "source_section": "3 Elaboration constraints",
+      "feature_id": "F04",
+      "parameters_affected": [
+        "PARA_ADDR_WD",
+        "PARA_DATA_WD"
+      ],
+      "ambiguity_score": 0.0,
+      "check_hint": "static",
+      "origin_class": "ASSUMED",
+      "assumption_evidence": [
+        "spec/spec.md:170"
+      ],
+      "observability_hint": "ELAB_CONFIG",
+      "observability": "ELAB_CONFIG",
+      "observability_reason": "",
+      "status": "open",
+      "status_reason": "C6 is an assumption (OI-004); the default configuration satisfies it.",
+      "objective_ids": [],
+      "rule_ids": [],
+      "test_ids": [],
+      "coverage_ids": []
+    },
+    {
+      "req_id": "REQ-064",
+      "text": "C7: PARA_ID_WD shall be at least 1: PARA_ID_WD >= 1.",
+      "category": "constraint",
+      "strength": "MUST",
+      "source_section": "3 Elaboration constraints",
+      "feature_id": "F04",
+      "parameters_affected": [
+        "PARA_ID_WD"
+      ],
+      "ambiguity_score": 0.0,
+      "check_hint": "static",
+      "origin_class": "CONSTRAINT",
+      "assumption_evidence": [],
+      "observability_hint": "ELAB_CONFIG",
+      "observability": "ELAB_CONFIG",
+      "observability_reason": "",
+      "status": "excluded",
+      "status_reason": "Legal-parameter constraint; the default PARA_ID_WD=4 satisfies it.",
+      "objective_ids": [],
+      "rule_ids": [],
+      "test_ids": [],
+      "coverage_ids": []
+    },
+    {
+      "req_id": "REQ-065",
+      "text": "C8: PARA_LEN_WD shall be within 1 \u2026 8: PARA_LEN_WD >= 1 && PARA_LEN_WD <= 8.",
+      "category": "constraint",
+      "strength": "MUST",
+      "source_section": "3 Elaboration constraints",
+      "feature_id": "F03",
+      "parameters_affected": [
+        "PARA_LEN_WD"
+      ],
+      "ambiguity_score": 0.2,
+      "check_hint": "static",
+      "origin_class": "ASSUMED",
+      "assumption_evidence": [
+        "spec/spec.md:62"
+      ],
+      "observability_hint": "ELAB_CONFIG",
+      "observability": "ELAB_CONFIG",
+      "observability_reason": "",
+      "status": "open",
+      "status_reason": "C8 is an assumption (OI-004); the default configuration satisfies it.",
+      "objective_ids": [],
+      "rule_ids": [],
+      "test_ids": [],
+      "coverage_ids": []
+    },
+    {
+      "req_id": "REQ-066",
+      "text": "The design shall meet a target i_clk frequency of 100 MHz (10 ns period) at the default parameters, checked in synthesis: the combinational issue path (FIFO head \u2192 request generation, bank hash and arbitration \u2192 SRAM control/data outputs) and the READY paths shall fit within one cycle without adding pipeline stages or changing the specified cycle behaviour.",
+      "category": "timing",
+      "strength": "MUST",
+      "source_section": "7 Synthesis constraint; 4 Clock",
+      "feature_id": "",
+      "parameters_affected": [
+        "PARA_DATA_WD",
+        "PARA_ADDR_WD",
+        "PARA_ID_WD",
+        "PARA_LEN_WD",
+        "PARA_FIFO_DEPTH",
+        "PARA_NUM_BANKS"
+      ],
+      "ambiguity_score": 0.15,
+      "check_hint": null,
+      "origin_class": "NORMATIVE",
+      "assumption_evidence": [],
+      "observability_hint": "PORT",
+      "observability": "INTERNAL",
+      "observability_reason": "",
+      "status": "not_observable",
+      "status_reason": "Synthesis timing target, not checked in simulation.",
+      "objective_ids": [],
+      "rule_ids": [],
+      "test_ids": [],
+      "coverage_ids": []
+    }
+  ],
+  "objectives": [
+    {
+      "id": "VO-001",
+      "title": "Reset and idle state, ready and valid defaults",
+      "requirement_ids": [
+        "REQ-001",
+        "REQ-002",
+        "REQ-041",
+        "REQ-042"
+      ],
+      "status": "approved"
+    },
+    {
+      "id": "VO-002",
+      "title": "Write path data integrity with strobes and one B response per burst",
+      "requirement_ids": [
+        "REQ-004",
+        "REQ-005",
+        "REQ-010",
+        "REQ-014",
+        "REQ-024",
+        "REQ-025",
+        "REQ-045",
+        "REQ-046",
+        "REQ-040"
+      ],
+      "status": "approved"
+    },
+    {
+      "id": "VO-003",
+      "title": "Read path returns the full word, RLAST on the last beat, with the correct beat count",
+      "requirement_ids": [
+        "REQ-007",
+        "REQ-012",
+        "REQ-014",
+        "REQ-047",
+        "REQ-048"
+      ],
+      "status": "approved"
+    },
+    {
+      "id": "VO-004",
+      "title": "Burst address sequencing (FIXED, INCR, WRAP, 4 KB crossing, lengths 1..256)",
+      "requirement_ids": [
+        "REQ-020",
+        "REQ-021",
+        "REQ-022"
+      ],
+      "status": "approved"
+    },
+    {
+      "id": "VO-005",
+      "title": "Alignment and size errors return SLVERR without modifying the SRAM",
+      "requirement_ids": [
+        "REQ-013",
+        "REQ-026",
+        "REQ-027",
+        "REQ-028"
+      ],
+      "status": "approved"
+    },
+    {
+      "id": "VO-006",
+      "title": "ID preservation and in-order responses",
+      "requirement_ids": [
+        "REQ-029"
+      ],
+      "status": "approved"
+    },
+    {
+      "id": "VO-007",
+      "title": "AXI handshake rules, back-pressure and no overflow",
+      "requirement_ids": [
+        "REQ-009",
+        "REQ-011",
+        "REQ-012",
+        "REQ-019",
+        "REQ-050"
+      ],
+      "status": "approved"
+    },
+    {
+      "id": "VO-008",
+      "title": "Timing, latency and throughput, and SRAM we/oe exclusivity",
+      "requirement_ids": [
+        "REQ-018",
+        "REQ-052",
+        "REQ-053",
+        "REQ-054",
+        "REQ-055",
+        "REQ-056",
+        "REQ-057"
+      ],
+      "status": "approved"
+    }
+  ],
+  "scoreboard_rules": [
+    {
+      "id": "SBR-001",
+      "description": "Byte-addressed memory model: a write beat updates only the byte lanes selected by WSTRB of the full word; a read returns the full word; the low BYTE_LSB bits are ignored.",
+      "requirement_ids": [
+        "REQ-024",
+        "REQ-025",
+        "REQ-045",
+        "REQ-017"
+      ],
+      "source": "spec \u00a74 narrow transfers and write issue",
+      "in_smoke": true,
+      "implementation": "todo"
+    },
+    {
+      "id": "SBR-002",
+      "description": "Exactly one B response per accepted AW burst, with the AWID, in AW order; BRESP is OKAY or SLVERR only.",
+      "requirement_ids": [
+        "REQ-014",
+        "REQ-013",
+        "REQ-046",
+        "REQ-029"
+      ],
+      "source": "spec \u00a74 response generation",
+      "in_smoke": true,
+      "implementation": "todo"
+    },
+    {
+      "id": "SBR-003",
+      "description": "Exactly AxLEN+1 R beats per accepted AR burst, in AR order, with the ARID, the memory data, and RLAST only on the last beat.",
+      "requirement_ids": [
+        "REQ-014",
+        "REQ-048",
+        "REQ-007",
+        "REQ-012",
+        "REQ-029"
+      ],
+      "source": "spec \u00a74 read path",
+      "in_smoke": true,
+      "implementation": "todo"
+    },
+    {
+      "id": "SBR-004",
+      "description": "Beat address sequence: FIXED keeps the address; INCR adds 2**AxSIZE modulo 2**PARA_ADDR_WD with no 4 KB check; WRAP wraps within the size*len window.",
+      "requirement_ids": [
+        "REQ-020",
+        "REQ-021",
+        "REQ-022"
+      ],
+      "source": "spec address generation section",
+      "in_smoke": false,
+      "implementation": "todo"
+    },
+    {
+      "id": "SBR-005",
+      "description": "Error prediction: AxSIZE > MAX_SIZE or misaligned start address gives SLVERR on all beats of the burst; a write error leaves the memory unmodified; the next aligned burst is OKAY.",
+      "requirement_ids": [
+        "REQ-026",
+        "REQ-027",
+        "REQ-028"
+      ],
+      "source": "spec error handling section",
+      "in_smoke": false,
+      "implementation": "todo"
+    },
+    {
+      "id": "SBR-006",
+      "description": "Handshake stability and READY rules: o_awready/o_arready/o_wready do not depend on VALID; B and R payload stay stable until accepted.",
+      "requirement_ids": [
+        "REQ-009",
+        "REQ-010",
+        "REQ-011",
+        "REQ-012"
+      ],
+      "source": "spec \u00a75 handshake rules",
+      "in_smoke": false,
+      "implementation": "todo"
+    },
+    {
+      "id": "SBR-007",
+      "description": "Latency model: single-beat write AW handshake to o_bvalid is at least 3 cycles; AR handshake to first o_rvalid is at least 4 cycles; reads issue at most every 2 cycles; AxREADY low for the burst duration.",
+      "requirement_ids": [
+        "REQ-052",
+        "REQ-053",
+        "REQ-054",
+        "REQ-055",
+        "REQ-057"
+      ],
+      "source": "spec timing section",
+      "in_smoke": false,
+      "implementation": "todo"
+    },
+    {
+      "id": "SBR-008",
+      "description": "o_sram_we and o_sram_oe are never both 1 for a bank; o_sram_wstrb is zero whenever o_sram_we is 0.",
+      "requirement_ids": [
+        "REQ-018",
+        "REQ-025"
+      ],
+      "source": "spec SRAM interface",
+      "in_smoke": true,
+      "implementation": "todo"
+    },
+    {
+      "id": "SBR-009",
+      "description": "Reset and idle soft checks: ready 1, valid 0 and payloads 0 after reset (soft only, per OI-002).",
+      "requirement_ids": [
+        "REQ-041",
+        "REQ-042",
+        "REQ-049"
+      ],
+      "source": "spec reset section (assumption)",
+      "in_smoke": false,
+      "implementation": "todo"
+    }
+  ],
+  "coverage": [
+    {
+      "id": "COV-001",
+      "description": "Port connectivity and widths for all channels at default parameters",
+      "requirement_ids": [
+        "REQ-003",
+        "REQ-004",
+        "REQ-005",
+        "REQ-006",
+        "REQ-007",
+        "REQ-008"
+      ],
+      "objective_ids": []
+    },
+    {
+      "id": "COV-002",
+      "description": "Burst types FIXED, INCR, WRAP seen on write and read",
+      "requirement_ids": [
+        "REQ-020",
+        "REQ-021"
+      ],
+      "objective_ids": []
+    },
+    {
+      "id": "COV-003",
+      "description": "Burst lengths: 1, 2, 16 and 256 beats",
+      "requirement_ids": [
+        "REQ-022"
+      ],
+      "objective_ids": []
+    },
+    {
+      "id": "COV-004",
+      "description": "AxSIZE narrow values and strobe patterns",
+      "requirement_ids": [
+        "REQ-024",
+        "REQ-025"
+      ],
+      "objective_ids": []
+    },
+    {
+      "id": "COV-005",
+      "description": "Error cases: bad size, misaligned address, on write and read",
+      "requirement_ids": [
+        "REQ-026",
+        "REQ-027",
+        "REQ-028"
+      ],
+      "objective_ids": []
+    },
+    {
+      "id": "COV-006",
+      "description": "Back-pressure on B and R, and FIFO-full conditions on each channel",
+      "requirement_ids": [
+        "REQ-050",
+        "REQ-011",
+        "REQ-012"
+      ],
+      "objective_ids": []
+    },
+    {
+      "id": "COV-007",
+      "description": "Simultaneous AW and AR handshakes and simultaneous read and write contention",
+      "requirement_ids": [
+        "REQ-019"
+      ],
+      "objective_ids": []
+    },
+    {
+      "id": "COV-008",
+      "description": "ID values, including reuse and out-of-order ID patterns",
+      "requirement_ids": [
+        "REQ-029"
+      ],
+      "objective_ids": []
+    },
+    {
+      "id": "COV-009",
+      "description": "INCR bursts crossing a 4 KB boundary",
+      "requirement_ids": [
+        "REQ-020"
+      ],
+      "objective_ids": []
+    }
+  ],
+  "tests": [
+    {
+      "tc_id": "TC-001",
+      "name": "smoke_write_read",
+      "description": "Reset, then one aligned single-beat INCR write and a read back of the same location. Relies on SBR-001, SBR-002, SBR-003, SBR-008.",
+      "kind": "smoke",
+      "milestone": "v0_1",
+      "requirement_ids": [
+        "REQ-001",
+        "REQ-003",
+        "REQ-004",
+        "REQ-005",
+        "REQ-006",
+        "REQ-007",
+        "REQ-008",
+        "REQ-014",
+        "REQ-045",
+        "REQ-047",
+        "REQ-048"
+      ],
+      "objective_ids": [
+        "VO-002",
+        "VO-003"
+      ],
+      "rule_ids": [
+        "SBR-001",
+        "SBR-002",
+        "SBR-003",
+        "SBR-008"
+      ],
+      "conditional_param": null
+    },
+    {
+      "tc_id": "TC-002",
+      "name": "incr_bursts",
+      "description": "INCR bursts of various lengths, write then read back.",
+      "kind": "directed",
+      "milestone": "later",
+      "requirement_ids": [
+        "REQ-014",
+        "REQ-020",
+        "REQ-022"
+      ],
+      "objective_ids": [
+        "VO-002",
+        "VO-003",
+        "VO-004"
+      ],
+      "rule_ids": [
+        "SBR-001",
+        "SBR-004"
+      ],
+      "conditional_param": null
+    },
+    {
+      "tc_id": "TC-003",
+      "name": "fixed_bursts",
+      "description": "FIXED bursts on write and read.",
+      "kind": "directed",
+      "milestone": "later",
+      "requirement_ids": [
+        "REQ-020"
+      ],
+      "objective_ids": [
+        "VO-004"
+      ],
+      "rule_ids": [
+        "SBR-004"
+      ],
+      "conditional_param": null
+    },
+    {
+      "tc_id": "TC-004",
+      "name": "wrap_bursts",
+      "description": "WRAP bursts of 2, 4, 8 and 16 beats from unaligned-in-window start addresses; AxBURST=2'b11 is not stimulated.",
+      "kind": "directed",
+      "milestone": "later",
+      "requirement_ids": [
+        "REQ-021"
+      ],
+      "objective_ids": [
+        "VO-004"
+      ],
+      "rule_ids": [
+        "SBR-004"
+      ],
+      "conditional_param": null
+    },
+    {
+      "tc_id": "TC-005",
+      "name": "narrow_and_strobes",
+      "description": "Narrow AxSIZE transfers and sparse WSTRB patterns.",
+      "kind": "directed",
+      "milestone": "later",
+      "requirement_ids": [
+        "REQ-024",
+        "REQ-025"
+      ],
+      "objective_ids": [
+        "VO-002"
+      ],
+      "rule_ids": [
+        "SBR-001"
+      ],
+      "conditional_param": null
+    },
+    {
+      "tc_id": "TC-006",
+      "name": "error_bursts",
+      "description": "AxSIZE above max and misaligned addresses on write and read; check SLVERR, the memory unchanged, and OKAY on the following aligned burst.",
+      "kind": "negative",
+      "milestone": "later",
+      "requirement_ids": [
+        "REQ-013",
+        "REQ-026",
+        "REQ-027",
+        "REQ-028"
+      ],
+      "objective_ids": [
+        "VO-005"
+      ],
+      "rule_ids": [
+        "SBR-005"
+      ],
+      "conditional_param": null
+    },
+    {
+      "tc_id": "TC-007",
+      "name": "backpressure",
+      "description": "Hold i_bready and i_rready low to fill the FIFOs and check stability and no overflow.",
+      "kind": "directed",
+      "milestone": "later",
+      "requirement_ids": [
+        "REQ-011",
+        "REQ-012",
+        "REQ-050",
+        "REQ-009",
+        "REQ-010"
+      ],
+      "objective_ids": [
+        "VO-007"
+      ],
+      "rule_ids": [
+        "SBR-006"
+      ],
+      "conditional_param": null
+    },
+    {
+      "tc_id": "TC-008",
+      "name": "id_ordering",
+      "description": "ID reuse and distinct IDs, in-order B and R responses.",
+      "kind": "directed",
+      "milestone": "later",
+      "requirement_ids": [
+        "REQ-029"
+      ],
+      "objective_ids": [
+        "VO-006"
+      ],
+      "rule_ids": [
+        "SBR-002",
+        "SBR-003"
+      ],
+      "conditional_param": null
+    },
+    {
+      "tc_id": "TC-009",
+      "name": "max_length_bursts",
+      "description": "256-beat write and read bursts.",
+      "kind": "directed",
+      "milestone": "later",
+      "requirement_ids": [
+        "REQ-022"
+      ],
+      "objective_ids": [
+        "VO-004"
+      ],
+      "rule_ids": [
+        "SBR-001",
+        "SBR-004"
+      ],
+      "conditional_param": null
+    },
+    {
+      "tc_id": "TC-010",
+      "name": "random_mixed",
+      "description": "Random concurrent reads and writes with random back-pressure; checked against the scoreboard.",
+      "kind": "random",
+      "milestone": "later",
+      "requirement_ids": [
+        "REQ-019",
+        "REQ-040",
+        "REQ-050",
+        "REQ-029",
+        "REQ-014"
+      ],
+      "objective_ids": [
+        "VO-002",
+        "VO-003",
+        "VO-007"
+      ],
+      "rule_ids": [
+        "SBR-001",
+        "SBR-002",
+        "SBR-003",
+        "SBR-006",
+        "SBR-008"
+      ],
+      "conditional_param": null
+    },
+    {
+      "tc_id": "TC-011",
+      "name": "timing_latency",
+      "description": "Minimum latencies and throughput: write c3, read c4, read rate 0.5, write rate 1, AxREADY interval.",
+      "kind": "directed",
+      "milestone": "later",
+      "requirement_ids": [
+        "REQ-052",
+        "REQ-053",
+        "REQ-054",
+        "REQ-055",
+        "REQ-056",
+        "REQ-057",
+        "REQ-018"
+      ],
+      "objective_ids": [
+        "VO-008"
+      ],
+      "rule_ids": [
+        "SBR-007",
+        "SBR-008"
+      ],
+      "conditional_param": null
+    },
+    {
+      "tc_id": "TC-012",
+      "name": "incr_cross_4kb",
+      "description": "INCR write and read bursts that cross a 4 KB boundary: no error, OKAY, address keeps incrementing modulo 2**PARA_ADDR_WD (approved by Q-TB-OI-006).",
+      "kind": "directed",
+      "milestone": "later",
+      "requirement_ids": [
+        "REQ-020"
+      ],
+      "objective_ids": [
+        "VO-004"
+      ],
+      "rule_ids": [
+        "SBR-004",
+        "SBR-001"
+      ],
+      "conditional_param": null
+    }
+  ],
+  "open_issues": [
+    {
+      "id": "OI-001",
+      "kind": "OPEN",
+      "requirement_ids": [
+        "REQ-002"
+      ],
+      "question": "Reset behavior (async assert, sync deassert) is an assumption; is it normative?",
+      "source": "spec/spec.md:77",
+      "default_assumption": "TB asserts asynchronously and deasserts synchronously; no checks beyond that.",
+      "resolved": false,
+      "resolution": ""
+    },
+    {
+      "id": "OI-002",
+      "kind": "OPEN",
+      "requirement_ids": [
+        "REQ-041",
+        "REQ-042",
+        "REQ-049"
+      ],
+      "question": "Are the reset values and idle output values (ready=1, payloads 0, o_sram_addr 0 when idle, reset discards in-flight transactions) golden?",
+      "source": "spec/spec.md:90,103,110-145,192",
+      "default_assumption": "Checked as soft checks only; not blocking pass/fail.",
+      "resolved": false,
+      "resolution": ""
+    },
+    {
+      "id": "OI-003",
+      "kind": "OPEN",
+      "requirement_ids": [
+        "REQ-017"
+      ],
+      "question": "Is the SRAM behavior contract (one-cycle read latency, byte-lane write) golden?",
+      "source": "spec/spec.md:144,170",
+      "default_assumption": "The TB SRAM model implements it as stated.",
+      "resolved": false,
+      "resolution": ""
+    },
+    {
+      "id": "OI-004",
+      "kind": "OPEN",
+      "requirement_ids": [
+        "REQ-035",
+        "REQ-058",
+        "REQ-059",
+        "REQ-062",
+        "REQ-063",
+        "REQ-065"
+      ],
+      "question": "Bank hash for PARA_NUM_BANKS>1 and constraints C1, C2, C5, C6, C8 are marked as assumptions; are they golden? Only PARA_NUM_BANKS=1 is run.",
+      "source": "spec/spec.md:40,56,62,170",
+      "default_assumption": "Not checked; only the default configuration is verified.",
+      "resolved": false,
+      "resolution": ""
+    },
+    {
+      "id": "OI-005",
+      "kind": "OPEN",
+      "requirement_ids": [
+        "REQ-021"
+      ],
+      "question": "WRAP address behavior for the reserved AxBURST=2'b11 is an assumption; is it golden?",
+      "source": "spec/spec.md:247",
+      "default_assumption": "Not stimulated, because the master should not use 2'b11.",
+      "resolved": false,
+      "resolution": ""
+    },
+    {
+      "id": "OI-006",
+      "kind": "OPEN",
+      "requirement_ids": [
+        "REQ-020"
+      ],
+      "question": "Address increment modulo 2**PARA_ADDR_WD and absence of a 4 KB boundary check come from an assumption; is it golden?",
+      "source": "spec/spec.md:431",
+      "default_assumption": "Bursts that cross 4 KB are not stimulated for checking.",
+      "resolved": true,
+      "resolution": "Approved by the user's answer Q-TB-OI-006: INCR bursts that cross a 4 KB boundary are tested. Expected behavior: no error, OKAY response, address keeps incrementing modulo 2**PARA_ADDR_WD. Test TC-012 added."
+    }
+  ]
+}

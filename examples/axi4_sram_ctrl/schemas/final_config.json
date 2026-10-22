@@ -1,0 +1,540 @@
+{
+  "metadata": {
+    "ip_name": "axi4_sram_ctrl",
+    "spec_revision": "spec_update_3 (VLSIT instance names in section 6); parameters renamed PR_* to PARA_* to match the released RTL (verification owner, 2026-10-19)",
+    "phase": 2,
+    "gate_status": "approved",
+    "gate_2_approved": true,
+    "approved_at": "2026-10-08T18:57:39",
+    "top_module": "m_vlsi_axi4_sram",
+    "rejected_overrides": []
+  },
+  "parameters": {
+    "PARA_DATA_WD": {
+      "value": "32",
+      "default": "32",
+      "type": "int",
+      "changed_from_default": false,
+      "confirmed_by_user": true,
+      "locked": false,
+      "req_ids_affected": [
+        "REQ-004",
+        "REQ-007",
+        "REQ-008",
+        "REQ-017",
+        "REQ-023",
+        "REQ-024",
+        "REQ-025",
+        "REQ-026",
+        "REQ-030",
+        "REQ-035",
+        "REQ-058",
+        "REQ-059",
+        "REQ-062",
+        "REQ-063",
+        "REQ-066"
+      ],
+      "feature_ids_affected": [
+        "F04",
+        "F05",
+        "F06",
+        "F07"
+      ],
+      "change_reason": null
+    },
+    "PARA_ADDR_WD": {
+      "value": "32",
+      "default": "32",
+      "type": "int",
+      "changed_from_default": false,
+      "confirmed_by_user": true,
+      "locked": false,
+      "req_ids_affected": [
+        "REQ-003",
+        "REQ-006",
+        "REQ-008",
+        "REQ-017",
+        "REQ-020",
+        "REQ-021",
+        "REQ-023",
+        "REQ-030",
+        "REQ-035",
+        "REQ-062",
+        "REQ-063",
+        "REQ-066"
+      ],
+      "feature_ids_affected": [
+        "F04",
+        "F11"
+      ],
+      "change_reason": null
+    },
+    "PARA_ID_WD": {
+      "value": "4",
+      "default": "4",
+      "type": "int",
+      "changed_from_default": false,
+      "confirmed_by_user": true,
+      "locked": false,
+      "req_ids_affected": [
+        "REQ-003",
+        "REQ-005",
+        "REQ-006",
+        "REQ-007",
+        "REQ-023",
+        "REQ-029",
+        "REQ-030",
+        "REQ-064",
+        "REQ-066"
+      ],
+      "feature_ids_affected": [
+        "F04",
+        "F08"
+      ],
+      "change_reason": null
+    },
+    "PARA_LEN_WD": {
+      "value": "8",
+      "default": "8",
+      "type": "int",
+      "changed_from_default": false,
+      "confirmed_by_user": true,
+      "locked": false,
+      "req_ids_affected": [
+        "REQ-003",
+        "REQ-006",
+        "REQ-014",
+        "REQ-022",
+        "REQ-043",
+        "REQ-057",
+        "REQ-065",
+        "REQ-066"
+      ],
+      "feature_ids_affected": [
+        "F03"
+      ],
+      "change_reason": null
+    },
+    "PARA_FIFO_DEPTH": {
+      "value": "8",
+      "default": "8",
+      "type": "int",
+      "changed_from_default": false,
+      "confirmed_by_user": true,
+      "locked": false,
+      "req_ids_affected": [
+        "REQ-009",
+        "REQ-010",
+        "REQ-030",
+        "REQ-031",
+        "REQ-032",
+        "REQ-044",
+        "REQ-050",
+        "REQ-060",
+        "REQ-066"
+      ],
+      "feature_ids_affected": [
+        "F09"
+      ],
+      "change_reason": null
+    },
+    "PARA_NUM_BANKS": {
+      "value": "1",
+      "default": "1",
+      "type": "int",
+      "changed_from_default": false,
+      "confirmed_by_user": true,
+      "locked": false,
+      "req_ids_affected": [
+        "REQ-008",
+        "REQ-017",
+        "REQ-018",
+        "REQ-025",
+        "REQ-034",
+        "REQ-035",
+        "REQ-036",
+        "REQ-037",
+        "REQ-039",
+        "REQ-045",
+        "REQ-047",
+        "REQ-048",
+        "REQ-049",
+        "REQ-055",
+        "REQ-061",
+        "REQ-062",
+        "REQ-066"
+      ],
+      "feature_ids_affected": [
+        "F11"
+      ],
+      "change_reason": null
+    }
+  },
+  "constraints": {
+    "C1": {
+      "rule": "PARA_DATA_WD % 8 == 0 && ((PARA_DATA_WD/8) & (PARA_DATA_WD/8 - 1)) == 0",
+      "pass": true,
+      "detail": "holds"
+    },
+    "C2": {
+      "rule": "PARA_DATA_WD >= 8 && PARA_DATA_WD <= 1024",
+      "pass": true,
+      "detail": "holds"
+    },
+    "C3": {
+      "rule": "PARA_FIFO_DEPTH >= 2 && (PARA_FIFO_DEPTH & (PARA_FIFO_DEPTH - 1)) == 0",
+      "pass": true,
+      "detail": "holds"
+    },
+    "C4": {
+      "rule": "PARA_NUM_BANKS >= 1 && (PARA_NUM_BANKS & (PARA_NUM_BANKS - 1)) == 0",
+      "pass": true,
+      "detail": "holds"
+    },
+    "C5": {
+      "rule": "PARA_NUM_BANKS > 1 -> PARA_ADDR_WD >= $clog2(PARA_DATA_WD/8) + $clog2(PARA_NUM_BANKS)",
+      "pass": true,
+      "detail": "condition not active"
+    },
+    "C6": {
+      "rule": "PARA_ADDR_WD > $clog2(PARA_DATA_WD/8)",
+      "pass": true,
+      "detail": "holds"
+    },
+    "C7": {
+      "rule": "PARA_ID_WD >= 1",
+      "pass": true,
+      "detail": "holds"
+    },
+    "C8": {
+      "rule": "PARA_LEN_WD >= 1 && PARA_LEN_WD <= 8",
+      "pass": true,
+      "detail": "holds"
+    }
+  },
+  "style_constraints": {
+    "source_file": "vlsit_rtl_rule_default.md",
+    "natural_language_additions": [],
+    "lint_rules": [
+      {
+        "id": "STYLE-001",
+        "source": "rtl_rule.md",
+        "rule": "0. How to apply this document (for AI agents)"
+      },
+      {
+        "id": "STYLE-002",
+        "source": "rtl_rule.md",
+        "rule": "1. Scope"
+      },
+      {
+        "id": "STYLE-003",
+        "source": "rtl_rule.md",
+        "rule": "2. Naming (single source)"
+      },
+      {
+        "id": "STYLE-004",
+        "source": "rtl_rule.md",
+        "rule": "3. Declarations and data types"
+      },
+      {
+        "id": "STYLE-005",
+        "source": "rtl_rule.md",
+        "rule": "3.1 Data types and ports"
+      },
+      {
+        "id": "STYLE-006",
+        "source": "rtl_rule.md",
+        "rule": "3.2 Parameters and constants"
+      },
+      {
+        "id": "STYLE-007",
+        "source": "rtl_rule.md",
+        "rule": "3.3 Enums (finite-state machines and coded fields)"
+      },
+      {
+        "id": "STYLE-008",
+        "source": "rtl_rule.md",
+        "rule": "4. Combinational logic"
+      },
+      {
+        "id": "STYLE-009",
+        "source": "rtl_rule.md",
+        "rule": "5. Arithmetic and widths"
+      },
+      {
+        "id": "STYLE-010",
+        "source": "rtl_rule.md",
+        "rule": "6. Sequential logic, clocks, and resets"
+      },
+      {
+        "id": "STYLE-011",
+        "source": "rtl_rule.md",
+        "rule": "6.1 Flip-flops"
+      },
+      {
+        "id": "STYLE-012",
+        "source": "rtl_rule.md",
+        "rule": "6.2 Reset policy"
+      },
+      {
+        "id": "STYLE-013",
+        "source": "rtl_rule.md",
+        "rule": "6.3 Clock domains and clock gating"
+      },
+      {
+        "id": "STYLE-014",
+        "source": "rtl_rule.md",
+        "rule": "7. Hierarchy, instances, generate, memories"
+      },
+      {
+        "id": "STYLE-015",
+        "source": "rtl_rule.md",
+        "rule": "8. File template and structure"
+      },
+      {
+        "id": "STYLE-016",
+        "source": "rtl_rule.md",
+        "rule": "8.1 Structure"
+      },
+      {
+        "id": "STYLE-017",
+        "source": "rtl_rule.md",
+        "rule": "8.2 Template"
+      },
+      {
+        "id": "STYLE-018",
+        "source": "rtl_rule.md",
+        "rule": "8.3 Structural top example (`m_design_top.sv`)"
+      },
+      {
+        "id": "STYLE-019",
+        "source": "rtl_rule.md",
+        "rule": "9. Standard protocol interface naming"
+      },
+      {
+        "id": "STYLE-020",
+        "source": "rtl_rule.md",
+        "rule": "10. Prohibited constructs (single location)"
+      },
+      {
+        "id": "STYLE-021",
+        "source": "rtl_rule.md",
+        "rule": "11. Tapeout readiness checklist"
+      },
+      {
+        "id": "STYLE-022",
+        "source": "rtl_rule.md",
+        "rule": "12. Comments and assertions"
+      }
+    ]
+  },
+  "feature_matrix": {
+    "F01": {
+      "enabled": true,
+      "mandatory": true,
+      "parameters_driving": [
+        "PARA_ADDR_WD",
+        "PARA_LEN_WD",
+        "PARA_ID_WD",
+        "PARA_DATA_WD"
+      ],
+      "req_ids": [
+        "REQ-001",
+        "REQ-002",
+        "REQ-003",
+        "REQ-004",
+        "REQ-005",
+        "REQ-006",
+        "REQ-007",
+        "REQ-014",
+        "REQ-015",
+        "REQ-019"
+      ]
+    },
+    "F02": {
+      "enabled": true,
+      "mandatory": true,
+      "parameters_driving": [
+        "PARA_ADDR_WD",
+        "PARA_LEN_WD"
+      ],
+      "req_ids": [
+        "REQ-016",
+        "REQ-020",
+        "REQ-021",
+        "REQ-043"
+      ]
+    },
+    "F03": {
+      "enabled": true,
+      "mandatory": true,
+      "parameters_driving": [
+        "PARA_LEN_WD",
+        "PARA_FIFO_DEPTH"
+      ],
+      "req_ids": [
+        "REQ-022",
+        "REQ-044",
+        "REQ-057",
+        "REQ-065"
+      ]
+    },
+    "F04": {
+      "enabled": true,
+      "mandatory": true,
+      "parameters_driving": [
+        "PARA_DATA_WD",
+        "PARA_ADDR_WD",
+        "PARA_ID_WD"
+      ],
+      "req_ids": [
+        "REQ-023",
+        "REQ-058",
+        "REQ-059",
+        "REQ-063",
+        "REQ-064"
+      ]
+    },
+    "F05": {
+      "enabled": true,
+      "mandatory": true,
+      "parameters_driving": [
+        "PARA_DATA_WD"
+      ],
+      "req_ids": [
+        "REQ-024"
+      ]
+    },
+    "F06": {
+      "enabled": true,
+      "mandatory": true,
+      "parameters_driving": [
+        "PARA_DATA_WD",
+        "PARA_ADDR_WD",
+        "PARA_NUM_BANKS"
+      ],
+      "req_ids": [
+        "REQ-017",
+        "REQ-025"
+      ]
+    },
+    "F07": {
+      "enabled": true,
+      "mandatory": true,
+      "parameters_driving": [
+        "PARA_DATA_WD"
+      ],
+      "req_ids": [
+        "REQ-013",
+        "REQ-026",
+        "REQ-027",
+        "REQ-028"
+      ]
+    },
+    "F08": {
+      "enabled": true,
+      "mandatory": true,
+      "parameters_driving": [
+        "PARA_ID_WD"
+      ],
+      "req_ids": [
+        "REQ-029"
+      ]
+    },
+    "F09": {
+      "enabled": true,
+      "mandatory": true,
+      "parameters_driving": [
+        "PARA_FIFO_DEPTH",
+        "PARA_ADDR_WD",
+        "PARA_DATA_WD",
+        "PARA_ID_WD"
+      ],
+      "req_ids": [
+        "REQ-009",
+        "REQ-010",
+        "REQ-011",
+        "REQ-012",
+        "REQ-030",
+        "REQ-031",
+        "REQ-032",
+        "REQ-050",
+        "REQ-052",
+        "REQ-060"
+      ]
+    },
+    "F10": {
+      "enabled": true,
+      "mandatory": true,
+      "parameters_driving": [
+        "PARA_NUM_BANKS"
+      ],
+      "req_ids": [
+        "REQ-018",
+        "REQ-033",
+        "REQ-034",
+        "REQ-037"
+      ]
+    },
+    "F11": {
+      "enabled": true,
+      "mandatory": true,
+      "parameters_driving": [
+        "PARA_NUM_BANKS",
+        "PARA_ADDR_WD",
+        "PARA_DATA_WD"
+      ],
+      "req_ids": [
+        "REQ-008",
+        "REQ-035",
+        "REQ-036",
+        "REQ-049",
+        "REQ-061",
+        "REQ-062"
+      ]
+    },
+    "F12": {
+      "enabled": true,
+      "mandatory": true,
+      "parameters_driving": [],
+      "req_ids": [
+        "REQ-038",
+        "REQ-046",
+        "REQ-053"
+      ]
+    },
+    "F13": {
+      "enabled": true,
+      "mandatory": true,
+      "parameters_driving": [
+        "PARA_NUM_BANKS"
+      ],
+      "req_ids": [
+        "REQ-039",
+        "REQ-047",
+        "REQ-048",
+        "REQ-054",
+        "REQ-055"
+      ]
+    },
+    "F14": {
+      "enabled": true,
+      "mandatory": true,
+      "parameters_driving": [
+        "PARA_NUM_BANKS"
+      ],
+      "req_ids": [
+        "REQ-045",
+        "REQ-056"
+      ]
+    },
+    "F15": {
+      "enabled": true,
+      "mandatory": true,
+      "parameters_driving": [],
+      "req_ids": [
+        "REQ-040"
+      ]
+    }
+  }
+}

@@ -69,7 +69,7 @@ class Step(AsicStep):
                               prompt=porter.prompt(rules, [f.stem for f in files], [rel[f] for f in todo],
                                                    [f for f in found if f["file"] in {rel[t] for t in todo}], min_words, waive),
                               output_model=porter.PortPlan,
-                              deny_dirs=[project.model_dir])
+                              deny_dirs=[project.src_dir / "tb", project.src_dir / "sva", project.tb_dir, project.model_dir])
                 out: porter.PortPlan = (await ctx.llm(stage)).output
                 known = porter.port_rules("\n".join(t for _, t in rules))
                 by_module = {f.stem: f for f in todo}

@@ -108,7 +108,7 @@ class Step(RtlFlowStep):
         p = engine.project
         rtl = self.rtl_dir(engine)
         files = [f for f in sorted(rtl.iterdir()) if f.is_file()] if rtl.is_dir() else []
-        return [*files, self.style_dir(engine), rtl / "csr", p.model_dir, p.build_dir]
+        return [*files, self.style_dir(engine), rtl / "csr", p.model_dir, p.build_dir, p.src_dir / "sva", p.tb_dir]
 
     async def _write_tb(self, ctx: StepContext, snap: dict, old: dict | None, feedback: list[str]) -> SmokePlan:
         engine, project = ctx.engine, ctx.project
@@ -191,7 +191,7 @@ class Step(RtlFlowStep):
                             "", "## Result of the run (ground truth)", summary, f"Log: {project.rel(Path(out.log)) if out.log else '(compile log in the work folder)'}",
                             "", skillmod.index(skills, project.root)])
         stage = Stage(name="smoke_triage", system_prompt=TRIAGE, prompt=prompt, cwd=project.root, builtin_tools=["Read", "Grep", "Glob"],
-                      add_dirs=skillmod.add_dirs(skills), output_model=SmokeTriage, deny_dirs=[project.model_dir])
+                      add_dirs=skillmod.add_dirs(skills), output_model=SmokeTriage, deny_dirs=[project.model_dir, project.src_dir / "tb", project.src_dir / "sva"])
         verdicts: list[Verdict] = (await ctx.llm(stage)).output.verdicts
         modules = {p.stem for p in rtl}
         asks: list[Question] = []

@@ -1,0 +1,19 @@
+# axi4_sram_ctrl worked example: the VLSIT flow with the optional UVM/VIP testbench backend (docs/spec/dut-dv.md).
+pipeline:
+  flow: dut_tb
+  session: fresh   # DUT-DV independence: the testbench stages never share a session that has seen the RTL
+  step_options:
+    tb:
+      backend: uvm_vip
+      uvm_vip:
+        vip:                        # the existing reusable AXI VIP: read-only input, never generated here
+          path: $AXI_VIP_HOME       # e.g. the axi4_avip checkout (see README)
+          kind: axi4_avip
+          env: AXI_VIP_HOME           # the generated file lists use $AXI_VIP_HOME (portable)
+          revision: 86b46171c534dfa5521ecfe9329184d7b0d72898   # mbits-mirafra/axi4_avip, branch production
+        integration:                # integration inputs: used only after the verification contract is frozen
+          rtl_dir: src/rtl
+          top: m_vlsi_axi4_sram
+          simulator: vcs
+          smoke_test: dut_smoke_test
+        semantic: {scope: all}   # the agent also implements the other scoreboard rules and the directed tests (coverage, assertions stay todo)

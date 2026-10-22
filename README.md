@@ -42,6 +42,7 @@ Yellow = a gate that stops for your review by default. The `rtl` flow continues 
   (`q3tui act csr_tool_install`); the RTL is formatted, style-linted by an LLM judge whose fixes go back to `rtl`, and smoke-tested with a testbench
   written from the spec alone. The chain and its fix loops run by themselves. LLM stages use markdown **skills** (`config/skills/<name>/SKILL.md`, yours
   can replace or add). See [docs/spec/rtl-flow.md](docs/spec/rtl-flow.md).
+- `dv` — a testbench written from the spec alone (plain SystemVerilog, or UVM from an existing VIP with the RTL as the DUT): [docs/spec/dv-flow.md](docs/spec/dv-flow.md).
 - `fpga`, `asic`, `project` — synthesis / PPA estimation and the project settings ([docs/spec/flows.md](docs/spec/flows.md)).
 
 ## The TUI

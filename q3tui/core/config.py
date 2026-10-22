@@ -32,6 +32,7 @@ class StepModels(_Strict):
     parse: StepLLM = Field(default_factory=StepLLM)
     config: StepLLM = Field(default_factory=StepLLM)
     rtl: StepLLM = Field(default_factory=StepLLM)
+    tb: StepLLM = Field(default_factory=StepLLM)
     assistant: StepLLM = Field(default_factory=StepLLM)
 
     @model_validator(mode="after")
@@ -141,6 +142,7 @@ class ProjectConfig(_Strict):
     docs_dir: str = "docs"  # the final specification only
     src_dir: str = "src"
     rtl_dir: str = "src/rtl"
+    tb_dir: str = "src/tb"
     build_dir: str = "build"  # disposable tool output
     syn_dir: str = "build/syn"  # build/syn/{fpga,asic}
     sim_dir: str = "build/sim"
@@ -187,6 +189,15 @@ class RTLConfig(_Strict):
     max_turns: int = Field(60, ge=5, le=400)  # agent turns per module (write, compile, fix)
 
 
+class TBConfig(_Strict):
+    """The dv flow's `tb` step."""
+
+    max_fix_attempts: int = Field(3, ge=0, le=10)  # extra rounds when the plan / TB checks still fail
+    max_turns: int = Field(30, ge=5, le=400)  # agent turns per TB stage
+    tests_per_agent: int = Field(6, ge=1, le=100)  # test cases per agent (agents run in parallel)
+    parallel: int = Field(4, ge=1, le=32)  # test-case agents at once
+
+
 class TeamConfig(_Strict):
     """M10 (docs/spec/team.md): every role's tasks go to that role's one persistent session."""
 
@@ -227,6 +238,7 @@ class Config(_Strict):
     pipeline: PipelineConfig = PipelineConfig()
     spec: SpecConfig = SpecConfig()
     rtl: RTLConfig = RTLConfig()
+    tb: TBConfig = TBConfig()
     team: TeamConfig = TeamConfig()
     tools: ToolsConfig = ToolsConfig()
     tui: TuiConfig = TuiConfig()
@@ -284,10 +296,11 @@ def _merge(base: dict, over: dict) -> dict:
 
 
 # settings of the removed `units` / `steps` flows and of the tb step: still in older config files, ignored
-_REMOVED = {None: ("requirements", "req", "arch", "model", "sim", "triage", "units", "tb"),
+_REMOVED = {None: ("requirements", "req", "arch", "model", "sim", "triage", "units"),
             "pipeline": ("parallel_rtl_tb", "parallel_multi_agent"),
             "project": ("requirements_dir", "signoff_dir"),
-            "rtl": ("rules", "review", "use_vcs", "language", "lint")}
+            "rtl": ("rules", "review", "use_vcs", "language", "lint"),
+            "tb": ("checks_per_agent", "stimulus_chars_per_agent", "session_max_turns", "use_vcs", "timeout_cycles", "seed")}
 _REMOVED_STEP_MODELS = ("req", "arch", "model", "vplan", "tb_checker", "tb_stimulus", "triage", "triage_investigator")
 
 

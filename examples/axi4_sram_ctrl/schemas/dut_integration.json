@@ -1,0 +1,315 @@
+{
+  "schema_version": 1,
+  "contract_hash": "3d3d7bc64241ba197f200b37d30754b8fc5f049a7d27c69d79f6aff8603de949",
+  "frozen_inputs": {
+    "verification_contract.json": "8b7767aa7bdebd637fa62b125512ac7186ab56d6fc4134b2fefb180e4c62846d",
+    "tb_architecture.json": "c7c64f5c452a68bc858e54d05e6a48b38d8e72e36e0d7694dff82a70e38204dc",
+    "golden_manifest.json": "e68df408774c37c746dd2f8f9730bfd3abdfa8c93deaa0c404e9851b70172f40"
+  },
+  "rtl": {
+    "top": "m_vlsi_axi4_sram",
+    "files": [
+      "rtl/m_vlsi_axfsm.sv",
+      "rtl/m_vlsi_fifo.sv",
+      "rtl/m_vlsi_arbiter.sv",
+      "rtl/m_vlsi_axi_fifopack.sv",
+      "rtl/m_vlsi_bank_arb.sv",
+      "rtl/m_vlsi_sram_fanout.sv",
+      "rtl/m_vlsi_sram_misc.sv",
+      "rtl/m_vlsi_axi4_sram.sv"
+    ],
+    "incdirs": [],
+    "defines": {},
+    "read_for": "structure and compilation only (DUT-DV-004): top module, ports, parameters, elaboration diagnostics, file list",
+    "ports": [
+      {
+        "name": "i_clk",
+        "direction": "in",
+        "type": "logic"
+      },
+      {
+        "name": "i_rst_n",
+        "direction": "in",
+        "type": "logic"
+      },
+      {
+        "name": "i_awaddr",
+        "direction": "in",
+        "type": "logic[31:0]"
+      },
+      {
+        "name": "i_awvalid",
+        "direction": "in",
+        "type": "logic"
+      },
+      {
+        "name": "o_awready",
+        "direction": "out",
+        "type": "logic"
+      },
+      {
+        "name": "i_awburst",
+        "direction": "in",
+        "type": "logic[1:0]"
+      },
+      {
+        "name": "i_awlen",
+        "direction": "in",
+        "type": "logic[7:0]"
+      },
+      {
+        "name": "i_awid",
+        "direction": "in",
+        "type": "logic[3:0]"
+      },
+      {
+        "name": "i_awsize",
+        "direction": "in",
+        "type": "logic[2:0]"
+      },
+      {
+        "name": "i_wdata",
+        "direction": "in",
+        "type": "logic[31:0]"
+      },
+      {
+        "name": "i_wstrb",
+        "direction": "in",
+        "type": "logic[3:0]"
+      },
+      {
+        "name": "i_wvalid",
+        "direction": "in",
+        "type": "logic"
+      },
+      {
+        "name": "o_wready",
+        "direction": "out",
+        "type": "logic"
+      },
+      {
+        "name": "i_wlast",
+        "direction": "in",
+        "type": "logic"
+      },
+      {
+        "name": "o_bid",
+        "direction": "out",
+        "type": "logic[3:0]"
+      },
+      {
+        "name": "o_bresp",
+        "direction": "out",
+        "type": "logic[1:0]"
+      },
+      {
+        "name": "o_bvalid",
+        "direction": "out",
+        "type": "logic"
+      },
+      {
+        "name": "i_bready",
+        "direction": "in",
+        "type": "logic"
+      },
+      {
+        "name": "i_araddr",
+        "direction": "in",
+        "type": "logic[31:0]"
+      },
+      {
+        "name": "i_arvalid",
+        "direction": "in",
+        "type": "logic"
+      },
+      {
+        "name": "o_arready",
+        "direction": "out",
+        "type": "logic"
+      },
+      {
+        "name": "i_arburst",
+        "direction": "in",
+        "type": "logic[1:0]"
+      },
+      {
+        "name": "i_arlen",
+        "direction": "in",
+        "type": "logic[7:0]"
+      },
+      {
+        "name": "i_arid",
+        "direction": "in",
+        "type": "logic[3:0]"
+      },
+      {
+        "name": "i_arsize",
+        "direction": "in",
+        "type": "logic[2:0]"
+      },
+      {
+        "name": "o_rid",
+        "direction": "out",
+        "type": "logic[3:0]"
+      },
+      {
+        "name": "o_rdata",
+        "direction": "out",
+        "type": "logic[31:0]"
+      },
+      {
+        "name": "o_rresp",
+        "direction": "out",
+        "type": "logic[1:0]"
+      },
+      {
+        "name": "o_rvalid",
+        "direction": "out",
+        "type": "logic"
+      },
+      {
+        "name": "o_rlast",
+        "direction": "out",
+        "type": "logic"
+      },
+      {
+        "name": "i_rready",
+        "direction": "in",
+        "type": "logic"
+      },
+      {
+        "name": "o_sram_addr",
+        "direction": "out",
+        "type": "logic[0:0][31:0]"
+      },
+      {
+        "name": "o_sram_wdata",
+        "direction": "out",
+        "type": "logic[0:0][31:0]"
+      },
+      {
+        "name": "o_sram_wstrb",
+        "direction": "out",
+        "type": "logic[0:0][3:0]"
+      },
+      {
+        "name": "o_sram_we",
+        "direction": "out",
+        "type": "logic[0:0]"
+      },
+      {
+        "name": "o_sram_oe",
+        "direction": "out",
+        "type": "logic[0:0]"
+      },
+      {
+        "name": "i_sram_rdata",
+        "direction": "in",
+        "type": "logic[0:0][31:0]"
+      }
+    ],
+    "parameters": [
+      {
+        "name": "PARA_DATA_WD",
+        "value": "32'd32",
+        "local": false
+      },
+      {
+        "name": "PARA_ADDR_WD",
+        "value": "32'd32",
+        "local": false
+      },
+      {
+        "name": "PARA_ID_WD",
+        "value": "32'd4",
+        "local": false
+      },
+      {
+        "name": "PARA_LEN_WD",
+        "value": "32'd8",
+        "local": false
+      },
+      {
+        "name": "PARA_FIFO_DEPTH",
+        "value": "32'd8",
+        "local": false
+      },
+      {
+        "name": "PARA_NUM_BANKS",
+        "value": "32'd1",
+        "local": false
+      },
+      {
+        "name": "LPARA_STRB_WD",
+        "value": "32'd4",
+        "local": true
+      },
+      {
+        "name": "LPARA_BYTE_LSB",
+        "value": "32'd2",
+        "local": true
+      },
+      {
+        "name": "LPARA_FIFO_AW",
+        "value": "32'd3",
+        "local": true
+      },
+      {
+        "name": "LPARA_AW_DEPTH",
+        "value": "32'd3",
+        "local": true
+      },
+      {
+        "name": "LPARA_W_DEPTH",
+        "value": "32'd3",
+        "local": true
+      },
+      {
+        "name": "LPARA_AR_DEPTH",
+        "value": "32'd3",
+        "local": true
+      },
+      {
+        "name": "LPARA_R_DEPTH",
+        "value": "32'd3",
+        "local": true
+      },
+      {
+        "name": "LPARA_B_DEPTH",
+        "value": "32'd3",
+        "local": true
+      },
+      {
+        "name": "LPARA_AX_ENTRY_WD",
+        "value": "32'd38",
+        "local": true
+      },
+      {
+        "name": "LPARA_W_ENTRY_WD",
+        "value": "32'd36",
+        "local": true
+      },
+      {
+        "name": "LPARA_R_ENTRY_WD",
+        "value": "32'd39",
+        "local": true
+      },
+      {
+        "name": "LPARA_B_ENTRY_WD",
+        "value": "32'd6",
+        "local": true
+      }
+    ],
+    "diagnostics": []
+  },
+  "mappings": {
+    "param_map": {},
+    "port_map": {}
+  },
+  "conformance": {
+    "ok": true,
+    "findings": []
+  },
+  "wrapper": "integration/dut_wrapper.sv",
+  "filelist": "filelist_dut.f"
+}

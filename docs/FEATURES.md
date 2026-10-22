@@ -2,7 +2,7 @@
 
 This inventory reflects the current source as of **2026-10** (version 0.1.0, Beta) and focuses on the
 **spec flow** (`spec → parse → config`), the flow this product ships with
-by default, and the **rtl flow** that builds on it. The testbench, SVA, verification and document steps of the former VLSIT flow were removed. See the [User guide](user_guide/) for how to use everything listed here, and [spec/](spec/) for
+by default, and the **rtl flow** that builds on it; the **dv flow** holds the testbench step (plain SystemVerilog or UVM with an existing VIP). The SVA, verification and document steps of the former VLSIT flow were removed. See the [User guide](user_guide/) for how to use everything listed here, and [spec/](spec/) for
 the architecture reference.
 
 ## 1. Pipeline engine
@@ -59,9 +59,11 @@ flowchart LR
   specifically, independent of the broader auto-approve/auto-answer switches — gates still stop for the
   things that actually matter.
 
-## 4. Removed: traceability, verification, document
+## 4. The DV flow (`dv`, docs/spec/dv-flow.md)
 
-The testbench, SVA, verification (simulation, mutation testing, the six-condition requirements traceability matrix with your sign-off) and the specification document (Markdown + PDF) were steps of the former VLSIT flow. They are removed; nothing in this inventory describes them any more.
+- **Testbench from the spec alone:** spec → parse → config → `tb`; the testbench never sees the RTL (enforced with `deny_dirs`), and the RTL stages never see `src/tb/`.
+- **Two backends:** `plain_sv` (default: a test plan of test cases, each with the REQs it checks, and a plain SystemVerilog testbench) and `uvm_vip` (a UVM testbench from the approved spec and an existing AXI VIP, the released RTL integrated as the DUT, compiled and smoke-tested with VCS; docs/spec/dut-dv.md). Worked example: `examples/axi4_sram_ctrl`.
+- **Not there:** importing testbench files into `tb`; SVA, verification (simulation, mutation testing, the requirements traceability matrix with your sign-off) and the specification document (Markdown + PDF) were steps of the former VLSIT flow and are removed.
 
 ## 5. RTL coding rule enforcement
 

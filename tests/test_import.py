@@ -51,14 +51,11 @@ def test_scan_sorts_a_reference_project(tmp_path):
     root = reference(tmp_path / "ref")
     plan = importer.scan(root)
     rel = {k: sorted(plan.rel(f) for f in v) for k, v in plan.files.items()}
-    assert rel["spec"] == ["README.md", "docs/arch.html"]  # (sim/vcs/README.md describes the tests: not the design)
+    assert rel["spec"] == ["README.md", "docs/arch.html"]  # (sim/vcs/README.md describes the tests: tb)
     assert rel["rtl"] == ["rtl/leaf_a.sv", "rtl/leaf_b.sv", "rtl/top.sv"]
-    assert set(rel) == {"spec", "rtl"}
-    # testbench / tests / SVA are recognised only to keep them out of the RTL; misc/checks.sv has no folder name to go by: its
-    # content (bind / assert property) says so
-    assert sorted(plan.rel(f) for f in plan.skipped) == [
-        "lint/run.sh", "misc/checks.sv", "rtl/filelist.f", "sim/vcs/Makefile", "sim/vcs/README.md", "sim/vcs/env/my_env.sv",
-        "sim/vcs/tests/ts.basic_test.sv"]
+    assert rel["tb"] == ["sim/vcs/README.md", "sim/vcs/env/my_env.sv", "sim/vcs/tests/ts.basic_test.sv"]
+    assert rel["sva"] == ["misc/checks.sv"]  # no folder name to go by: its content (bind / assert property)
+    assert sorted(plan.rel(f) for f in plan.skipped) == ["lint/run.sh", "rtl/filelist.f", "sim/vcs/Makefile"]
 
 
 def test_design_facts_hierarchy_and_top(tmp_path):

@@ -37,3 +37,4 @@ packages = ["q3tui"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"
+markers = ["vcs: needs real Synopsys VCS (set Q3TUI_VCS_MODULE); skipped otherwise"]

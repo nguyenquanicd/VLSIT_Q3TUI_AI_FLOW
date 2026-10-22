@@ -139,6 +139,7 @@ def test_rtl_dir_option_moves_the_rtl(tmp_path):
     engine = Engine(proj, flow=flows.load_flow("rtl", tmp_path))
     rtl = engine.by_name["rtl"]
     assert rtl.lay(engine).rtl == tmp_path / "src" / "rtl"  # (project.rtl_dir)
+    assert rtl.lay(engine).sva == tmp_path / "src" / "sva"  # (everything else keeps the default layout)
 
 
 # -- the steps with a fake Verible and a fake LLM -------------------------------------------------------------------

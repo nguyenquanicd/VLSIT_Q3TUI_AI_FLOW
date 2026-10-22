@@ -25,7 +25,8 @@ def import_summary(report: dict) -> str:
     """What `Engine.import_path` did, as text: per kind the files taken, what no step takes, what was left out."""
     lines = [f"imported from {report['source']}:"]
     where = {"spec": "spec documents (references: the spec step ports them into spec/spec.md with the template's sections)", "rtl": "RTL (the rtl step checks it against the RTL rules and updates what does "
-             "not follow them)"}
+             "not follow them)", "tb": "testbench / tests (references: the tb step ports them into its test cases)",
+             "sva": "SVA (references: the sva step ports them)"}
     for kind, label in where.items():
         if report.get(kind):
             files = report[kind]
@@ -246,8 +247,8 @@ class Ops:
         return f"reset {step}{' only' if only else ' and downstream'}: removed {len(files)} file(s) (backed up)"
 
     def import_files(self, kind: str, path: str) -> str:
-        """Import a file or a whole folder. kind `all`: sorted by code into spec documents and RTL (core/importer.py);
-        spec | rtl: only that kind."""
+        """Import a file or a whole folder. kind `all`: sorted by code into spec documents, RTL, testbench / tests and
+        SVA (core/importer.py); spec | rtl | tb | sva: only that kind."""
         from q3tui.core.importer import KINDS
 
         p = Path(path).expanduser()
@@ -393,7 +394,7 @@ class Ops:
         return self._log(None, msg)
 
     def set_auto_confirm_reviews(self, on: bool, save: bool = False) -> str:
-        """Confirm a step's own reviewable items (flagged requirements, changed parameters, …) without asking. A human
+        """Confirm a step's own reviewable items (SVA assertions, flagged requirements, …) without asking. A human
         gate still stops for Approve; Approve itself no longer refuses for unconfirmed items."""
         self.project.cfg.pipeline.auto_confirm_reviews = on
         msg = f"auto-confirm reviews: {'on — gates still stop, but no longer wait for per-item review' if on else 'off'}"

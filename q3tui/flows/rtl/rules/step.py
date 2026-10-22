@@ -112,7 +112,7 @@ class Step(RtlFlowStep):
                           cwd=project.root, builtin_tools=["Read", "Grep", "Glob"],
                           sdk_tools=verible_tools(ts, work, project.root, lambda: self.rtl_files(engine), files["lint"]),
                           add_dirs=skillmod.add_dirs(skills), output_model=RulesResult,
-                          deny_dirs=[project.model_dir, project.build_dir, self.rtl_dir(engine)])  # (the rules are read, not the RTL)
+                          deny_dirs=[project.tb_dir, project.model_dir, project.build_dir, project.src_dir / "tb", project.src_dir / "sva", self.rtl_dir(engine)])  # (the rules are read, not the RTL)
             out: RulesResult = (await ctx.llm(stage)).output
             problems = verible.validate_flags([*out.verible_flags]) + [f"format flag `{f}`: not a flag" for f in out.format_flags if not re.match(r"^--[a-z_]+(=.*)?$", f)]
             if not problems:

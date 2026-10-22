@@ -517,7 +517,7 @@ async def test_a_missed_target_gets_proposals_from_a_read_only_stage(proj, monke
     (stage,) = fake.stages
     assert set(stage.builtin_tools) == {"Read", "Grep", "Glob"} and stage.write_dirs is None and stage.output_model.__name__ == "PpaPlan"
     assert "setup slack WNS 3.639 ns is below the target 5" in stage.prompt and "RTL modules" in stage.prompt and "blk" in stage.prompt
-    assert proj.model_dir in stage.deny_dirs and proj.state_dir in stage.deny_dirs  # (the old outputs are never read)
+    assert any(d.name == "tb" for d in stage.deny_dirs) and any(d.name == "sva" for d in stage.deny_dirs)  # independence
     plan = json.loads((proj.schemas_dir / "ppa_plan.json").read_text())
     assert plan["status"] == "proposed" and [f["target"] for f in plan["fixes"]] == ["rtl", "spec"]  # the unknown module is dropped
     assert plan["dropped"] == ["fix 2: unknown module 'ghost'"] and plan["fixes"][0]["id"] == "F1" and plan["fixes"][1]["id"] == "F3"
