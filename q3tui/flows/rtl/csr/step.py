@@ -68,7 +68,8 @@ class Step(RtlFlowStep):
         return str(self.options.get("mode") or "auto")
 
     def tool(self, engine) -> Path | None:
-        return csr.find_tool(engine.project.root, self.options.get("tool_dir"))
+        role = self.tools(engine).roles.get("csr_gen")
+        return csr.find_tool(engine.project.root, self.options.get("tool_dir"), (role.env or {}).get("CSR_GEN_HOME") if role else None)
 
     def _wants_tool(self, engine) -> bool:
         m = read_json(self._files(engine)["map"], None)
@@ -80,7 +81,7 @@ class Step(RtlFlowStep):
             return "the parsed spec and the configuration are needed first (steps parse and config)"
         if self.mode() != "off" and self._wants_tool(engine):
             if self.tool(engine) is None:
-                return ("the APB-CSR-Generator is not installed: `q3tui act csr_tool_install` clones " + csr.REPO + " (or set options.tool_dir / $CSR_GEN_HOME "
+                return ("the APB-CSR-Generator is not installed: `q3tui act csr_tool_install` clones " + csr.REPO + " (or set options.tool_dir, env.CSR_GEN_HOME of the csr_gen role in tools.json, or $CSR_GEN_HOME "
                         "to its folder); mode: off skips this step")
             return self.tool_problem(engine, "csr_gen")
         return None

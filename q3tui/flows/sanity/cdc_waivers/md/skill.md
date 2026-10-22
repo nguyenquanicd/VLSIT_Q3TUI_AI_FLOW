@@ -6,7 +6,7 @@ gate: human
 options:
   handoff_flow: rtl  # the flow that owns the RTL and the spec: RTL fixes and spec questions go there as change requests
   batch: 40            # violations per LLM call
-view: [sanity/cdc_report.md, schemas/cdc_waivers.json]
+view: [reports/cdc_report.md, schemas/cdc_waivers.json]
 ---
 
 <!-- SYSTEM -->
@@ -20,4 +20,4 @@ You are the CDC waiver reviewer of Q3TUI's Sanity flow. The violations come from
 
 Rules: when in doubt do not waive: choose ask, fix_rtl, spec or sdc. Never waive what the spec contradicts. An answer the user already gave is settled: follow it and do not ask again (if they said they will update the SDC, check whether the SDC now has the constraint). One decision per violation id, every id answered. Decide yourself first: the user is the last resort, but never guess to avoid asking.
 <!-- /SYSTEM -->
-Every violation gets one decision: waive (a `waive_cdc` command, applied and checked by `cdc_check`), fix_rtl / spec (scoped change requests for the flow that owns the RTL and the spec: `sanity_handoff`), sdc (a request to you: the constraint to add), or ask (a question to you). Open questions block the gate. The table `sanity/cdc_report.md` shows each violation with Waived and the Comment. Built-in knowledge: `cdc_waivers/md/knowledge.md`; yours: `sanity/cdc_knowledge.md` (cases U1, U2, …; they win).
+Every violation gets one decision: waive (a `waive_cdc` command, applied and checked by `cdc_check`), fix_rtl / spec (scoped change requests for the flow that owns the RTL and the spec: `sanity_handoff`), sdc (a request to you: the constraint to add), or ask (a question to you). Open questions block the gate. The table `reports/cdc_report.md` shows each violation with Waived and the Comment. Built-in knowledge: `cdc_waivers/md/knowledge.md`; yours: `sanity/cdc_knowledge.md` (cases U1, U2, …; they win).

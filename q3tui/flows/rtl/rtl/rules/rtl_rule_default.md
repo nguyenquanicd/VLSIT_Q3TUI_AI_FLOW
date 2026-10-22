@@ -101,7 +101,7 @@ Keep in full, never abbreviate: `data`, `valid`, `ready`, `mode`, `depth`, `done
   - `// Parameter values: ...` legal values or inclusive range, and the default value.
   - `// Parameter unit: ...` unit of the value (for example `bit`, `byte`, `us`). This line is required. A parameter without a physical unit uses `count` for a quantity or `none` for a mode or flag code.
 - **PAR-03** Derive dependent widths (address, counter, field positions) from parameters or localparams; do not repeat literals. Design-specific constants are named parameters, localparams, or enum members.
-- **PAR-04** `[NEW]` Illegal parameter values MUST be rejected at elaboration in a generate-time check that uses an elaboration system task (for example `$error`) in a generate `if`. Such checks are the only allowed system tasks in RTL and MUST be supported by the frontend (see P14).
+- **PAR-04** `[NEW]` Illegal parameter values MUST be rejected at elaboration in a generate-time check that uses an elaboration system task (for example `$error`) in a generate `if`. Such checks, and the constant system functions used for sizing (`$bits`, `$clog2`, `$size`, `$high`, `$low`, `$left`, `$right`; see ARI-02), are the only system tasks and functions allowed in RTL and MUST be supported by the frontend (see P14).
 
 ```systemverilog
 // Parameter Description: datapath width of the operands and the result.

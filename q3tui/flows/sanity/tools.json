@@ -1,11 +1,41 @@
 {
-  "_comment": "Default tool roles of the Sanity flow (docs/spec/sanity-flow.md): Synopsys VC Static (/tools/Synopsys/vc_static, module synopsys/vc_static). Used by this flow only, when no tools.json / tools.roles of the project defines `cdc` / `rdc`. The Tcl setup script (sanity/<role>_setup.tcl) is written by Q3TUI; the violations are read from the report it writes (lib/vcstatic.py); `parse` only says when the tool itself failed.",
+  "_comment": "Default tool roles of the Sanity flow (docs/spec/sanity-flow.md): the standalone Synopsys VC Static install /tools/Synopsys/vc_static (the one that ships with VCS under vcs/.../vcfca needs Qt libraries this site lacks, and there is no synopsys/vc_static module; the VCS module would also override VC_STATIC_HOME and put its own vc_static_shell first). No modules: VC_STATIC_HOME and the license server are set per role. Used by this flow only, when no tools.json / tools.roles of the project defines `cdc` / `rdc`. The Tcl setup script (build/sanity/<role>_setup.tcl) is written by Q3TUI; the violations are read from the report it writes (lib/vcstatic.py); `parse` only says when the tool itself failed.",
   "roles": {
-    "cdc": {"cmd": "vc_static_shell -f {script}", "modules": ["synopsys/vc_static"], "timeout_s": 3600,
-            "parse": {"error": ["^\\s*(Fatal|Error)-\\[", "^\\s*\\[Fatal\\]", "Error in script"], "warning": []},
-            "description": "static clock domain crossing analysis (VC Static: check_cdc, report_violations -app CDC)"},
-    "rdc": {"cmd": "vc_static_shell -f {script}", "modules": ["synopsys/vc_static"], "timeout_s": 3600,
-            "parse": {"error": ["^\\s*(Fatal|Error)-\\[", "^\\s*\\[Fatal\\]", "Error in script"], "warning": []},
-            "description": "static reset domain crossing analysis (VC Static: check_rdc, report_rdc)"}
+    "cdc": {
+      "cmd": "/tools/Synopsys/vc_static/X-2025.06/bin/vc_static_shell -f {script}",
+      "modules": [],
+      "timeout_s": 3600,
+      "parse": {
+        "error": [
+          "^\\s*(Fatal|Error)-\\[",
+          "^\\s*\\[Fatal\\]",
+          "Error in script"
+        ],
+        "warning": []
+      },
+      "description": "static clock domain crossing analysis (VC Static: check_cdc, report_violations -app CDC)",
+      "env": {
+        "VC_STATIC_HOME": "/tools/Synopsys/vc_static/X-2025.06",
+        "SNPSLMD_LICENSE_FILE": "27000@172.16.0.2"
+      }
+    },
+    "rdc": {
+      "cmd": "/tools/Synopsys/vc_static/X-2025.06/bin/vc_static_shell -f {script}",
+      "modules": [],
+      "timeout_s": 3600,
+      "parse": {
+        "error": [
+          "^\\s*(Fatal|Error)-\\[",
+          "^\\s*\\[Fatal\\]",
+          "Error in script"
+        ],
+        "warning": []
+      },
+      "description": "static reset domain crossing analysis (VC Static: check_rdc, report_rdc)",
+      "env": {
+        "VC_STATIC_HOME": "/tools/Synopsys/vc_static/X-2025.06",
+        "SNPSLMD_LICENSE_FILE": "27000@172.16.0.2"
+      }
+    }
   }
 }

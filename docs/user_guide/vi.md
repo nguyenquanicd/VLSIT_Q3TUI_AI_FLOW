@@ -284,7 +284,7 @@ spec → parse → config → rules → csr → rtl → format → style_lint �
 1. **Rule của bạn.** `q3tui act rtl_rules_init` tạo `config/rtl_rules.md`: mỗi rule một bullet, `- **ID** nội dung`. File này được đọc trước rule mặc định của Q3TUI (cùng id = ghi đè).
    Step `rules` kiểm tra mâu thuẫn (dừng và chỉ ra đúng chỗ cần sửa) rồi viết flag Verible vào `src/rtl/style_lint/`.
 2. **Thanh ghi.** Nếu spec có register map, step `csr` soạn `src/rtl/csr/csr_map.json` và sinh khối thanh ghi bằng APB-CSR-Generator (chạy `q3tui act csr_tool_install` một lần;
-   hoặc đặt `csr.tool_dir` / `$CSR_GEN_HOME`). Muốn đổi thanh ghi thì sửa `csr_map.json`: sau lần soạn đầu file này là của bạn. `csr.mode: off` để bỏ qua.
+   hoặc đặt `csr.tool_dir`, `env.CSR_GEN_HOME` của role `csr_gen` trong `config/tools.json`, hoặc `$CSR_GEN_HOME`). Muốn đổi thanh ghi thì sửa `csr_map.json`: sau lần soạn đầu file này là của bạn. `csr.mode: off` để bỏ qua.
 3. **RTL, format, style lint.** `rtl` theo rule; `format` chỉ đổi khoảng trắng (hỏi trước khi đụng file bạn đã sửa tay); `style_lint` chạy Verible và gửi lỗi vi phạm về `rtl`.
    Chuỗi này tự lặp, tối đa `style_lint.max_rounds` vòng.
 4. **Smoke test.** Testbench nhỏ viết chỉ từ spec, compile và chạy (role `sim`, `run`). Nếu fail thì được triage và sửa, hoặc thành câu hỏi cho bạn.

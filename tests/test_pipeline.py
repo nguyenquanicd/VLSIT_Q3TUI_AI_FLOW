@@ -360,3 +360,16 @@ def test_a_step_left_running_by_a_killed_process_is_run_again_not_yours(engine, 
     assert v.status == "stale" and "interrupted" in v.detail
     run(fresh, yes=True, stop="rtl")
     assert fresh.state.steps["rtl"].origin == "generated" and fresh.state.steps["rtl"].status == "done"
+
+
+def test_a_steps_cost_adds_up_over_its_runs(engine, llm):
+    """`q3tui cost` showed only the last run of a step (the first run's cost vanished from the per-step list)."""
+    engine.import_intent("fifo")
+    run(engine, yes=True, stop="spec")
+    first = engine.state.steps["spec"].cost_usd
+    assert first > 0
+    engine.request_change("spec", "tighten the overview")
+    run(engine, yes=True, stop="spec")
+    rec = engine.state.steps["spec"]
+    assert rec.cost_usd > first and rec.cost_usd == pytest.approx(engine.state.total_cost_usd)
+    assert engine.cost_summary()["steps"]["spec"] == pytest.approx(rec.cost_usd)

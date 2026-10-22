@@ -65,7 +65,7 @@ class Step(RtlFlowStep):
 
     def _naming(self, engine) -> dict:
         prof = rules_check.profile_for(self.rule_files(engine), engine.by_name["rtl"].options.get("naming"))
-        return {k: v for k, v in prof.__dict__.items() if v not in (None, "", False)}
+        return rules_check.describe(prof)
 
     def _catalog(self, engine, ts, work: Path) -> str:
         """The installed Verible's rules in a compact catalog (code: `--help_rules=all`), so the LLM does not ask for them one by one."""

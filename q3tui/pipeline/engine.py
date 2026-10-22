@@ -852,7 +852,8 @@ class Engine:
             if isinstance(exc, StepFailed):  # its own checks failed: replaying the same answers would fail the same way
                 shutil.rmtree(checkpoints, ignore_errors=True)
             if isinstance(exc, Exception):
-                rec.status, rec.error, rec.cost_usd = "failed", describe_error(exc), ctx.cost_usd
+                rec.status, rec.error = "failed", describe_error(exc)
+                rec.cost_usd += ctx.cost_usd
                 self.save()
                 emit("step_finished", status="failed", error=rec.error)
             else:  # cancelled (stop / quit): back to where it was
@@ -871,7 +872,7 @@ class Engine:
         arrived = list(self.state.feedback.get(step.name, []))
         rec.inputs_hash = self._inputs_hash_without_feedback(step, arrived) if arrived else self.inputs_hash(step)
         rec.finished = datetime.now().isoformat(timespec="seconds")
-        rec.cost_usd = ctx.cost_usd
+        rec.cost_usd += ctx.cost_usd  # (what the step cost in all its runs since the last cost reset)
         self.state.total_cost_usd += ctx.cost_usd
         blocking = [q for q in self.questions() if q["step"] == step.name and q["status"] == "open" and q.get("blocking")]
         if step.name not in self.gate_modes():

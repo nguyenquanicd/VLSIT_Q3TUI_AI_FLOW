@@ -12,8 +12,8 @@ cd projects/<your_project>          # needs src/rtl/ (+ filelist.f) from the vls
 q3tui --flow sanity run             # or press Shift+F in the TUI and pick "Sanity"
 ```
 
-Or set `pipeline.flow: sanity` in the project's `q3tui.yaml`. The tool comes from `config/tools.json` (`vc_static_shell -f {script}`,
-module `synopsys/vc_static`); override it under `tools.roles` in `q3tui.yaml`.
+Or set `pipeline.flow: sanity` in the project's `q3tui.yaml`. The tool comes from `config/tools.json`; the flow's default is the standalone VC Static install
+(`/tools/Synopsys/vc_static/X-2025.06`, with `VC_STATIC_HOME` and the license server set in the role's `env`, no module); override it under `tools.roles` in `q3tui.yaml`.
 
 ## Steps
 

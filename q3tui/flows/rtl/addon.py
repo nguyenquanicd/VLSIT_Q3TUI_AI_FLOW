@@ -42,7 +42,10 @@ def register(api) -> None:
         from q3tui.flows.rtl.lib import csr
         from q3tui.pipeline.engine import EngineError
 
-        found = csr.find_tool(ops.project.root)
+        from q3tui.eda import tools as toolmod
+
+        role = toolmod.load_tools(ops.project.cfg, ops.project.root, ops.engine.flow).roles.get("csr_gen")
+        found = csr.find_tool(ops.project.root, None, (role.env or {}).get("CSR_GEN_HOME") if role else None)
         if found:
             return ops._log("csr", f"the APB-CSR-Generator is already at {found}")
         dest = Path(os.environ.get("Q3TUI_HOME") or "~/.q3tui").expanduser() / "tools" / "APB-CSR-Generator"

@@ -26,6 +26,22 @@ def test_flow_loads_and_is_valid():
     assert {"verible_lint", "verible_format", "csr_gen"} <= set(flow.tool_defaults)  # the flow's own roles (tools.json)
 
 
+def test_the_default_profile_accepts_what_the_rule_text_allows():
+    """TYP-02 / P20 (`input wire`) and ARI-04 / P21 (`for (int idx …)`) are allowed by the rule text: the code check must not
+    flag them, and the rules step shows the judge what each check means (a run read the raw flags as a contradiction)."""
+    from q3tui.flows.rtl.lib import rules_check
+
+    src = ("module m_x (\n  input wire i_clk_core,\n  input wire i_rst_n_core,\n  input wire [3:0] i_a,\n  output logic [3:0] o_y\n);\n"
+           "  logic [3:0] w_t;\n  always_comb begin : p_com_t\n    w_t = '0;\n    for (int idx = 0; idx < 4; idx++) begin\n"
+           "      w_t[idx] = i_a[idx];\n    end\n  end\n  assign o_y = w_t;\nendmodule\n")
+    prof = rules_check.profile_for(["rtl_rule_default.md"])
+    assert rules_check.check_source(src, "m_x", prof) == []
+    bad = src.replace("logic [3:0] w_t;", "wire [3:0] w_t;\n  int w_n;")
+    assert {v.rule for v in rules_check.check_source(bad, "m_x", prof)} >= {"R7/P20", "P21"}  # (internal wire / int stay forbidden)
+    text = " ".join(rules_check.describe(prof).values())
+    assert "`input wire i_a`) is not checked and is accepted" in text and "for-header loop index" in text and "forbid_wire_reg" not in text
+
+
 def test_rule_stack_puts_your_file_first(tmp_path):
     project = Project.open(tmp_path)
     assert rules.stack(project, ["rtl_rule_default.md"]) == ["rtl_rule_default.md"]
@@ -506,6 +522,8 @@ def test_smoke_writer_never_sees_the_rtl_and_the_result_is_code(smoke_proj):
     assert "input [7:0] i_a" not in w.prompt  # the RTL's text is nowhere in the task
     assert root / "src" / "rtl" / "m.sv" in w.deny_dirs and root / "src" / "rtl" / "style_lint" in w.deny_dirs
     assert root / "src" / "rtl" / "smoke" not in w.deny_dirs and w.write_files == [root / "src" / "rtl" / "smoke" / "tb_smoke.sv"]
+    tb = w.write_files[0]
+    assert not any(d == tb or d in tb.parents for d in w.deny_dirs)  # (no denied folder holds the file it must write)
     rep = eng.by_name["smoke"].read_json(root / "src" / "rtl" / "smoke" / "smoke_report.json")
     assert rep["status"] == "pass" and rep["run"]["results"]["S2"]["status"] == "PASS"
     assert "| S2 | copy | REQ-001 |" in (root / "src" / "rtl" / "smoke" / "smoke_plan.md").read_text()

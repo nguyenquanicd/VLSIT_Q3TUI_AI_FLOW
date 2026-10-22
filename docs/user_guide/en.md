@@ -288,7 +288,7 @@ spec → parse → config → rules → csr → rtl → format → style_lint �
 1. **Your rules.** `q3tui act rtl_rules_init` writes `config/rtl_rules.md`: one rule per bullet, `- **ID** text`. They are read before Q3TUI's default rules (same id =
    override). The `rules` step checks them for contradictions (it stops with the exact text to change) and writes the Verible flags to `src/rtl/style_lint/`.
 2. **Registers.** If the spec has a register map, the `csr` step drafts `src/rtl/csr/csr_map.json` and generates the register block with the APB-CSR-Generator
-   (`q3tui act csr_tool_install` once; or set `csr.tool_dir` / `$CSR_GEN_HOME`). Edit `csr_map.json` to change a register: it is yours after the first draft. `csr.mode: off` skips it.
+   (`q3tui act csr_tool_install` once; or set `csr.tool_dir`, `env.CSR_GEN_HOME` of the `csr_gen` role in `config/tools.json`, or `$CSR_GEN_HOME`). Edit `csr_map.json` to change a register: it is yours after the first draft. `csr.mode: off` skips it.
 3. **RTL, format, style lint.** `rtl` follows the rules; `format` only changes whitespace (it asks before touching a file you edited); `style_lint` runs Verible and sends
    violations back to `rtl`. This repeats by itself, up to `style_lint.max_rounds`.
 4. **Smoke test.** A small testbench written from the spec only, compiled and run (tool roles `sim` and `run`). A failure is triaged and fixed, or becomes a question for you.
