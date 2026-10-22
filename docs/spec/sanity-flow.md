@@ -77,6 +77,18 @@ is stale and runs again. An `sdc` decision whose `sdc_request` is only allowed S
 lines are added to `sdc.json: extra_tcl` and rendered to `constraints/sdc/extra.tcl`, the decision is marked handed off to `sdc`, and the analysis runs again on the changed SDC. It needs `sdc.json`:
 with a hand-written SDC (no `sdc.json`) the request stays yours, and so does anything that is not a plain constraint command. Questions (`ask`) are never handed off. The hand-off is recorded in the decision and in the table, not as an edit of the step.
 
+## Memory
+
+What was tried is kept by code, not in a chat session (`lib/memory.py`, `.q3tui/sanity/handoffs.json`, keyed by the violation's stable id).
+
+- Every RTL, spec or SDC request handed off is recorded.
+- The waiver review is told, per violation that is still open, what was already tried and what it decided before the RTL or SDC changed
+  ("Already tried for this violation …", "Your earlier decision for it …"). An unchanged violation keeps its decision unless the review cites a reason.
+- A request that was already sent (same text), or a third RTL / spec request for the same violation, is not sent again: the decision becomes a
+  question for you (`ask`, with the earlier attempts and three options).
+- A `fix_rtl` whose own reason cites a requirement it would go against (`REQ-…` with "conflicts / contradicts / forbids / violates") becomes a
+  `spec` decision: the requirement is decided first.
+
 ## The fix loop
 
 `q3tui --flow sanity loop [--owner FLOW] [--max-rounds N] [--max-cost USD] [--restore-best]` (`core/loop.py`; unattended, `auto_answer`) repeats:

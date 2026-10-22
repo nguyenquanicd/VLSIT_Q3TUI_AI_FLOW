@@ -412,3 +412,65 @@ def test_the_tool_runs_in_its_work_folder_not_in_the_project(tmp_path):
     assert absf.read_text().splitlines() == ["// files", f"+incdir+{tmp_path / 'src' / 'rtl'}", str(tmp_path / "src" / "rtl" / "a.sv")]
     t = script.text("cdc", "a", tmp_path, absf, work, tmp_path / "s.tcl", {})
     assert t.splitlines()[1] == f"cd {work}" and f'-f {absf}' in t and f"cd {tmp_path}\n" not in t
+
+
+# -- memory: what was tried is remembered, a repeat becomes a question --------------------------------------------------------------
+
+
+def test_memory_blocks_the_same_request_and_the_third_attempt(tmp_path):
+    from q3tui.flows.sanity.lib import memory
+
+    project = Project.open(tmp_path)
+    assert memory.repeated(project, "CDC-1", "fix_rtl", "add a synchronizer") == []
+    memory.record(project, "CDC-1", "fix_rtl", "add a synchronizer", "blk")
+    assert memory.repeated(project, "CDC-1", "fix_rtl", "Add a  synchronizer")  # (the same request, whatever the spacing and case)
+    assert memory.repeated(project, "CDC-1", "fix_rtl", "use a handshake") == []  # a different one may still be tried
+    memory.record(project, "CDC-1", "fix_rtl", "use a handshake", "blk")
+    assert len(memory.repeated(project, "CDC-1", "fix_rtl", "use an async fifo")) == 2  # (MAX_TRIES reached)
+    assert memory.repeated(project, "CDC-1", "sdc", "set_false_path") == [] and memory.repeated(project, "CDC-2", "spec", "x") == []
+    assert memory.conflicts_with_requirement("REQ-RESET-004 forbids a synchronous clear", "make it asynchronous")
+    assert not memory.conflicts_with_requirement("the data is not synchronized", "add a two-flop synchronizer") and \
+        not memory.conflicts_with_requirement("this goes against the rules", "x")  # (no requirement cited)
+
+
+async def test_a_handed_off_fix_is_remembered_and_the_repeat_becomes_a_question(proj, monkeypatch):
+    from q3tui.flows.sanity.lib import memory
+    from q3tui.llm import runtime
+
+    (proj.root / "flows").mkdir(exist_ok=True)
+    (proj.root / "flows" / "owner.yaml").write_text("name: owner\nsteps:\n  - {id: spec, kind: reads}\n  - {id: rtl, kind: reads, deps: [spec]}\n")
+    _tools(proj.root, extra="  step_options:\n    cdc_waivers:\n      handoff_flow: owner\n")
+    llm = ReviewLLM(_decide)
+    monkeypatch.setattr(runtime, "run_stage", llm)
+    eng = Engine(Project.open(proj.root))
+    await eng.run(yes=True, stop="cdc_waivers")
+    sig = next(i["sig"] for i in eng.by_name["cdc_waivers"].items(eng) if i["id"] == "V2")
+    Ops(eng).run_action("sanity_handoff", ids="cdc:V2")
+    (att,) = memory.attempts(proj, sig)
+    assert att["kind"] == "fix_rtl" and att["module"] == "blk" and "two-flop synchronizer on r_a" in att["text"]
+    # the RTL changed, the violation is still there: the review is told, and its same proposal does not go out again
+    (proj.root / "src" / "rtl" / "blk.sv").write_text((proj.root / "src" / "rtl" / "blk.sv").read_text() + "// round 2\n")
+    llm.stages.clear()
+    await Engine(Project.open(proj.root)).run(yes=True, stop="cdc_waivers")
+    prompt = llm.stages[0].prompt
+    assert "Already tried for this violation (1 time(s))" in prompt and "two-flop synchronizer on r_a" in prompt
+    assert "Your earlier decision for it: waive (K1)" in prompt and "keep the decision if it still holds" in prompt
+    plan = json.loads((proj.schemas_dir / "cdc_waivers.json").read_text())
+    v2 = next(i for i in plan["items"] if i["id"] == "V2")
+    assert v2["action"] == "ask" and "still open after 1 hand-off" in v2["question"] and len(v2["options"]) == 3 and v2["handed_off"] is None
+    assert "Question for you" in (proj.root / "reports" / "cdc_report.md").read_text()
+
+
+async def test_a_fix_that_goes_against_a_requirement_becomes_a_spec_decision(proj, monkeypatch):
+    from q3tui.llm import runtime
+
+    def decide(i):
+        if i == "V2":
+            return dict(action="fix_rtl", module="blk", change="make the toggle reset asynchronous", reason="REQ-RESET-004 forbids it, but the RDC tool wants it")
+        return _decide(i)
+
+    monkeypatch.setattr(runtime, "run_stage", ReviewLLM(decide))
+    eng = Engine(proj)
+    await eng.run(yes=True, stop="cdc_waivers")
+    v2 = next(i for i in eng.by_name["cdc_waivers"].items(eng) if i["id"] == "V2")
+    assert v2["action"] == "spec" and "go against a requirement" in v2["change"]

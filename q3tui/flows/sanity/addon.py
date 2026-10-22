@@ -5,6 +5,7 @@ from __future__ import annotations
 
 from q3tui.flows.fpga import addon as fpga_addon
 from q3tui.flows.fpga.lib import sdc as sdcmod
+from q3tui.flows.sanity.lib import memory
 
 
 def _handoff(ops, ids: str) -> str:
@@ -45,6 +46,7 @@ def _handoff(ops, ids: str) -> str:
                     except EngineError as exc:  # (a hand-written SDC has no sdc.json to add to)
                         sent.append(f"{step.role}:{d['id']} not applied ({exc})")
                         continue
+                    memory.record(ops.project, d["sig"], "sdc", "; ".join(lines))
                     d["handed_off"] = {"flow": ops.engine.flow.name, "step": "sdc", "at": datetime.now().isoformat(timespec="seconds"), "applied": lines}
                     sent.append(f"{step.role}:{d['id']} → sdc: {lines[0][:70]}")
                 continue
@@ -54,6 +56,7 @@ def _handoff(ops, ids: str) -> str:
             if target not in other.by_name:
                 raise EngineError(f"flow '{name}' has no step '{target}' to hand {tag} to")
             other.request_change(target, text)
+            memory.record(ops.project, d["sig"], d["action"], d.get("change") or d.get("reason", ""), d.get("module", ""))
             d["handed_off"] = {"flow": name, "step": target, "at": datetime.now().isoformat(timespec="seconds")}
             sent.append(f"{step.role}:{d['id']} → {name}:{target}")
         step.write(ops.engine, f"{step.role}_waivers.json", plan)

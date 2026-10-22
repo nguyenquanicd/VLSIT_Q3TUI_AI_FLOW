@@ -17,7 +17,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from q3tui.core.project import read_json, sha256_json, write_json
-from q3tui.flows.sanity.lib import table, waivers
+from q3tui.flows.sanity.lib import memory, table, waivers
 from q3tui.flows.sanity.lib.base import SanityStep, report_json, waivers_json
 from q3tui.flows.sanity.lib.waivers import Decision, Review
 from q3tui.llm.runtime import Stage
@@ -82,7 +82,7 @@ class WaiverStep(SanityStep):
         end = next((i for i, x in enumerate(lines) if x.startswith("check_")), None)
         return "\n".join(lines[start + 1:end]) if start is not None and end is not None else ""
 
-    def _prompt(self, engine, batch: list[dict], answers: dict[str, str], modules: list[str]) -> str:
+    def _prompt(self, engine, batch: list[dict], answers: dict[str, str], modules: list[str], prev_by_sig: dict | None = None) -> str:
         role = self.role
         lines = [f"## {role.upper()} violations to decide (the tool's report: ground truth)",
                  f"Top `{self.top(engine)}`; RTL modules (src/rtl/<module>.sv): {', '.join(modules)}.",
@@ -95,10 +95,24 @@ class WaiverStep(SanityStep):
         for v in batch:
             fields = "; ".join(f"{k}={str(x)[:160]}" for k, x in (v.get("fields") or {}).items())
             lines.append(f"- **{v['id']}** {v['severity']} `{v['tag']}`: {v['message'][:300]}" + (f"\n  fields: {fields}" if fields else ""))
-            if answers.get(waivers.sig_id(role, v)):
-                lines.append(f"  The user answered: {answers[waivers.sig_id(role, v)]} (settled: follow it, do not ask again)")
+            sig = waivers.sig_id(role, v)
+            if answers.get(sig):
+                lines.append(f"  The user answered: {answers[sig]} (settled: follow it, do not ask again)")
+            lines += memory.tried_lines(engine.project, sig)
+            p = (prev_by_sig or {}).get(sig)
+            if p:  # the same violation was decided before the RTL / SDC changed: the decision is the starting point, not a blank page
+                lines.append(f"  Your earlier decision for it: {p['action']}"
+                             + (f" ({p.get('rule')})" if p.get("rule") else "") + f" — {(p.get('reason') or '')[:260]}. The RTL or SDC changed since: "
+                             "check the evidence again and keep the decision if it still holds; change it only for a reason you can cite.")
         lines += ["", waivers.knowledge(self.knowledge_file(), engine.project.config_dir, role)]
         return "\n".join(lines)
+
+    def _ask_repeated(self, d: Decision, v: dict, tries: list[dict]) -> Decision:
+        last = tries[-1]
+        return Decision(id=d.id, action="ask", reason=f"{len(tries)} RTL / spec request(s) were handed off for this violation and it is still open. "
+                        f"Last: {last['kind']}{' in ' + last['module'] if last.get('module') else ''}: {last['text'][:200]}. The review wanted: {d.change or d.reason}"[:600],
+                        question=f"{v['tag']} is still open after {len(tries)} hand-off(s) (last: {last['text'][:140]}). How should it be settled?",
+                        options=["Decide it in the spec: say what the design must do", "Waive it: give the design reason", "Try another RTL fix: give a hint"])
 
     def _validate(self, engine, out: Review, batch: list[dict], modules: list[str], answers: dict[str, str]) -> list[dict]:
         by_id = {d.id: d for d in out.decisions}
@@ -108,6 +122,13 @@ class WaiverStep(SanityStep):
                                                question=f"The review made no decision for {v['tag']}: {v['message'][:120]}. How should it be handled?")
             if d.action == "fix_rtl" and d.module not in modules:
                 d = Decision(id=d.id, action="spec", reason=d.reason, change=f"{d.change} (the review named the module '{d.module}', which is not in the RTL)")
+            if d.action == "fix_rtl" and memory.conflicts_with_requirement(d.reason, d.change):
+                # its own text says the change goes against a requirement: that is the spec's decision (or yours), never a silent RTL change
+                d = Decision(id=d.id, action="spec", reason=d.reason, change=f"{d.change} (an RTL change here would go against a requirement the reason cites: decide the requirement first)")
+            if d.action in ("fix_rtl", "spec"):
+                tries = memory.repeated(engine.project, waivers.sig_id(self.role, v), d.action, d.change or d.reason)
+                if tries:
+                    d = self._ask_repeated(d, v, tries)
             if d.action == "waive" and not d.reason.strip():
                 d = Decision(id=d.id, action="ask", reason="a waiver needs its evidence and none was given", question=f"Waive {v['tag']}: {v['message'][:120]}?")
             if d.action == "waive" and waivers.waive_command(v, {"id": v["id"], **d.model_dump()}, self.role) is None:
@@ -145,7 +166,7 @@ class WaiverStep(SanityStep):
         size = int(self.options.get("batch") or BATCH)
         for n in range(0, len(todo), size):
             batch = todo[n:n + size]
-            stage = Stage(name=f"{role}_waivers_{n // size + 1}", system_prompt=self.system, prompt=self._prompt(engine, batch, answers, modules),
+            stage = Stage(name=f"{role}_waivers_{n // size + 1}", system_prompt=self.system, prompt=self._prompt(engine, batch, answers, modules, prev_by_sig),
                           cwd=project.root, builtin_tools=["Read", "Grep", "Glob"], output_model=Review,
                           deny_dirs=[project.model_dir])
             out: Review = (await ctx.llm(stage)).output
