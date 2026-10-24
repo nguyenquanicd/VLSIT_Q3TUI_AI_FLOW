@@ -225,11 +225,11 @@ class ToolsTab(_Tab):
 
         async def go() -> None:
             try:
-                msg = await anyio.to_thread.run_sync(lambda: app.ops.run_action("tools_check"))
+                msg = await anyio.to_thread.run_sync(lambda: common.check_tools(app.project))  # (no event from the thread: they reach widgets)
             except Exception as exc:  # noqa: BLE001
                 app.notify(str(exc), severity="error")
                 return
-            app.log_info(msg)
+            app.ops._log("tools", msg)
             app.refresh_all()
 
         self.run_worker(go(), exclusive=True, group="tools-check")

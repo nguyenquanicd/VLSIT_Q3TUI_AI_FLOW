@@ -111,10 +111,7 @@ def register(api) -> None:
 
     @api.action("tools_check", "Check which tool roles the flows use and whether each tool is found (loads the modules: takes a few seconds).")
     def tools_check(ops) -> str:
-        rows = common.tool_rows(ops.project)
-        common.save_tool_rows(ops.project, rows)
-        missing = [r["role"] for r in rows if not r["found"]]
-        return ops._log("tools", f"{len(rows) - len(missing)} of {len(rows)} tool role(s) found" + (f"; missing: {', '.join(missing)}" if missing else ""))
+        return ops._log("tools", common.check_tools(ops.project))
 
     @api.action("tools_modules", "Set the modules loaded (`module load`) before every tool: names separated by spaces or commas; empty clears them. Saved to q3tui.yaml.",
                 {"modules": "e.g. synopsys/syn/V-2023.12 oss-cad-suite"}, optional=("modules",))

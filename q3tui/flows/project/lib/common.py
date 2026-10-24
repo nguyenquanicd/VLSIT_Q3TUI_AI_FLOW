@@ -235,6 +235,15 @@ def set_role(project, role: str, cmd: str = "", modules: str = "", timeout_s: st
     return f"tool role '{role}' saved to {path.name}"
 
 
+def check_tools(project) -> str:
+    """Look for every tool (slow: a shell per role loads its modules), keep the rows for the Tools tab and say how many were found. Emits nothing: the TUI runs
+    it in a thread, where an event would reach widgets from the wrong thread; the caller logs the summary."""
+    rows = tool_rows(project)
+    save_tool_rows(project, rows)
+    missing = [r["role"] for r in rows if not r["found"]]
+    return f"{len(rows) - len(missing)} of {len(rows)} tool role(s) found" + (f"; missing: {', '.join(missing)}" if missing else "")
+
+
 def save_tool_rows(project, rows: list[dict]) -> Path:
     return write_json(state_dir(project) / TOOL_ROWS, {"roles": rows})  # (not tools.json: that is the `tools` step's report)
 

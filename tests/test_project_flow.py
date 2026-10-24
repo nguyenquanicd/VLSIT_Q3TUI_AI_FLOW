@@ -502,8 +502,7 @@ async def test_the_tools_view_checks_and_sets_modules(proj, monkeypatch):
             await pilot.pause(0.25)
             if (proj.state_dir / "project" / "tool_rows.json").is_file():
                 break
-        await pilot.pause(0.5)
-        tab.refresh_view()
+        await pilot.pause(0.5)  # (no manual refresh: the check redraws the tab itself, from the thread's result)
         table = tab.query_one(DataTable)
         rows = {table.coordinate_to_cell_key((i, 0)).row_key.value: [str(table.get_cell_at((i, c))) for c in range(5)] for i in range(table.row_count)}
         assert rows["fpga_synth"][2] == "✔" and rows["asic_synth"][2] == "✘"  # (the stand-in finds fpga_synth only)
