@@ -43,7 +43,7 @@ class RtlFlowStep(VlsitStep):
     def tools(self, engine):
         from q3tui.eda import tools as toolmod
 
-        return toolmod.load_tools(engine.project.cfg, engine.project.root, engine.flow)
+        return toolmod.load_tools(engine.project.cfg, engine.project.root)
 
     def workdir(self, engine) -> Path:
         d = engine.project.state_dir / "rtl_flow" / self.name
@@ -62,10 +62,10 @@ class RtlFlowStep(VlsitStep):
             return str(exc)
         for role in roles:
             if role not in ts.roles:
-                return (f"no tool for role '{role}': add roles.{role} to tools.json or tools.roles "
-                        f"(the flow's default for it is flows/rtl/tools.json)")
+                return (f"no tool for role '{role}': add roles.{role} to config/tools.json or tools.roles "
+                        f"(`q3tui tools init` writes one to start from)")
             if not available(ts, role):
-                return f"the tool '{binary_of(ts.roles[role])}' (role '{role}') was not found (check tools.json, modules / setup_script)"
+                return f"the tool '{binary_of(ts.roles[role])}' (role '{role}') was not found (check config/tools.json, modules / setup_script)"
         return None
 
     def rule_files(self, engine) -> list[str]:

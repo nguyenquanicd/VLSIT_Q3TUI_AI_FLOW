@@ -124,17 +124,17 @@ result by code. Search order, first wins per name: `<project>/config/skills/`, `
 `flows/rtl/skills/`: so a project replaces or adds a playbook by dropping a folder. Built-in: `csr-register-map`, `apb-csr-tool`, `verible-flags`, `rule-consistency`,
 `lint-triage`, `smoke-testbench`, `smoke-triage`. Skills are not part of a step's staleness (like prompts, they apply to the next LLM task).
 
-## Tools (`flows/rtl/tools.json`, by role)
+## Tools (`config/tools.json`, by role)
 
-| Role | Used by | Default |
+| Role | Used by | Template (`q3tui tools init`) |
 |---|---|---|
 | `verible_lint` | rules, style_lint | `verible-verilog-lint {args} {files}`, parse `verible`, exit code 1 (findings) is a result |
 | `verible_format` | format | `verible-verilog-format {args} {files}` (`--inplace` added by code) |
-| `lint`, `synth` | rtl | the project's tool set (the built-in Synopsys preset when it has none): VCS lint, Design Compiler |
+| `lint`, `synth` | rtl | the Synopsys preset: VCS lint, Design Compiler |
 | `csr_gen` | csr | `{python} {tool}/CSR_Generation.py {workbook} {sheet}` |
 | `sim`, `run` | smoke | the same: VCS compile, `simv` |
 
-The flow's `tools.json` only fills a role nothing else configures. A missing tool makes its step wait (`missing_input`) with a message naming the
+The flow brings no defaults: every role is read from your `config/tools.json` (`q3tui tools init` writes templates, `presets/flows/rtl.json` for the Verible and CSR roles). A missing tool makes its step wait (`missing_input`) with a message naming the
 role: a check whose tool is missing is not passed. There is no fallback between tools; configure `sim` / `run` for Verilator, Icarus or whatever you
 have in your `config/tools.json`. In-process MCP tools for the stages: `verible_help`, `verible_check_flags`, `verible_lint`, `smoke_compile`, `smoke_run`
 (they run the roles; the runtime caps their output).

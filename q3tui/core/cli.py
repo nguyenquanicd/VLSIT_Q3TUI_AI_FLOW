@@ -548,7 +548,7 @@ def flow_check(c: Ctx, flow: str | None) -> None:
 
     needed = roles_needed(fl)
     if needed:
-        console.print(f"tools needed: {', '.join(needed)}  (tools.json / tools.roles in q3tui.yaml)", markup=False)
+        console.print(f"tools needed: {', '.join(needed)}  (config/tools.json / tools.roles in q3tui.yaml)", markup=False)
     console.print("[green]✔[/green] flow is valid")
 
 
@@ -582,7 +582,7 @@ def tools_check(c: Ctx) -> None:
     root = c.project.root
     flow = flows.load_flow(c.project.flow_ref(), root)
     try:
-        ts = T.load_tools(c.project.cfg, root, flow)
+        ts = T.load_tools(c.project.cfg, root)
     except T.ToolUnavailable as exc:
         raise click.ClickException(str(exc))
     bad = 0

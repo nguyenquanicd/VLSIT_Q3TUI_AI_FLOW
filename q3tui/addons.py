@@ -3,7 +3,6 @@
 Core (CLI, TUI, assistant, `Ops`, engine) knows no flow by name. A flow folder may hold, next to `FLOW.md` and its steps:
 
     addon.py     `register(api)`: user actions (`api.action`), step kinds (`api.kind`)
-    tools.json   default tool roles (`{"roles": {...}}`): used only by this flow, for a role nothing configures
     panels.py    TUI panels of its step kinds (`register_panel(kind, builder)`); imported when the TUI opens the flow
 
 An *action* is a user action of the flow (change the SDC, …): `fn(ops, **params) -> str`, params all strings. Core exposes
@@ -13,7 +12,6 @@ so they all go through `Ops.run_action`, like every other user action."""
 from __future__ import annotations
 
 import importlib.util
-import json
 import sys
 from collections.abc import Callable
 from dataclasses import dataclass, field
@@ -73,9 +71,6 @@ def _load_file(path: Path, name: str):
 def attach(flow) -> None:
     """Load the add-on files of a flow folder into `flow` (no-op for what the folder does not have)."""
     root = flow.path.parent
-    tools = root / "tools.json"
-    if tools.is_file():
-        flow.tool_defaults = dict(json.loads(tools.read_text()).get("roles") or {})
     if (root / "panels.py").is_file():
         flow.panels_file = root / "panels.py"
     addon = root / "addon.py"

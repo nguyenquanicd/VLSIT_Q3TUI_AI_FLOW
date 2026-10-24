@@ -23,7 +23,7 @@ def test_flow_loads_and_is_valid():
     assert [s.id for s in flow.steps][:9] == ["spec", "parse", "config", "rules", "csr", "rtl", "format", "style_lint", "smoke"]
     assert flows.validate(flow) == []
     assert flow.session == "fresh"
-    assert {"verible_lint", "verible_format", "csr_gen"} <= set(flow.tool_defaults)  # the flow's own roles (tools.json)
+    assert {"verible_lint", "verible_format", "csr_gen"} <= set(T.roles_needed(flow))  # the roles it needs (the project's config/tools.json defines them)
 
 
 def test_the_default_profile_accepts_what_the_rule_text_allows():
@@ -248,7 +248,7 @@ def test_rules_step_writes_the_flags_and_updates_by_diff(rtl_proj):
     first = fake.calls[0]
     assert "verible-flags" in first.prompt and "SKILL.md" in first.prompt  # the skills are offered, not pasted
     assert "- line-length* — " in first.prompt and "[length=100]" in first.prompt  # the installed Verible's rules, from `--help_rules=all`
-    assert {t.name for t in first.sdk_tools} == {"verible_help", "verible_check_flags", "verible_lint"}
+    assert {t.name for t in first.sdk_tools} == {"verible_help", "verible_check_flags", "verible_lint", "tools_available"}
     assert first.output_model is RulesResult and root / "src" / "rtl" in first.deny_dirs  # (the rules are read, never the RTL)
     # nothing changed: no LLM
     n = len(fake.calls)
@@ -518,7 +518,7 @@ def test_smoke_writer_never_sees_the_rtl_and_the_result_is_code(smoke_proj):
     root, eng, fake = smoke_proj
     _run(eng, "smoke")
     w = fake.calls[0]
-    assert w.name == "smoke_tb" and {t.name for t in w.sdk_tools} == {"smoke_compile", "smoke_run"}
+    assert w.name == "smoke_tb" and {t.name for t in w.sdk_tools} == {"smoke_compile", "smoke_run", "tools_available"}
     assert "o_y follows i_a" in w.prompt and "PR_W = 8" in w.prompt and "smoke-testbench" in w.prompt
     assert "input [7:0] i_a" not in w.prompt  # the RTL's text is nowhere in the task
     assert root / "src" / "rtl" / "m.sv" in w.deny_dirs and root / "src" / "rtl" / "style_lint" in w.deny_dirs

@@ -94,7 +94,7 @@ def test_tools_file_and_inline_overlay(tmp_path, monkeypatch):
     assert set(T.load_tools(cfg(file="t2.yaml"), tmp_path).roles) == {"sim"}
     with pytest.raises(ToolUnavailable, match="not found"):
         T.load_tools(cfg(file="nope.json"), tmp_path)
-    assert "built-in synopsys preset" in T.load_tools(cfg(), tmp_path).source  # nothing configured: the preset (test below)
+    assert T.load_tools(cfg(), tmp_path).roles == {}  # nothing configured: no roles (test below)
     (tmp_path / "config" / "tools.yaml").write_text("roles: {a: {cmd: x {y}}}\n")  # unquoted braces: a YAML error, named
     with pytest.raises(ToolUnavailable, match="tools.yaml: not readable"):
         T.load_tools(cfg(), tmp_path)
@@ -164,14 +164,19 @@ def test_tools_init_writes_a_preset_and_check_says_what_is_missing(tmp_path):
     assert T.presets() == ["synopsys"]
 
 
-def test_with_no_tools_file_anywhere_the_synopsys_preset_is_used(tmp_path):
-    """Real runs kept stopping at "no tool for role 'lint'" in projects without a tools.json."""
+def test_with_no_tools_file_nothing_is_configured_and_init_writes_every_flow_role(tmp_path):
+    """config/tools.json is the one place: no built-in fallback, no flow default; `tools init` seeds it with the roles of every flow."""
     ts = T.load_tools(cfg(), tmp_path)
-    assert set(ts.roles) >= {"lint", "synth", "sim", "run"} and "built-in synopsys preset" in ts.source
-    assert ts.roles["lint"].cmd.startswith("vcs ") and ts.roles["sim"].supports == ["sva"]
+    assert ts.roles == {} and "tools init" in ts.source
+    with pytest.raises(ToolUnavailable, match="config/tools.json"):
+        ts.role("lint")
+    assert "No tools are available" in T.status_text(ts, ["lint", "sim"]) and "not configured" in T.status_text(ts, ["lint"])
+    data = T.preset_data()
+    assert set(data["roles"]) >= {"lint", "synth", "sim", "run", "verible_lint", "verible_format", "csr_gen", "fpga_yosys", "asic_synth", "asic_lec", "cdc", "rdc"}
+    assert data["roles"]["lint"]["cmd"].startswith("vcs ") and data["roles"]["sim"]["supports"] == ["sva"]
     (tmp_path / "config").mkdir(exist_ok=True)
     (tmp_path / "config" / "tools.json").write_text(json.dumps({"roles": {"lint": {"cmd": "mylint {top}", "parse": "generic"}}}))
-    ts = T.load_tools(cfg(), tmp_path)  # a file of the project wins; the preset is not merged into it
-    assert set(ts.roles) == {"lint"} and "built-in" not in ts.source
+    ts = T.load_tools(cfg(), tmp_path)  # a file of the project is exactly its roles
+    assert set(ts.roles) == {"lint"}
     ts = T.load_tools(cfg(roles={"synth": {"cmd": "x {script}"}}), tmp_path / "other")  # inline roles count as configured too
     assert set(ts.roles) == {"synth"}

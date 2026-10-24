@@ -1,5 +1,5 @@
 {
-  "_comment": "Default tool roles of the RTL flow (docs/spec/rtl-flow.md): Verible (open source), used when no tools.json / tools.roles of the project defines the role. `lint`, `synth`, `sim`, `run` come from the project's tool set (the built-in Synopsys preset when it has none). verible_lint exits 1 when it finds something: that is a result, not a failure.",
+  "_comment": "Tool roles of the RTL flow (docs/spec/rtl-flow.md): Verible (open source). `q3tui tools init` copies them into the project's config/tools.json, where they are yours to edit; `lint`, `synth`, `sim`, `run` come from the synopsys preset. verible_lint exits 1 when it finds something: that is a result, not a failure.",
   "roles": {
     "verible_lint": {"cmd": "verible-verilog-lint {args} {files}", "parse": "verible", "ok_returncodes": [0, 1], "modules": [], "timeout_s": 600,
                      "description": "Verible style / lint check of the RTL files with the flags Q3TUI wrote from the rules (src/rtl/style_lint/verible.flags)"},

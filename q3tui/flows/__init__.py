@@ -59,7 +59,6 @@ class Flow:
     fresh_steps: list[str] = field(default_factory=list)  # with session "flow": steps whose stages still run fresh
     # what a flow folder's add-on files bring (q3tui/addons.py); empty for every other kind of flow
     actions: dict = field(default_factory=dict)  # name -> addons.Action (the add-on's user actions)
-    tool_defaults: dict = field(default_factory=dict)  # role -> ToolRole data (<flow folder>/tools.json)
     panels_file: Path | None = None  # <flow folder>/panels.py: the TUI panels of its step kinds
     settings: list = field(default_factory=list)  # settings.Setting of step options the add-on shows in the Settings dialog
 
@@ -419,7 +418,7 @@ def list_flows(project_root: Path | None = None) -> dict[str, Path]:
 def load_flow(ref: str, project_root: Path | None = None) -> Flow:
     path = find_flow(ref, project_root)
     flow = parse_flow(_read(path), path)
-    if path.name == FOLDER_FILE:  # a flow folder may bring an add-on (addon.py, tools.json, panels.py)
+    if path.name == FOLDER_FILE:  # a flow folder may bring an add-on (addon.py, panels.py)
         from q3tui import addons
 
         addons.attach(flow)

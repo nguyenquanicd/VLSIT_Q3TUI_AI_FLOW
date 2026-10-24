@@ -185,15 +185,16 @@ def test_vivado_log_parser():
     assert [(x.severity, x.code) for x in d] == [("error", "Synth 8-439"), ("warning", "CRITICAL WARNING"), ("warning", "Synth 8-3331")]
 
 
-def test_the_fpga_role_falls_back_to_the_flows_default_only_for_that_flow(tmp_path):
+def test_the_fpga_role_comes_only_from_the_projects_tools_file(tmp_path):
     from q3tui.core.config import Config
-    from q3tui.eda.tools import load_tools
+    from q3tui.eda.tools import load_tools, preset_data, roles_needed, write_preset
 
-    plain = load_tools(Config(), tmp_path)
-    assert "fpga_synth" not in plain.roles and "lint" in plain.roles  # a project's tool set is exactly its own
-    ts = load_tools(Config(), tmp_path, flows.load_flow("fpga"))
-    assert ts.role("fpga_synth").modules == ["xilinx/vivado"] and "lint" in ts.roles  # (the Synopsys preset stays)
-    assert "fpga_synth" not in load_tools(Config(), tmp_path, flows.load_flow("spec")).roles
+    assert load_tools(Config(), tmp_path).roles == {}  # no flow default, no fallback: not configured
+    assert {"fpga_synth", "fpga_yosys"} <= set(roles_needed(flows.load_flow("fpga")))
+    write_preset(tmp_path / "config")  # `tools init`: the template carries the FPGA flow's roles too
+    ts = load_tools(Config(), tmp_path)
+    assert ts.role("fpga_synth").modules == ["xilinx/vivado"] and "lint" in ts.roles and "fpga_pnr_ecp5" in ts.roles
+    assert "fpga_synth" in preset_data()["roles"]
 
 
 # -- the flow -------------------------------------------------------------------------------------------------------

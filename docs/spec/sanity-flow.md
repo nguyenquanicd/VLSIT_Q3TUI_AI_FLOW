@@ -101,7 +101,7 @@ open and found counts and the cost of each round.
 
 ## Tools
 
-Roles `cdc` and `rdc` (`config/tools.json`; the flow's default is the standalone VC Static install `/tools/Synopsys/vc_static`, started by its full path with `VC_STATIC_HOME` and the license server in the role's `env`; the `vc_static_shell` that comes with the VCS module needs Qt libraries and overrides `VC_STATIC_HOME`, so the VCS module must not be loaded for these roles), used only when the
+Roles `cdc` and `rdc` (`config/tools.json`; the template (`presets/flows/sanity.json`) is the standalone VC Static install `/tools/Synopsys/vc_static`, started by its full path with `VC_STATIC_HOME` and the license server in the role's `env`; the `vc_static_shell` that comes with the VCS module needs Qt libraries and overrides `VC_STATIC_HOME`, so the VCS module must not be loaded for these roles), used only when the
 project defines no such role. `build/sanity/<role>_setup.tcl` (after the examples of `doc/vcst/examples/CDC`, `RDC`):
 
 ```tcl

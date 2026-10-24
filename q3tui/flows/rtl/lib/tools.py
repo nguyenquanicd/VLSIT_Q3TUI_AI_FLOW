@@ -18,6 +18,19 @@ def _text(s: str) -> dict:
     return {"content": [{"type": "text", "text": s}]}
 
 
+def tools_tool(ts, roles: list[str]):
+    """`tools_available`: the tool roles this stage may use, found or not (`eda.tools.status_text`): the stage learns what is missing instead of guessing."""
+    from claude_agent_sdk import tool
+
+    from q3tui.eda.tools import status_text
+
+    @tool("tools_available", "Which EDA tool roles this task uses are available now, and which are not configured or not found. Ask when a tool call fails or before relying on a tool.", {})
+    async def status(args: dict) -> dict:
+        return _text(await anyio.to_thread.run_sync(lambda: status_text(ts, roles)))
+
+    return status
+
+
 def verible_tools(ts, work: Path, project_root: Path, rtl_files, flags_file: Path | None = None) -> list:
     """`rtl_files`: a callable giving the RTL files now (they change as fixes land). `flags_file`: the flags `verible_lint` uses by default."""
     from claude_agent_sdk import tool
@@ -64,7 +77,7 @@ def verible_tools(ts, work: Path, project_root: Path, rtl_files, flags_file: Pat
         errs = verible.syntax_errors(res.diagnostics)
         return _text(("SYNTAX ERRORS:\n" + "\n".join(errs) + "\n" if errs else "") + out + "\nflags used: " + " ".join(flags))
 
-    return [help_tool, check_tool, lint_tool]
+    return [help_tool, check_tool, lint_tool, tools_tool(ts, ["verible_lint"])]
 
 
 def smoke_tools(ts, project_root: Path, work: Path, rtl_files, tb: Path) -> list:
@@ -93,7 +106,7 @@ def smoke_tools(ts, project_root: Path, work: Path, rtl_files, tb: Path) -> list
         out = await anyio.to_thread.run_sync(lambda: smoke.run_tb(ts, project_root, work))
         return _text(smoke.show_outcome(out))
 
-    return [compile_tool, run_tool]
+    return [compile_tool, run_tool, tools_tool(ts, ["sim", "run"])]
 
 
 def csr_tools(ts, tool: Path | None, work: Path) -> list:
@@ -130,4 +143,4 @@ def csr_tools(ts, tool: Path | None, work: Path) -> list:
             return _text("the generator did not produce the module:\n" + (Path(res.log_path).read_text(errors="replace")[-1500:] if res.log_path else res.summary))
         return _text("the map is valid and generates:\n" + csr.port_summary(sv.read_text(), m.module_name))
 
-    return [check_tool]
+    return [check_tool, tools_tool(ts, ["csr_gen"])]

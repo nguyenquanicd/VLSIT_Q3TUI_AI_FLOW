@@ -10,6 +10,7 @@ import pytest
 from q3tui import flows
 from q3tui.core.ops import Ops
 from q3tui.core.project import Project
+from q3tui.eda import tools as T
 from q3tui.flows.sanity.lib import script, table, vcstatic, waivers
 from q3tui.flows.sanity.lib.waivers import Decision, Review
 from q3tui.pipeline.engine import Engine, EngineError
@@ -109,7 +110,7 @@ def test_flow_loads():
     assert [s.id for s in flow.steps] == ["sdc", "cdc", "cdc_waivers", "cdc_check", "rdc", "rdc_waivers", "rdc_check"]
     assert flow.gates == {"cdc_waivers": "human", "rdc_waivers": "human"}
     assert {"sanity_handoff", "sdc_set", "sdc_show"} <= set(flow.actions)
-    assert set(flow.tool_defaults) == {"cdc", "rdc"}
+    assert {"cdc", "rdc"} <= set(T.roles_needed(flow))
     assert "sanity" in flows.list_flows()
 
 

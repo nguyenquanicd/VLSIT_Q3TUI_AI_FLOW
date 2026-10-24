@@ -82,7 +82,7 @@ class Step(AsicStep):
         try:
             tools = self.tools(engine)
             if not await anyio.to_thread.run_sync(lambda: toolmod.available(tools, "asic_synth")):
-                raise ToolUnavailable("the `asic_synth` tool was not found (module synopsys/syn; see tools.json / `q3tui tools check`)")
+                raise ToolUnavailable("the `asic_synth` tool was not found (module synopsys/syn; see config/tools.json / `q3tui tools check`)")
         except ToolUnavailable as exc:
             raise StepFailed(f"ASIC synthesis not run: {exc}") from exc
         work = self.workdir(engine)

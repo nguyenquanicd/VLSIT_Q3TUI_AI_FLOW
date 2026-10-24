@@ -118,8 +118,12 @@ def test_the_tool_roles_and_where_they_come_from(proj, monkeypatch):
     proj = Project.open(proj.root)
     rows = {r["role"]: r for r in common.tool_rows(proj)}
     assert rows["mylint"]["found"] and rows["mylint"]["from"] == "q3tui.yaml tools.roles" and rows["mylint"]["tool"] == sys.executable and "some/module" in rows["mylint"]["modules"]
-    assert rows["fpga_synth"]["from"] == "flow 'fpga' default" and rows["fpga_synth"]["used_by"] == ["fpga"] and not rows["fpga_synth"]["found"]
-    assert rows["asic_lec"]["modules"][-1] == "synopsys/formality/V-2023.12" and rows["fpga_pnr_ecp5"]["tool"] == "nextpnr-ecp5"
+    assert rows["fpga_synth"]["from"] == "not configured" and rows["fpga_synth"]["used_by"] == ["fpga"] and not rows["fpga_synth"]["found"]  # no flow brings a default
+    assert rows["asic_lec"]["from"] == "not configured" and rows["fpga_pnr_ecp5"]["tool"] == ""  # (listed, so the TUI shows what is missing)
+    assert [r["role"] for r in common.load_tool_rows(proj)] == [r["role"] for r in common.tool_rows(proj, check=False)]
+    toolmod.write_preset(proj.config_dir)  # `tools init`: every role of every flow, now the project's own
+    rows = {r["role"]: r for r in common.tool_rows(Project.open(proj.root))}
+    assert rows["fpga_synth"]["from"].endswith("tools.json") and rows["asic_lec"]["modules"][-1] == "synopsys/formality/V-2023.12" and rows["fpga_pnr_ecp5"]["tool"] == "nextpnr-ecp5"
 
 
 def test_the_modules_loaded_before_every_tool(proj):
@@ -137,12 +141,13 @@ async def test_the_steps_run_and_report(proj, monkeypatch):
     from q3tui.eda import tools as toolmod
 
     monkeypatch.setattr(toolmod, "available", lambda tools, role: role.startswith("asic"))
+    toolmod.write_preset(proj.config_dir)  # (the project's tools file: every flow's roles)
     common.add_entry(proj, "c28", str(proj.root / "pdk" / "cells28" / "lib"))
     eng = Engine(Project.open(proj.root))
     await eng.run(yes=True)
     assert all(v.status == "done" for v in eng.status()), [(v.name, v.status, v.detail) for v in eng.status()]
     rep = lambda n: json.loads((proj.state_dir / "project" / f"{n}.json").read_text())  # noqa: E731
-    assert rep("project")["flow"] == "project" and rep("project")["files"] == {"q3tui.yaml": True, "tools.json": False, "pdks.json": True} and rep("project")["problems"] == []
+    assert rep("project")["flow"] == "project" and rep("project")["files"] == {"q3tui.yaml": True, "tools.json": True, "pdks.json": True} and rep("project")["problems"] == []
     t = rep("tools")
     assert "asic_synth" not in t["missing"] and "asic_lec" not in t["missing"] and "fpga_synth" in t["missing"]  # (the stand-in finds the asic roles only)
     assert common.load_tool_rows(proj) and t["found"] + len(t["missing"]) == t["roles"]
@@ -402,12 +407,12 @@ async def test_enter_edits_a_setting_too(proj):
 
 
 def test_a_role_is_saved_where_the_project_keeps_its_roles(proj):
-    # no tools file and no inline roles: tools.json is created from the preset, so the other roles stay
+    # no tools file and no inline roles: tools.json is created from the presets, so the other roles stay; the role edited starts from its template
     msg = common.set_role(proj, "lint", cmd="mylint -f {filelist}", modules="my/lint", timeout_s="120")
     assert msg == "tool role 'lint' saved to tools.json"
     data = json.loads((proj.root / "config" / "tools.json").read_text())
     assert data["roles"]["lint"]["cmd"] == "mylint -f {filelist}" and data["roles"]["lint"]["modules"] == ["my/lint"] and data["roles"]["lint"]["timeout_s"] == 120
-    assert {"synth", "sim", "run"} <= set(data["roles"]) and "_comment" not in data  # (the preset's others are kept)
+    assert {"synth", "sim", "run", "verible_lint", "fpga_synth"} <= set(data["roles"]) and "_comment" not in data  # (the presets' others are kept)
     assert data["roles"]["lint"]["parse"] == "vcs"  # what the role had stays
     from q3tui.eda import tools as toolmod
 
@@ -419,8 +424,8 @@ def test_a_role_is_saved_where_the_project_keeps_its_roles(proj):
     assert "saved to tools.json" in common.set_role(proj, "nonesuch", cmd="x {a}")
 
 
-def test_a_role_of_a_flows_default_becomes_the_projects_own(proj):
-    common.set_role(proj, "fpga_synth", modules="xilinx/vivado/2024.1")  # the FPGA flow's default (Vivado), another module
+def test_a_role_the_file_lacks_is_edited_from_its_template(proj):
+    common.set_role(proj, "fpga_synth", modules="xilinx/vivado/2024.1")  # the FPGA template (Vivado), another module
     r = json.loads((proj.root / "config" / "tools.json").read_text())["roles"]["fpga_synth"]
     assert r["modules"] == ["xilinx/vivado/2024.1"] and r["cmd"].startswith("vivado -mode batch") and r["parse"] == "vivado"
 
@@ -443,19 +448,17 @@ async def test_enter_edits_a_tool_role(proj, monkeypatch):
     from q3tui.tui.screens import EditScreen
 
     monkeypatch.setattr(toolmod, "available", lambda tools, role: True)
+    toolmod.write_preset(proj.config_dir)
     app = Q3TUIApp(proj)
     async with app.run_test(size=(150, 50)) as pilot:
         await pilot.pause()
         app._select_step("tools")
         await pilot.pause()
         tab = _tab(app, "ToolsTab")
-        tab.action_edit()  # not checked yet
-        await pilot.pause()
-        assert not isinstance(app.screen, EditScreen)
         tab.action_check()
         for _ in range(60):
             await pilot.pause(0.25)
-            if (proj.state_dir / "project" / "tools.json").is_file():
+            if (proj.state_dir / "project" / "tool_rows.json").is_file():
                 break
         await pilot.pause(0.5)
         tab.refresh_view()
@@ -488,11 +491,16 @@ async def test_the_tools_view_checks_and_sets_modules(proj, monkeypatch):
         await pilot.pause()
         tab = _tab(app, "ToolsTab")
         tab.refresh_view()
-        assert tab.query_one(DataTable).row_count == 0  # not checked yet
+        table = tab.query_one(DataTable)  # the roles of every flow are listed at once, none configured or checked yet
+        assert table.row_count >= 15 and {str(table.get_cell_at((i, 1))) for i in range(table.row_count)} == {"–"} and {str(table.get_cell_at((i, 4))) for i in range(table.row_count)} == {"not configured"}
+        toolmod.write_preset(proj.config_dir)  # the user writes config/tools.json: listed as configured without running anything
+        await pilot.pause()
+        tab.refresh_view()
+        assert "not configured" not in {str(tab.query_one(DataTable).get_cell_at((i, 4))) for i in range(tab.query_one(DataTable).row_count)}
         tab.action_check()
         for _ in range(60):
             await pilot.pause(0.25)
-            if (proj.state_dir / "project" / "tools.json").is_file():
+            if (proj.state_dir / "project" / "tool_rows.json").is_file():
                 break
         await pilot.pause(0.5)
         tab.refresh_view()

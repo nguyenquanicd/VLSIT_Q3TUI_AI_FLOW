@@ -62,7 +62,7 @@ class FpgaStep(StepDef):
     def tools(self, engine):
         from q3tui.eda import tools as toolmod
 
-        return toolmod.load_tools(engine.project.cfg, engine.project.root, engine.flow)
+        return toolmod.load_tools(engine.project.cfg, engine.project.root)
 
     def artifact(self, engine, name: str) -> Path:
         return engine.project.schemas_dir / name

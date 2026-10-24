@@ -167,9 +167,9 @@ class RtlGenStep(VlsitStep):
         except ToolUnavailable as exc:
             return str(exc)
         if "lint" not in tools.roles:
-            return "no tool for role 'lint': add roles.lint (command, e.g. vcs +lint=all …) to tools.json or tools.roles — `q3tui tools init` writes a tools.json to start from"
+            return "no tool for role 'lint': add roles.lint (command, e.g. vcs +lint=all …) to config/tools.json or tools.roles — `q3tui tools init` writes a tools.json to start from"
         if not available(tools, "lint"):
-            return f"the lint tool '{binary_of(tools.roles['lint'])}' (role 'lint') was not found (check tools.json, modules / setup_script)"
+            return f"the lint tool '{binary_of(tools.roles['lint'])}' (role 'lint') was not found (check config/tools.json, modules / setup_script)"
         return None
 
     # -- questions: owner module per question -------------------------------------------------------

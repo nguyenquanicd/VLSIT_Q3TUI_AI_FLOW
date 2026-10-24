@@ -22,7 +22,9 @@ if TYPE_CHECKING:
 DASH = Text("–", style="grey50")
 
 
-def _yes(v: bool) -> Text:
+def _yes(v: bool | None) -> Text:
+    if v is None:
+        return Text("?", style="grey50")  # (not checked yet)
     return Text("✔", style="green") if v else Text("✘", style="red")
 
 
@@ -123,14 +125,14 @@ class SettingsTab(_Tab):
 
 def _tool_rows(app: "Q3TUIApp") -> list[tuple]:
     rows = common.load_tool_rows(app.project)
-    return [(r["role"], r["role"], r["tool"] or DASH, _yes(r["found"]), ", ".join(r["modules"]) or DASH, r["from"]) for r in rows or []]
+    return [(r["role"], r["role"], r["tool"] or DASH, _yes(r["found"]), ", ".join(r["modules"]) or DASH, r["from"]) for r in rows]
 
 
 def _tool_detail(app: "Q3TUIApp", key: str) -> str:
-    r = next((r for r in common.load_tool_rows(app.project) or [] if r["role"] == key), None)
+    r = next((r for r in common.load_tool_rows(app.project) if r["role"] == key), None)
     if r is None:
         return ""
-    return (f"**{r['role']}** — {'found' if r['found'] else '**not found**'}\n\n{r['description'] or ''}\n\n- command: `{r['cmd'] or '(not defined)'}`\n- modules: {', '.join(r['modules']) or 'none'}\n"
+    return (f"**{r['role']}** — {'not checked yet' if r['found'] is None else 'found' if r['found'] else '**not found**'}\n\n{r['description'] or ''}\n\n- command: `{r['cmd'] or '(not defined)'}`\n- modules: {', '.join(r['modules']) or 'none'}\n"
             f"- from: {r['from']}\n- used by: {', '.join(r['used_by']) or '–'}\n- log reader: {r.get('parse', '–')}\n\n"
             "Enter / `e` edits the role (saved to the project's `config/tools.json`); `m` sets the modules loaded before every tool; `c` checks again.")
 
@@ -178,12 +180,15 @@ class ToolsTab(_Tab):
     def action_edit(self) -> None:
         """Enter / e: the command, the modules and the time limit of the highlighted role (saved to the project's config/tools.json)."""
         key = self.current_key()
-        r = next((r for r in common.load_tool_rows(self.capp.project) or [] if r["role"] == key), None)
+        r = next((r for r in common.load_tool_rows(self.capp.project) if r["role"] == key), None)
         if r is None:
-            self.app.notify("nothing to edit yet — press c to check the tools first", severity="information")
+            self.app.notify("nothing to edit here — add a tool (a) or run `q3tui tools init`", severity="information")
             return
-        fields = [("cmd", "Command (with {placeholders})", r["cmd"], "line"), ("modules", "Modules loaded for this role, separated by spaces (empty: keep)", " ".join(r.get("own_modules") or []), "line"),
-                  ("timeout_s", "Time limit (s; empty: keep)", str(r.get("timeout_s") or ""), "line")]
+        tpl = None if r["from"] != "not configured" else common.template_role(key)  # (a role the file lacks: start from its template)
+        cur = r if tpl is None else {"cmd": tpl.cmd, "own_modules": tpl.modules, "timeout_s": tpl.timeout_s}
+        fields = [("cmd", "Command (with {placeholders})" + (" — not configured: the template is filled in" if tpl else ""), cur["cmd"], "line"),
+                  ("modules", "Modules loaded for this role, separated by spaces (empty: keep)", " ".join(cur.get("own_modules") or []), "line"),
+                  ("timeout_s", "Time limit (s; empty: keep)", str(cur.get("timeout_s") or ""), "line")]
         self._ask(f"Tool role {r['role']}", fields,
                   lambda v: self._act("tool_set", role=r["role"], cmd=v["cmd"].strip(), modules=v["modules"].strip(), timeout_s=v["timeout_s"].strip()),
                   hint=f"saved to the project's config/tools.json (the role's log reader stays: {r.get('parse', '–')}) · ctrl+s saves · Esc cancels")
@@ -363,7 +368,7 @@ def _tabs_for(kind: str) -> tuple[TabSpec, ...]:
     if kind == "project.tools":
         return (TabSpec("tools", "Tools", ("Role", "Tool", "Found", "Modules", "From"), _tool_rows, _tool_detail,
                         "a add a tool (give its path: the rest is filled in) · Enter / e edit a role · c check which tools are found · m modules loaded before every tool", widget=ToolsTab,
-                        empty="not checked yet — press c"),)
+                        empty="no tools file yet — `q3tui tools init` writes config/tools.json, or press a to add a tool"),)
     if kind == "project.libraries":
         return (TabSpec("libraries", "Libraries", ("Technology", "Node", "Corners", "From", "In use"), _lib_rows, _lib_detail,
                         "a add (give the folder: the rest is filled in) · Enter / e edit · d remove · u pick the corner used as the ASIC library", widget=LibTab, empty="no technology"),)

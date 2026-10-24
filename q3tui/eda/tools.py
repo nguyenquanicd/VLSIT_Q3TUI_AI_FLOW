@@ -1,7 +1,7 @@
 """Tools by role, described in a file (docs/spec/flows.md "Tools").
 
-`tools.json` / `tools.yaml` (project root, or `tools.file`, or `$Q3TUI_HOME/`) — or `tools.roles:` in q3tui.yaml —
-names the tools a flow uses: a role (`lint`, `synth`, `sim`, `mutate`, …) → the command line with placeholders and
+The project's `config/tools.json` (or `tools.yaml`; `tools.file` points elsewhere) — or `tools.roles:` in q3tui.yaml — is the one
+place that names the tools every flow uses (users write it; `q3tui tools init` starts it from the presets): a role (`lint`, `synth`, `sim`, `mutate`, …) → the command line with placeholders and
 how to read its log. Steps run a role with `run_role` (command and log parsing are code; the LLM gets the diagnostics
 as ground truth) and stages that may run a tool themselves get `describe_for_llm`.
 
@@ -64,27 +64,23 @@ class ToolSet:
 
     def role(self, name: str) -> ToolRole:
         if name not in self.roles:
-            raise ToolUnavailable(f"no tool for role '{name}': describe it in tools.json (roles: {{{name}: {{cmd: …}}}}) "
-                                  f"or tools.roles in q3tui.yaml; known roles: {', '.join(self.roles) or 'none'}")
+            raise ToolUnavailable(f"no tool for role '{name}': describe it in config/tools.json (roles: {{{name}: {{cmd: …}}}}; "
+                                  f"`q3tui tools init` writes one to start from) or tools.roles in q3tui.yaml; known roles: {', '.join(self.roles) or 'none'}")
         return self.roles[name]
 
 
-def load_tools(cfg: Config, project_root: Path, flow=None) -> ToolSet:
-    """The roles of the tools file overlaid by the inline `tools.roles`. `flow`: a role it needs that nothing configures falls
-    back to the flow's own default (`<flow folder>/tools.json`, `Flow.tool_defaults`); a project's roles are otherwise exactly
-    its own, whatever flows are installed."""
+def load_tools(cfg: Config, project_root: Path) -> ToolSet:
+    """The roles of the tools file overlaid by the inline `tools.roles`: a project's roles are exactly its own, whatever flows are
+    installed (a role nothing configures is reported as not configured, never filled in)."""
     roles: dict[str, ToolRole] = {}
     source = "q3tui.yaml"
     setup, modules, init, timeout = cfg.tools.setup_script, list(cfg.tools.modules), cfg.tools.modules_init, cfg.tools.timeout_s
     path = tools_file(cfg, project_root)
     if path is None and not cfg.tools.roles:
-        # nothing configured anywhere (no tools.json in the project or ~/.q3tui, no tools.roles): the Synopsys preset — the
-        # flows then run on a Synopsys site without a setup step; `q3tui tools init` copies it to edit, another tool set needs
-        # its own tools.json
-        path = PRESET_DIR / "synopsys.json"
+        source = "nothing (no config/tools.json: `q3tui tools init` writes one to start from)"
     if path is not None:
         data = load_file(path)
-        source = str(path) if path.parent != PRESET_DIR else "built-in synopsys preset (no tools.json found; `q3tui tools init` copies it)"
+        source = str(path)
         try:
             roles = {n: ToolRole.model_validate(r) for n, r in (data.get("roles") or {}).items()}
         except Exception as exc:  # noqa: BLE001
@@ -95,10 +91,6 @@ def load_tools(cfg: Config, project_root: Path, flow=None) -> ToolSet:
         if "timeout_s" in data and cfg.tools.timeout_s == 600:
             timeout = int(data["timeout_s"])
     roles.update(cfg.tools.roles)
-    if flow is not None:
-        for n in roles_needed(flow):
-            if n not in roles and n in flow.tool_defaults:
-                roles[n] = ToolRole.model_validate(flow.tool_defaults[n])
     return ToolSet(roles, ToolEnv(setup, tuple(modules), init), timeout, source)
 
 
@@ -109,16 +101,29 @@ def presets() -> list[str]:
     return sorted(p.stem for p in PRESET_DIR.glob("*.json"))
 
 
-def write_preset(config_dir: Path, preset: str = "synopsys", force: bool = False) -> Path:
-    """`tools.json` for a tool set (docs/spec/flows.md "Tools"): the project's copy to edit (modules, library paths), in `config/`."""
+def preset_data(preset: str = "synopsys") -> dict:
+    """What `tools init` writes: the preset (lint / synth / sim / run), plus the roles the flows use that it does not have (`presets/flows/*.json`:
+    Verible, CSR generator, Vivado / Yosys / nextpnr, Design Compiler / Formality, VC Static)."""
     src = PRESET_DIR / f"{preset}.json"
     if not src.is_file():
         raise ToolUnavailable(f"no tools preset '{preset}' (presets: {', '.join(presets()) or 'none'})")
+    data = json.loads(src.read_text())
+    data.pop("_comment", None)
+    roles = data.setdefault("roles", {})
+    for f in sorted((PRESET_DIR / "flows").glob("*.json")):
+        for name, role in (json.loads(f.read_text()).get("roles") or {}).items():
+            roles.setdefault(name, role)
+    return data
+
+
+def write_preset(config_dir: Path, preset: str = "synopsys", force: bool = False) -> Path:
+    """`config/tools.json` for a tool set (docs/spec/flows.md "Tools"): the project's copy to edit (modules, library paths); every flow reads only this."""
+    data = preset_data(preset)
     dest = config_dir / "tools.json"
     dest.parent.mkdir(parents=True, exist_ok=True)
     if dest.exists() and not force:
         raise ToolUnavailable(f"{dest.name} exists (use --force to overwrite)")
-    dest.write_text(src.read_text())
+    dest.write_text(json.dumps(data, indent=2) + "\n")
     return dest
 
 
@@ -236,6 +241,28 @@ def describe_for_llm(tools: ToolSet, names: list[str] | None = None) -> str:
         extra = f" (supports: {', '.join(r.supports)})" if r.supports else ""
         lines.append(f"- {n}{extra}: `{r.cmd}`" + (f" — {r.description}" if r.description else ""))
     return "\n".join(lines)
+
+
+def status_text(tools: ToolSet, names: list[str] | None = None) -> str:
+    """Which tool roles exist and whether each is found, for an LLM stage (and the TUI): a role nothing configures, or whose binary is missing,
+    is said so, and when none can run the answer says that no tool is available (never an empty list a stage could read as 'nothing needed')."""
+    names = list(names or tools.roles)
+    ok, lines = [], []
+    for n in names:
+        r = tools.roles.get(n)
+        if r is None:
+            lines.append(f"- {n}: NOT AVAILABLE (not configured in config/tools.json)")
+            continue
+        try:
+            found = available(tools, n)
+        except Exception:  # noqa: BLE001 - a role that cannot be checked is not found
+            found = False
+        if found:
+            ok.append(n)
+        extra = f" (supports: {', '.join(r.supports)})" if r.supports else ""
+        lines.append(f"- {n}{extra}: " + (f"available: `{r.cmd}`" + (f" — {r.description}" if r.description else "") if found else f"NOT AVAILABLE (`{binary_of(r)}` not found)"))
+    head = "" if ok else "No tools are available" + (f" for: {', '.join(names)}" if names else "") + ". Do not guess results a tool would give; say so in your answer.\n"
+    return head + "\n".join(lines)
 
 
 # -- log parsers -----------------------------------------------------------------------------------

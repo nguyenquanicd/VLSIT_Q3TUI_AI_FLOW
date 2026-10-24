@@ -1,4 +1,4 @@
-"""Add-ons: a flow folder's addon.py / tools.json / panels.py reach the one Q3TUI (CLI, Ops, assistant, TUI) with no flow-specific
+"""Add-ons: a flow folder's addon.py / panels.py reach the one Q3TUI (CLI, Ops, assistant, TUI) with no flow-specific
 code in core — shown with a throwaway flow that has nothing to do with FPGA."""
 
 import json
@@ -33,7 +33,6 @@ def proj(tmp_path):
     (f / "one" / "md" / "skill.md").write_text("---\nkind: spec\n---\n")
     (f / "addon.py").write_text(ADDON)
     (f / "panels.py").write_text(PANELS)
-    (f / "tools.json").write_text(json.dumps({"roles": {"say": {"cmd": "echo hi"}}}))
     (tmp_path / "q3tui.yaml").write_text("pipeline: {flow: greeter}\n")
     return Project.open(tmp_path)
 
@@ -48,8 +47,8 @@ class Host:
 
 def test_the_flow_brings_its_files(proj):
     flow = flows.load_flow("greeter", proj.root)
-    assert list(flow.actions) == ["greet"] and flow.tool_defaults["say"]["cmd"] == "echo hi" and flow.panels_file.name == "panels.py"
-    assert flows.load_flow("spec").actions == {} and flows.load_flow("spec").tool_defaults == {}  # other flows: nothing
+    assert list(flow.actions) == ["greet"] and flow.panels_file.name == "panels.py"
+    assert flows.load_flow("spec").actions == {}  # other flows: nothing
 
 
 def test_ops_runs_actions(proj):
@@ -84,7 +83,11 @@ def test_cli_act(proj):
     assert r.exit_code != 0 and "key=value" in r.output
 
 
-def test_tools_check_uses_the_flows_default_role(proj):
+def test_tools_check_reads_only_the_projects_tools_file(proj):
+    r = CliRunner().invoke(main, ["-C", str(proj.root), "tools", "check"])  # a flow brings no default: the role is not configured
+    assert "say" in r.output and "not configured" in r.output
+    (proj.root / "config").mkdir(exist_ok=True)
+    (proj.root / "config" / "tools.json").write_text(json.dumps({"roles": {"say": {"cmd": "echo hi"}}}))
     r = CliRunner().invoke(main, ["-C", str(proj.root), "tools", "check"])
     assert "say" in r.output and "not configured" not in r.output
 

@@ -112,9 +112,9 @@ class TbGenStep(VlsitStep):
         except ToolUnavailable as exc:
             return str(exc)
         if "sim" not in tools.roles:
-            return "no tool for role 'sim': add roles.sim (compile command, e.g. vcs …) to tools.json or tools.roles — `q3tui tools init` writes one to start from"
+            return "no tool for role 'sim': add roles.sim (compile command, e.g. vcs …) to config/tools.json or tools.roles — `q3tui tools init` writes one to start from"
         if not available(tools, "sim"):
-            return f"the simulator '{binary_of(tools.roles['sim'])}' (role 'sim') was not found (check tools.json, modules / setup_script)"
+            return f"the simulator '{binary_of(tools.roles['sim'])}' (role 'sim') was not found (check config/tools.json, modules / setup_script)"
         return None
 
     # -- stages --------------------------------------------------------------------------------------
