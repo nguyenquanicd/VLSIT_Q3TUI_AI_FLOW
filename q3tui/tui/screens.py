@@ -349,6 +349,67 @@ class ResetScreen(ChoiceScreen):
         self.dismiss(v if v in ("step", "all") else None)
 
 
+class PickToolsScreen(ModalScreen[list[int] | None]):
+    """Add tools: every tool found at a path as a checkbox row (all checked); the highlighted one shows its command and what code doubts about it.
+
+    `items`: [(label, detail)]. ctrl+s dismisses with the indexes checked, Esc with None. Space toggles, `a` checks / unchecks all."""
+
+    BINDINGS = [Binding("ctrl+s", "add", "Add"), Binding("escape", "cancel", "Cancel"), Binding("a", "toggle_all", "All / none")]
+    DEFAULT_CSS = """
+    PickToolsScreen { align: center middle; }
+    PickToolsScreen .modal-box { width: 120; max-height: 90%; }
+    PickToolsScreen SelectionList { height: auto; max-height: 16; }
+    PickToolsScreen #pick-detail { margin-top: 1; height: auto; max-height: 10; color: $text-muted; }
+    """
+
+    def __init__(self, title: str, items: list[tuple[str, str]], hint: str = ""):
+        super().__init__()
+        self.title_text, self.items, self.hint = title, items, hint
+
+    def compose(self) -> ComposeResult:
+        from textual.widgets import SelectionList
+
+        with Vertical(classes="modal-box"):
+            yield Label(self.title_text, classes="modal-title")
+            yield SelectionList(*[(label, i, True) for i, (label, _d) in enumerate(self.items)], id="pick-list")
+            yield Static("", id="pick-detail", markup=False)
+            with Horizontal(classes="modal-buttons"):
+                yield Button("Add checked (ctrl+s)", id="add", variant="success")
+                yield Button("Cancel (esc)", id="cancel")
+            yield Static(self.hint or "space checks / unchecks · a all / none · ctrl+s adds the checked · Esc cancels", classes="modal-hint")
+
+    def on_mount(self) -> None:
+        from textual.widgets import SelectionList
+
+        sel = self.query_one(SelectionList)
+        sel.focus()
+        self._show(0)
+
+    def _show(self, i: int | None) -> None:
+        self.query_one("#pick-detail", Static).update(self.items[i][1] if i is not None and 0 <= i < len(self.items) else "")
+
+    def on_selection_list_selection_highlighted(self, event) -> None:
+        self._show(event.selection_index)
+
+    def action_toggle_all(self) -> None:
+        from textual.widgets import SelectionList
+
+        sel = self.query_one(SelectionList)
+        (sel.deselect_all if len(sel.selected) == len(self.items) else sel.select_all)()
+
+    def action_add(self) -> None:
+        from textual.widgets import SelectionList
+
+        self.dismiss(sorted(self.query_one(SelectionList).selected))
+
+    def action_cancel(self) -> None:
+        self.dismiss(None)
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        event.stop()
+        self.action_add() if event.button.id == "add" else self.action_cancel()
+
+
 class EditScreen(ModalScreen[dict | None]):
     """Small form: fields are (key, label, value, kind[, options]) with kind line | text | choice.
 

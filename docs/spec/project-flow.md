@@ -8,7 +8,7 @@ project's own files — `q3tui.yaml`, `config/pdks.json`. The design flows (spec
 | Step | View | Does |
 |---|---|---|
 | `project` | **Settings**: the project root, the config file, the start-up flow, then the settings of the Settings dialog's General and LLM tabs (auto-approve, auto-answer, model, effort, budgets, icons, language, …) | Enter / `e` edits the highlighted setting in place and saves it to `q3tui.yaml` (`Ops.apply_settings`) |
-| `tools` | **Tools**: every tool role the flows need or `config/tools.json` defines (Vivado, Design Compiler, Formality, Yosys, nextpnr, the lint / sim roles of the rtl flow) — tool, found ✔ / ✘ / ? (not checked yet), modules, where the role comes from (the project's tools file, `tools.roles`) or `not configured` when the file lacks a role a flow needs; listed as soon as the file exists, `c` fills in found / not found | `a` add a tool (give its path; the rest is filled in), Enter / `e` edits the role (command, modules, time limit), `c` checks which tools are found (loads the modules: a few seconds, in a thread), `m` sets the modules loaded before every tool (`tools.modules`) |
+| `tools` | **Tools**: every tool role the flows need or `config/tools.json` defines (Vivado, Design Compiler, Formality, Yosys, nextpnr, the lint / sim roles of the rtl flow) — tool, found ✔ / ✘ / ? (not checked yet), modules, where the role comes from (the project's tools file, `tools.roles`) or `not configured` when the file lacks a role a flow needs; listed as soon as the file exists, `c` fills in found / not found | `a` add tools (give a path: every tool found is listed to check, the rest is filled in), Enter / `e` edits the role (command, modules, time limit), `c` checks which tools are found (loads the modules: a few seconds, in a thread), `m` sets the modules loaded before every tool (`tools.modules`) |
 | `libraries` | **Libraries**: the technologies of the ASIC flow's catalog (built-in open-source + the project's `config/pdks.json`), their corners, which corner is in use | `a` add (give the folder; the rest is filled in), Enter / `e` edit, `d` remove, `u` pick the corner used as the ASIC library |
 
 Enter edits the highlighted row in all three views, as in the other flows' views.
@@ -35,13 +35,13 @@ picks any other corner of the highlighted technology as the library without chan
 
 ## Adding a tool (`tools`, `a`)
 
-**You give only the path** — a binary or its install folder. Code finds the executables (the `bin` folders, four levels down), the roles that exist (each with the
+**You give only the path** — a binary, or an install folder with **many tools** (`/tools`): every tool found is proposed. Code finds the executables (the `bin` folders, four levels down), the roles that exist (each with the
 command a flow's step runs and the placeholders it passes), the log readers and the environment modules (`module avail`). A read-only LLM stage (`tool_identify`;
-the prompt is the `<!-- SYSTEM -->` section of `tools/md/skill.md`; `Read`, `Grep`, `Glob`, confined to the tool's folder; it runs nothing) works out which **role**
-the tool serves — an existing one (another simulator → `sim`) or a new name — the command with that role's placeholders, the log reader, the modules and a note.
+the prompt is the `<!-- SYSTEM -->` section of `tools/md/skill.md`; `Read`, `Grep`, `Glob`, confined to the tool's folder; it runs nothing) works out, **for each tool found**, which **role**
+it serves (one entry per role; a role named twice keeps the first, the other is said) — an existing one (another simulator → `sim`) or a new name — the command with that role's placeholders, the log reader, the modules and a note.
 **Code checks it**: the command's executable must be one that was found, a placeholder the role's steps do not pass is flagged, a log reader or a module that does not
-exist is dropped, and a role that reads its log with its own patterns (`asic_lec`) keeps them when the stage says `generic`. The form opens filled in
-(role, command, modules, log reader); saving writes the role like Enter does. Without an LLM the form opens empty to fill in by hand. On the real Formality install
+exist is dropped, and a role that reads its log with its own patterns (`asic_lec`) keeps them when the stage says `generic`. A **dialog lists every tool found** as a checkbox row (all checked) with its command; the highlighted one shows its description, log reader, modules, notes
+and what code doubts. Space / `a` check or uncheck, ctrl+s adds the checked roles to `config/tools.json` like Enter does (Enter on a row edits one later). Without an LLM the form opens empty to fill in by hand. On the real Formality install
 folder it answered `asic_lec`, `fm_shell -f {script}` and the module `synopsys/formality/V-2023.12`.
 
 ## Editing a tool role (`tools`, Enter)

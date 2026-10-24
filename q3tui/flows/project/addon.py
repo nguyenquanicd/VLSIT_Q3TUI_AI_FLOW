@@ -83,27 +83,31 @@ def register(api) -> None:
     def tool_set(ops, role: str, cmd: str = "", modules: str = "", timeout_s: str = "", parse: str = "", description: str = "") -> str:
         return ops._log("tools", common.set_role(ops.project, role, cmd, modules, timeout_s, parse, description))
 
-    @api.action("tool_identify", "Look at a tool (the path of its binary or install folder) and say how Q3TUI would use it: an LLM stage (read only) works out which role it "
-                "serves, the command with that role's placeholders, the log reader and the modules, checked by code. Writes nothing; tool_add does.",
-                {"path": "the tool's binary, or its install folder"})
+    @api.action("tool_identify", "Look at a tool path (a binary, or an install folder with many tools) and say how Q3TUI would use each tool found: an LLM stage (read only) works out "
+                "which role each serves, the command with that role's placeholders, the log reader and the modules, checked by code. Writes nothing; tool_add does.",
+                {"path": "a tool's binary, or an install folder"})
     def tool_identify(ops, path: str) -> str:
-        g = common.identify_tool(ops, path)
-        return (f"role {g['role']} | {g['cmd']}\nlog reader {g['parse']} | modules {', '.join(g['modules']) or '–'}\n{g['description']}\n{g['notes']}" + "".join(f"\n! {w}" for w in g["warnings"]))
+        out = []
+        for g in common.identify_tool(ops, path):
+            out.append(f"role {g['role']} | {g['cmd']}\nlog reader {g['parse']} | modules {', '.join(g['modules']) or '–'}\n{g['description']}\n{g['notes']}" + "".join(f"\n! {w}" for w in g["warnings"]))
+        return f"{len(out)} tool(s) found\n\n" + "\n\n".join(out)
 
-    @api.action("tool_add", "Add a tool to this project: give only its path and the role, command, log reader and modules are filled in by reading it (an LLM stage, checked by "
-                "code); anything you give wins. Saved like tool_set.",
-                {"path": "the tool's binary, or its install folder", "role": "the role it serves (default: worked out)", "cmd": "the command line (default: worked out)",
+    @api.action("tool_add", "Add tools to this project: give only a path (a binary, or an install folder with many tools) and every tool found gets its role, command, log reader and modules "
+                "by reading it (an LLM stage, checked by code); a role / cmd / modules / parse you give wins (and adds just that role). Saved like tool_set.",
+                {"path": "a tool's binary, or an install folder", "role": "the role it serves (default: worked out, one per tool found)", "cmd": "the command line (default: worked out)",
                  "modules": "modules, separated by spaces", "parse": "the log reader"}, optional=("role", "cmd", "modules", "parse"))
     def tool_add(ops, path: str, role: str = "", cmd: str = "", modules: str = "", parse: str = "") -> str:
-        note = ""
-        if not (role.strip() and cmd.strip()):
-            g = common.identify_tool(ops, path)
-            role, cmd, modules, parse = role or g["role"], cmd or g["cmd"], modules or " ".join(g["modules"]), parse or g["parse"]
+        if role.strip() and cmd.strip():
+            return ops._log("tools", common.set_role(ops.project, role, cmd, modules, "", parse, ""))
+        found = common.identify_tool(ops, path)
+        if role.strip():  # one role asked for: that tool only
+            found = [g for g in found if g["role"] == common.slug(role)] or found[:1]
+        msgs = []
+        for g in found:
+            r, c, m, pa = (role or g["role"]) if len(found) == 1 else g["role"], cmd or g["cmd"], modules or " ".join(g["modules"]), parse or g["parse"]
             note = (" — " + g["notes"] if g["notes"] else "") + "".join(f" (! {w})" for w in g["warnings"])
-            desc = g["description"]
-        else:
-            desc = ""
-        return ops._log("tools", common.set_role(ops.project, role, cmd, modules, "", parse, desc) + note)
+            msgs.append(common.set_role(ops.project, r, c, m, "", pa, g["description"]) + note)
+        return ops._log("tools", "\n".join(msgs))
 
     @api.action("tools_check", "Check which tool roles the flows use and whether each tool is found (loads the modules: takes a few seconds).")
     def tools_check(ops) -> str:

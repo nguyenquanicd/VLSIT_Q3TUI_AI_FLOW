@@ -143,26 +143,49 @@ class ToolsTab(_Tab):
     KEEP = "(keep)"
 
     def action_add(self) -> None:
-        """a: give the path of a tool; an LLM stage reads it and works out the role, command, log reader and modules, then the form opens filled in."""
-        self._ask("Add a tool", [("path", "Path of the tool: its binary, or its install folder (the rest is filled in by reading it)", "", "line")],
+        """a: give a path (a binary, or an install folder with many tools); an LLM stage reads it and works out every tool there with its role, command, log reader and
+        modules, then a dialog lists them all (checked): ctrl+s adds the checked ones."""
+        self._ask("Add tools", [("path", "Path: a tool's binary, or an install folder (every tool in it is found; the rest is filled in by reading it)", "", "line")],
                   lambda v: self._identify(v["path"].strip()),
-                  hint="ctrl+s: a read-only LLM stage looks at what is there and which role it serves, then you review · Esc cancels")
+                  hint="ctrl+s: a read-only LLM stage looks at what is there and which role each tool serves, then you pick which to add · Esc cancels")
 
     def _identify(self, where: str) -> None:
         app = self.capp
-        app.notify("Reading the tool to identify it (an LLM stage, read only)…")
+        app.notify("Reading the path to identify its tools (an LLM stage, read only)…")
 
         async def go() -> None:  # (on the app's loop: the stage's events reach the log)
             try:
-                g = await common.identify_tool_async(app.ops, where)
+                found = await common.identify_tool_async(app.ops, where)
             except Exception as exc:  # noqa: BLE001 - no LLM, no executable, …: the form opens to fill in by hand
                 app.notify(f"Could not identify it: {exc}", severity="error")
                 self._tool_form({"role": "", "cmd": where, "modules": [], "parse": "generic", "description": ""}, "Not identified — fill in by hand.")
                 return
-            note = (g["notes"] + "\n" if g["notes"] else "") + "".join(f"! {w}\n" for w in g["warnings"]) + "Review, change what is wrong, ctrl+s saves."
-            self._tool_form(g, note)
+            app.notify(f"{len(found)} tool(s) found: {', '.join(g['role'] for g in found)}")
+            self._review_tools(found)
 
         self.run_worker(go(), exclusive=True, group="tool-identify")
+
+    def _review_tools(self, found: list[dict]) -> None:
+        """One dialog listing every tool found (all checked): what is checked is added to the project's tools file as proposed; Enter on a row edits it later."""
+        from q3tui.tui.screens import PickToolsScreen
+
+        configured = {r["role"] for r in common.load_tool_rows(self.capp.project) if r["from"] != "not configured"}
+        items = []
+        for g in found:
+            label = f"{g['role']}  —  {g['cmd']}" + ("   (replaces the configured role)" if g["role"] in configured else "")
+            reader = g["parse"] or "the role's own"
+            detail = (f"{g['description']}\n" if g["description"] else "") + f"log reader: {reader} · modules: {', '.join(g['modules']) or 'none'}\n" \
+                     + (f"{g['notes']}\n" if g["notes"] else "") + "".join(f"! {w}\n" for w in g["warnings"])
+            items.append((label, detail.strip()))
+
+        def done(chosen: list[int] | None) -> None:
+            for i in chosen or []:
+                g = found[i]
+                self._act("tool_set", role=g["role"], cmd=g["cmd"], modules=" ".join(g["modules"]), parse=g["parse"], description=g["description"])
+            if chosen:
+                self.capp.notify(f"{len(chosen)} tool role(s) added — c checks they are found")
+
+        self.capp.push_screen(PickToolsScreen(f"{len(found)} tool(s) found — add which?", items), done)
 
     def _tool_form(self, g: dict, note: str) -> None:
         from q3tui.eda import tools as toolmod

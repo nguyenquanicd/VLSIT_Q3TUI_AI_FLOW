@@ -405,6 +405,12 @@ class ToolGuess(BaseModel):
     notes: str = ""
 
 
+class ToolGuesses(BaseModel):
+    """The answer of the tool-identify stage: one entry per tool (role) found at the path: a binary gives one, an install folder may give many."""
+
+    tools: list[ToolGuess]
+
+
 def tool_scan(where: str) -> dict:
     """The executables at `where`: a file, or a folder (its `bin` folders, up to four levels down; a folder with executables itself too). Returns
     {"root": folder to read, "executables": [paths]}."""
@@ -469,7 +475,7 @@ def _tool_system() -> str:
     return skill_sections(Path(__file__).resolve().parents[1] / "tools" / "md" / "skill.md")["SYSTEM"]
 
 
-def identify_tool(ops, where: str) -> dict:
+def identify_tool(ops, where: str) -> list[dict]:
     """`identify_tool_async` from sync code (silent in a thread of the TUI, which awaits the async one itself)."""
     import asyncio
 
@@ -481,9 +487,10 @@ def identify_tool(ops, where: str) -> dict:
     return run_sync(lambda: identify_tool_async(ops, where, emit))
 
 
-async def identify_tool_async(ops, where: str, emit=None) -> dict:
-    """Work out which role the tool at `where` serves and how to run it: code finds the executables, a read-only LLM stage (it may read the tool's folder)
-    proposes the role, command, log reader and modules, and code checks them. Returns {role, cmd, parse, modules, description, notes, warnings, executables}."""
+async def identify_tool_async(ops, where: str, emit=None) -> list[dict]:
+    """Work out every tool at `where` (a binary, or an install folder with many) and the role each serves: code finds the executables, a read-only LLM
+    stage (it may read the folder) proposes per tool the role, command, log reader and modules, and code checks each. Returns one dict per tool:
+    {role, cmd, parse, modules, description, notes, warnings, executables}; a role named twice keeps its first entry."""
     from q3tui.eda import tools as toolmod
     from q3tui.llm import runtime
 
@@ -491,22 +498,39 @@ async def identify_tool_async(ops, where: str, emit=None) -> dict:
     roles = role_contracts(ops.project)
     mods = modules_available()
     readers = sorted({*toolmod.PARSERS, "generic"})
-    role_text = "\n".join(f"- `{r['role']}` (used by: {', '.join(r['used_by']) or '–'}): `{r['cmd']}` — placeholders {', '.join('{' + x + '}' for x in r['placeholders']) or 'none'}; log reader `{r['parse']}`; "
-                           f"{r['description']}" for r in roles)
-    exes = "\n".join(f"- {e}" for e in found["executables"][:80]) + (f"\n- … {len(found['executables']) - 80} more" if len(found["executables"]) > 80 else "")
-    stage = runtime.Stage(name="tool_identify", system_prompt=_tool_system(), cwd=Path(found["root"]), builtin_tools=["Read", "Grep", "Glob"], output_model=ToolGuess, max_turns=14,
+    role_text = "\n".join(f"- `{r['role']}` (used by: {', '.join(r['used_by']) or '–'}; {'configured' if r['configured'] else 'not configured yet'}): `{r['cmd']}` — placeholders "
+                           f"{', '.join('{' + x + '}' for x in r['placeholders']) or 'none'}; log reader `{r['parse']}`; {r['description']}" for r in roles)
+    shown = 250
+    exes = "\n".join(f"- {e}" for e in found["executables"][:shown]) + (f"\n- … {len(found['executables']) - shown} more" if len(found["executables"]) > shown else "")
+    stage = runtime.Stage(name="tool_identify", system_prompt=_tool_system(), cwd=Path(found["root"]), builtin_tools=["Read", "Grep", "Glob"], output_model=ToolGuesses, max_turns=30,
                           prompt=f"## Path given\n`{where}`\n\n## Executables found (ground truth)\n{exes}\n\n## Roles that exist\n{role_text}\n\n"
                                  f"## Log readers you may name\n{', '.join(readers)}\n\n## Environment modules\n" + (", ".join(mods[:400]) if mods else "(none: no module system here)")
-                                 + "\n\nSet up this tool for the role it serves.")
+                                 + "\n\nSet up every tool found here, one entry per role it serves (several tools: several entries).")
     emit = emit or ops.engine.bus.scoped("tools")
-    emit("log", message=f"reading {where} to identify the tool (an LLM stage, read only)…")
-    guess: ToolGuess = (await runtime.run_stage(stage, ops.project.cfg, emit)).output
-    warnings: list[str] = []
+    emit("log", message=f"reading {where} to identify the tools (an LLM stage, read only)…")
+    answer: ToolGuesses = (await runtime.run_stage(stage, ops.project.cfg, emit)).output
     known = {r["role"]: r for r in roles}
+    out: list[dict] = []
+    for guess in answer.tools:
+        g = _check_tool_guess(guess, known, found, mods, readers)
+        if g is None:
+            continue
+        if any(o["role"] == g["role"] for o in out):
+            out[next(i for i, o in enumerate(out) if o["role"] == g["role"])]["warnings"].append(f"another tool was proposed for '{g['role']}' ({g['cmd'].split()[0]}): not used, add it by hand")
+            continue
+        out.append(g)
+    if not out:
+        raise ValueError("the stage found no tool it could set up here")
+    return out
+
+
+def _check_tool_guess(guess: ToolGuess, known: dict, found: dict, mods: list[str], readers: list[str]) -> dict | None:
+    """Code checks one entry against the executables, the roles and the modules (what is wrong is a warning, never silently fixed); None: no command."""
+    warnings: list[str] = []
     role = slug(guess.role) or "tool"
     cmd = guess.cmd.strip()
     if not cmd:
-        raise ValueError("the stage gave no command")
+        return None
     if role in known:
         allowed = set(known[role]["placeholders"])
         extra = sorted(set(re.findall(r"\{(\w+)\}", cmd)) - allowed)
