@@ -18,6 +18,7 @@ from q3tui.llm import runtime
 from q3tui.pipeline.base import StepFailed
 from q3tui.pipeline.engine import Engine
 from tests.test_rtl_flow import ScriptedLLM
+from q3tui.eda.tools import preset_data
 from tests.test_rtl_gen import calls, config_json, llm, spec_json, tools_dir, tools_yaml  # noqa: F401  (fixtures)
 
 FAKE_TOOL = '''
@@ -116,6 +117,8 @@ def csr_proj(tmp_path, monkeypatch):
     (tool / "CSR_Generation.py").write_text(FAKE_TOOL)
     (tool / "models" / "m_vlsi_synch.sv").write_text("module m_vlsi_synch; endmodule\n")
     (tmp_path / "q3tui.yaml").write_text(f"pipeline: {{flow: rtl, step_options: {{csr: {{tool_dir: {tool}}}}}}}\n")
+    (tmp_path / "config").mkdir()
+    (tmp_path / "config" / "tools.json").write_text(json.dumps({"roles": {"csr_gen": preset_data()["roles"]["csr_gen"]}}))  # (the project's own tools file)
     (tmp_path / "spec").mkdir()
     (tmp_path / "spec" / "spec.md").write_text(SPEC_TEXT)
     project = Project.open(tmp_path)
@@ -135,7 +138,7 @@ def test_the_registers_come_from_the_tool_not_from_the_llm(csr_proj):
     root, eng, fake = csr_proj
     run_csr(eng)
     st = fake.calls[0]
-    assert st.name == "csr_map" and {t.name for t in st.sdk_tools} == {"csr_check"} and "csr-register-map" in st.prompt and "apb-csr-tool" in st.prompt
+    assert st.name == "csr_map" and {t.name for t in st.sdk_tools} == {"csr_check", "tools_available"} and "csr-register-map" in st.prompt and "apb-csr-tool" in st.prompt
     assert "ctrl | [0] en RW" in st.prompt and "leaf_a" in st.prompt and root / "src" / "rtl" not in [d for d in st.deny_dirs if d != root / "src" / "rtl"] and root / "src" / "rtl" in st.deny_dirs
     mp = json.loads((root / "src" / "rtl" / "csr" / "csr_map.json").read_text())
     assert mp["module_name"] == "m_blk_csr" and [f["name"] for f in mp["registers"][0]["fields"]][:2] == ["reserved", "mode"]  # (completed by code)
@@ -282,7 +285,7 @@ def test_the_real_generator(tmp_path):
     assert csr.validate(m) == []
     work = tmp_path / "w"
     wb = csr.write_workbook(m, work / "in.xlsx")
-    flow_tools = json.loads((Path(csr.__file__).parents[1] / "tools.json").read_text())["roles"]["csr_gen"]
+    flow_tools = preset_data()["roles"]["csr_gen"]
     ts = ToolSet({"csr_gen": ToolRole.model_validate(flow_tools)}, ToolEnv(None, (), None), 120)
     res = csr.run_tool(ts, REAL, wb, work)
     assert res.ok, res.summary

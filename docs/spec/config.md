@@ -105,7 +105,7 @@ team:                             # role sessions (team.md)
                                   # a token count compacts it after the task that passed it
 
 tools:
-  file: null                      # tools file (tools.json / tools.yaml); default: <project>/config/tools.json|yaml, then ~/.q3tui/
+  file: null                      # tools file (tools.json / tools.yaml); default: <project>/config/tools.json|yaml
   roles: {}                       # tools by role for the flows (overrides the file's): {lint: {cmd: "vcs -full64 -sverilog +lint=all -f {filelist} …",
                                   #   parse: vcs, supports: [], description: …}, synth: {…}, sim: {…}, run: {…}}; docs/spec/flows.md "Tools"
   timeout_s: 600                  # per tool invocation

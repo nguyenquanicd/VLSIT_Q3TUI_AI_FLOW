@@ -143,14 +143,12 @@ def remove_entry(project, entry_id: str) -> str:
 
 # -- tools ----------------------------------------------------------------------------------------------------------------------
 
-def _roles_index(project) -> tuple[dict[str, list[str]], dict[str, str], dict[str, object]]:
-    """(role -> flows that use it, role -> the flow whose default it is, role -> a flow that needs it): from every flow this project can open."""
+def _roles_index(project) -> dict[str, list[str]]:
+    """role -> the flows that use it, from every flow this project can open."""
     from q3tui import flows
     from q3tui.eda import tools as toolmod
 
     owners: dict[str, list[str]] = {}
-    defaults: dict[str, str] = {}
-    flow_of: dict[str, object] = {}
     for name in flows.list_flows(project.root):
         try:
             flow = flows.load_flow(name, project.root)
@@ -158,50 +156,51 @@ def _roles_index(project) -> tuple[dict[str, list[str]], dict[str, str], dict[st
             continue
         for role in toolmod.roles_needed(flow):
             owners.setdefault(role, []).append(name)
-            flow_of.setdefault(role, flow)
-            if role in flow.tool_defaults:
-                defaults.setdefault(role, name)
-    return owners, defaults, flow_of
+    return owners
 
 
-def tool_rows(project) -> list[dict]:
-    """One row per tool role the flows (and the project) know: where it comes from, its command, modules, and whether it is found. Slow: it loads
-    the modules (a shell per role)."""
+def template_role(role: str):
+    """The role as `q3tui tools init` would write it (the presets), None when no preset has it: what editing a role the project's file lacks starts from,
+    and where the placeholders of a role nothing configures come from. Never used to run a tool."""
+    from q3tui.core.config import ToolRole
     from q3tui.eda import tools as toolmod
 
-    owners, defaults, flow_of = _roles_index(project)
-    root = project.root
-    base = toolmod.load_tools(project.cfg, root)
+    data = toolmod.preset_data()["roles"].get(role)
+    return ToolRole.model_validate(data) if data else None
+
+
+def tool_rows(project, check: bool = True) -> list[dict]:
+    """One row per tool role the flows need or the project's tools file defines: where it comes from, its command, modules, and whether it is found.
+    `check`: look for each binary (slow: it loads the modules, a shell per role); without it `found` is None."""
+    from q3tui.eda import tools as toolmod
+
+    owners = _roles_index(project)
+    tools = toolmod.load_tools(project.cfg, project.root)
     out = []
-    for role in sorted(set(owners) | set(base.roles)):
-        flow = flow_of.get(role)
-        tools = toolmod.load_tools(project.cfg, root, flow) if flow is not None else base
+    for role in sorted(set(owners) | set(tools.roles)):
         r = tools.roles.get(role)
         if r is None:
-            out.append({"role": role, "tool": "", "found": False, "modules": [], "from": "not defined", "cmd": "", "used_by": owners.get(role, []), "description": ""})
+            out.append({"role": role, "tool": "", "found": False, "modules": [], "from": "not configured", "cmd": "", "used_by": owners.get(role, []),
+                        "description": "Not in the project's tools file: add it to config/tools.json (`q3tui tools init` writes one with every role the flows use)."})
             continue
-        src = ("q3tui.yaml tools.roles" if role in project.cfg.tools.roles else
-               (tools.source if role in base.roles else f"flow '{defaults.get(role)}' default"))
         try:
-            found = toolmod.available(tools, role)
+            found = toolmod.available(tools, role) if check else None
         except Exception:  # noqa: BLE001 - a role that cannot be checked is not found
             found = False
         out.append({"role": role, "tool": toolmod.binary_of(r), "found": found, "modules": list(dict.fromkeys([*tools.env.modules, *r.modules])),
-                    "from": src, "cmd": r.cmd, "own_modules": list(r.modules), "timeout_s": r.timeout_s, "used_by": owners.get(role, []), "description": r.description,
-                    "parse": r.parse if isinstance(r.parse, str) else "patterns"})
+                    "from": "q3tui.yaml tools.roles" if role in project.cfg.tools.roles else tools.source, "cmd": r.cmd, "own_modules": list(r.modules),
+                    "timeout_s": r.timeout_s, "used_by": owners.get(role, []), "description": r.description, "parse": r.parse if isinstance(r.parse, str) else "patterns"})
     return out
 
 
 def set_role(project, role: str, cmd: str = "", modules: str = "", timeout_s: str = "", parse: str = "", description: str = "") -> str:
     """Change a tool role of this project: the command, the modules loaded for it (besides the global ones), the time limit. The role's other
-    settings (log reader, description) stay as they are now. Saved where the project keeps its roles: `tools.json` (created, with the roles the
-    built-in preset gives, when the project has none: adding one role must not lose the others), else `tools.roles` of q3tui.yaml."""
+    settings (log reader, description) stay as they are now. Saved where the project keeps its roles: `config/tools.json` (created, with the roles of
+    the presets, when the project has none: adding one role must not lose the others), else `tools.roles` of q3tui.yaml."""
     from q3tui.core.config import ToolRole
     from q3tui.eda import tools as toolmod
 
-    _owners, _defaults, flow_of = _roles_index(project)
-    tools = toolmod.load_tools(project.cfg, project.root, flow_of.get(role))
-    cur = tools.roles.get(role)
+    cur = toolmod.load_tools(project.cfg, project.root).roles.get(role) or template_role(role)  # (a role the file lacks: edited from its template)
     if cur is None and not cmd.strip():
         raise ValueError(f"role '{role}' is not defined: give its command")
     data = cur.model_dump(mode="json", exclude_defaults=True) if cur is not None else {}
@@ -227,8 +226,7 @@ def set_role(project, role: str, cmd: str = "", modules: str = "", timeout_s: st
     if path is None:
         path = project.config_dir / "tools.json"
         path.parent.mkdir(parents=True, exist_ok=True)
-        seed = json.loads((toolmod.PRESET_DIR / "synopsys.json").read_text())  # the roles the project uses now (the preset), kept
-        seed.pop("_comment", None)
+        seed = toolmod.preset_data()  # the roles the flows use (the presets), kept
     else:
         seed = json.loads(path.read_text())
     seed.setdefault("roles", {})[role] = data
@@ -237,13 +235,51 @@ def set_role(project, role: str, cmd: str = "", modules: str = "", timeout_s: st
     return f"tool role '{role}' saved to {path.name}"
 
 
+def check_tools(project) -> str:
+    """Look for every tool (slow: a shell per role loads its modules), keep the rows for the Tools tab and say how many were found. Emits nothing: the TUI runs
+    it in a thread, where an event would reach widgets from the wrong thread; the caller logs the summary."""
+    rows = tool_rows(project)
+    save_tool_rows(project, rows)
+    missing = [r["role"] for r in rows if not r["found"]]
+    return f"{len(rows) - len(missing)} of {len(rows)} tool role(s) found" + (f"; missing: {', '.join(missing)}" if missing else "")
+
+
 def save_tool_rows(project, rows: list[dict]) -> Path:
-    return write_json(state_dir(project) / "tools.json", {"roles": rows})
+    return write_json(state_dir(project) / TOOL_ROWS, {"roles": rows})  # (not tools.json: that is the `tools` step's report)
 
 
-def load_tool_rows(project) -> list[dict] | None:
-    p = state_dir(project) / "tools.json"
-    return json.loads(p.read_text()).get("roles") if p.is_file() else None
+TOOL_ROWS = "tool_rows.json"
+_ROWS: dict = {}
+
+
+def _mtime(p: Path) -> float:
+    try:
+        return p.stat().st_mtime
+    except OSError:
+        return 0.0
+
+
+def load_tool_rows(project) -> list[dict]:
+    """The rows of the Tools tab: the project's tools file as it is now (nothing run), with found / not found from the last check. Cached by the
+    mtime of the files it comes from (the tab redraws on every event)."""
+    from q3tui.eda import tools as toolmod
+
+    p = state_dir(project) / TOOL_ROWS
+    files = [project.root / "q3tui.yaml", p, *(project.config_dir / n for n in toolmod.FILE_NAMES)]
+    key = tuple(_mtime(f) for f in files)
+    hit = _ROWS.get(str(project.root))
+    if hit and hit[0] == key:
+        return hit[1]
+    try:
+        checked = {r["role"]: r.get("found") for r in (json.loads(p.read_text()).get("roles") or [])} if p.is_file() else {}
+    except (ValueError, TypeError, KeyError):  # (an unreadable cache is a check not run yet)
+        checked = {}
+    rows = tool_rows(project, check=False)
+    for r in rows:
+        if r["from"] != "not configured":
+            r["found"] = checked.get(r["role"])
+    _ROWS[str(project.root)] = (key, rows)
+    return rows
 
 
 # -- identifying a library folder (the LLM fills in the rest) ---------------------------------------------------------------------------------------
@@ -378,6 +414,12 @@ class ToolGuess(BaseModel):
     notes: str = ""
 
 
+class ToolGuesses(BaseModel):
+    """The answer of the tool-identify stage: one entry per tool (role) found at the path: a binary gives one, an install folder may give many."""
+
+    tools: list[ToolGuess]
+
+
 def tool_scan(where: str) -> dict:
     """The executables at `where`: a file, or a folder (its `bin` folders, up to four levels down; a folder with executables itself too). Returns
     {"root": folder to read, "executables": [paths]}."""
@@ -425,13 +467,13 @@ def role_contracts(project) -> list[dict]:
     """The roles that exist: name, command (the placeholders the steps pass are in it), log reader, modules, description."""
     from q3tui.eda import tools as toolmod
 
-    owners, _defaults, flow_of = _roles_index(project)
+    owners = _roles_index(project)
     base = toolmod.load_tools(project.cfg, project.root)
     out = []
     for role in sorted(set(owners) | set(base.roles)):
-        r = (toolmod.load_tools(project.cfg, project.root, flow_of.get(role)) if role in flow_of else base).roles.get(role)
+        r = base.roles.get(role) or template_role(role)  # (not configured: the template still says what the steps pass)
         if r is not None:
-            out.append({"role": role, "cmd": r.cmd, "parse": r.parse if isinstance(r.parse, str) else "patterns", "modules": list(r.modules), "description": r.description,
+            out.append({"role": role, "configured": role in base.roles, "cmd": r.cmd, "parse": r.parse if isinstance(r.parse, str) else "patterns", "modules": list(r.modules), "description": r.description,
                         "used_by": owners.get(role, []), "placeholders": sorted(set(re.findall(r"\{(\w+)\}", r.cmd)))})
     return out
 
@@ -442,7 +484,7 @@ def _tool_system() -> str:
     return skill_sections(Path(__file__).resolve().parents[1] / "tools" / "md" / "skill.md")["SYSTEM"]
 
 
-def identify_tool(ops, where: str) -> dict:
+def identify_tool(ops, where: str) -> list[dict]:
     """`identify_tool_async` from sync code (silent in a thread of the TUI, which awaits the async one itself)."""
     import asyncio
 
@@ -454,9 +496,10 @@ def identify_tool(ops, where: str) -> dict:
     return run_sync(lambda: identify_tool_async(ops, where, emit))
 
 
-async def identify_tool_async(ops, where: str, emit=None) -> dict:
-    """Work out which role the tool at `where` serves and how to run it: code finds the executables, a read-only LLM stage (it may read the tool's folder)
-    proposes the role, command, log reader and modules, and code checks them. Returns {role, cmd, parse, modules, description, notes, warnings, executables}."""
+async def identify_tool_async(ops, where: str, emit=None) -> list[dict]:
+    """Work out every tool at `where` (a binary, or an install folder with many) and the role each serves: code finds the executables, a read-only LLM
+    stage (it may read the folder) proposes per tool the role, command, log reader and modules, and code checks each. Returns one dict per tool:
+    {role, cmd, parse, modules, description, notes, warnings, executables}; a role named twice keeps its first entry."""
     from q3tui.eda import tools as toolmod
     from q3tui.llm import runtime
 
@@ -464,22 +507,39 @@ async def identify_tool_async(ops, where: str, emit=None) -> dict:
     roles = role_contracts(ops.project)
     mods = modules_available()
     readers = sorted({*toolmod.PARSERS, "generic"})
-    role_text = "\n".join(f"- `{r['role']}` (used by: {', '.join(r['used_by']) or '–'}): `{r['cmd']}` — placeholders {', '.join('{' + x + '}' for x in r['placeholders']) or 'none'}; log reader `{r['parse']}`; "
-                           f"{r['description']}" for r in roles)
-    exes = "\n".join(f"- {e}" for e in found["executables"][:80]) + (f"\n- … {len(found['executables']) - 80} more" if len(found["executables"]) > 80 else "")
-    stage = runtime.Stage(name="tool_identify", system_prompt=_tool_system(), cwd=Path(found["root"]), builtin_tools=["Read", "Grep", "Glob"], output_model=ToolGuess, max_turns=14,
+    role_text = "\n".join(f"- `{r['role']}` (used by: {', '.join(r['used_by']) or '–'}; {'configured' if r['configured'] else 'not configured yet'}): `{r['cmd']}` — placeholders "
+                           f"{', '.join('{' + x + '}' for x in r['placeholders']) or 'none'}; log reader `{r['parse']}`; {r['description']}" for r in roles)
+    shown = 250
+    exes = "\n".join(f"- {e}" for e in found["executables"][:shown]) + (f"\n- … {len(found['executables']) - shown} more" if len(found["executables"]) > shown else "")
+    stage = runtime.Stage(name="tool_identify", system_prompt=_tool_system(), cwd=Path(found["root"]), builtin_tools=["Read", "Grep", "Glob"], output_model=ToolGuesses, max_turns=30,
                           prompt=f"## Path given\n`{where}`\n\n## Executables found (ground truth)\n{exes}\n\n## Roles that exist\n{role_text}\n\n"
                                  f"## Log readers you may name\n{', '.join(readers)}\n\n## Environment modules\n" + (", ".join(mods[:400]) if mods else "(none: no module system here)")
-                                 + "\n\nSet up this tool for the role it serves.")
+                                 + "\n\nSet up every tool found here, one entry per role it serves (several tools: several entries).")
     emit = emit or ops.engine.bus.scoped("tools")
-    emit("log", message=f"reading {where} to identify the tool (an LLM stage, read only)…")
-    guess: ToolGuess = (await runtime.run_stage(stage, ops.project.cfg, emit)).output
-    warnings: list[str] = []
+    emit("log", message=f"reading {where} to identify the tools (an LLM stage, read only)…")
+    answer: ToolGuesses = (await runtime.run_stage(stage, ops.project.cfg, emit)).output
     known = {r["role"]: r for r in roles}
+    out: list[dict] = []
+    for guess in answer.tools:
+        g = _check_tool_guess(guess, known, found, mods, readers)
+        if g is None:
+            continue
+        if any(o["role"] == g["role"] for o in out):
+            out[next(i for i, o in enumerate(out) if o["role"] == g["role"])]["warnings"].append(f"another tool was proposed for '{g['role']}' ({g['cmd'].split()[0]}): not used, add it by hand")
+            continue
+        out.append(g)
+    if not out:
+        raise ValueError("the stage found no tool it could set up here")
+    return out
+
+
+def _check_tool_guess(guess: ToolGuess, known: dict, found: dict, mods: list[str], readers: list[str]) -> dict | None:
+    """Code checks one entry against the executables, the roles and the modules (what is wrong is a warning, never silently fixed); None: no command."""
+    warnings: list[str] = []
     role = slug(guess.role) or "tool"
     cmd = guess.cmd.strip()
     if not cmd:
-        raise ValueError("the stage gave no command")
+        return None
     if role in known:
         allowed = set(known[role]["placeholders"])
         extra = sorted(set(re.findall(r"\{(\w+)\}", cmd)) - allowed)

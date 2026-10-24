@@ -83,7 +83,7 @@ may leave an array), the step names the message: fix the RTL, or accept it with 
 
 ## Tools
 
-Default roles (`flows/asic/tools.json`, used by this flow only when the project defines none): `asic_synth` = `dc_shell -f {script}` with
+Template roles (`q3tui/eda/presets/flows/asic.json`, copied into the project's `config/tools.json` by `q3tui tools init`): `asic_synth` = `dc_shell -f {script}` with
 module `synopsys/syn/V-2023.12` (log parser `dc`), `asic_lec` = `fm_shell -f {script}` with module `synopsys/formality/V-2023.12`.
 Define your own `asic_synth` / `asic_lec` roles in `config/tools.json` / `tools.roles` for other versions or tools.
 
@@ -95,5 +95,5 @@ tools (Genus, Yosys), multiple corners.
 ## Where the code is
 
 All of it under `q3tui/flows/asic/`: `FLOW.md`, one folder per step (`step.py`, `md/skill.md`), `lib/` (port rules, Design Compiler script and
-report readers, Formality script and reader), `addon.py` (settings, `asic_handoff`, the SDC actions), `panels.py` (TUI), `tools.json`. The SDC
+report readers, Formality script and reader), `addon.py` (settings, `asic_handoff`, the SDC actions), `panels.py` (TUI). The SDC
 step, its actions and its editor are the FPGA flow's. Core has only the flow-map box.

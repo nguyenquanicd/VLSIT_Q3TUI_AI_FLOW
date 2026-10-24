@@ -118,8 +118,12 @@ def test_the_tool_roles_and_where_they_come_from(proj, monkeypatch):
     proj = Project.open(proj.root)
     rows = {r["role"]: r for r in common.tool_rows(proj)}
     assert rows["mylint"]["found"] and rows["mylint"]["from"] == "q3tui.yaml tools.roles" and rows["mylint"]["tool"] == sys.executable and "some/module" in rows["mylint"]["modules"]
-    assert rows["fpga_synth"]["from"] == "flow 'fpga' default" and rows["fpga_synth"]["used_by"] == ["fpga"] and not rows["fpga_synth"]["found"]
-    assert rows["asic_lec"]["modules"][-1] == "synopsys/formality/V-2023.12" and rows["fpga_pnr_ecp5"]["tool"] == "nextpnr-ecp5"
+    assert rows["fpga_synth"]["from"] == "not configured" and rows["fpga_synth"]["used_by"] == ["fpga"] and not rows["fpga_synth"]["found"]  # no flow brings a default
+    assert rows["asic_lec"]["from"] == "not configured" and rows["fpga_pnr_ecp5"]["tool"] == ""  # (listed, so the TUI shows what is missing)
+    assert [r["role"] for r in common.load_tool_rows(proj)] == [r["role"] for r in common.tool_rows(proj, check=False)]
+    toolmod.write_preset(proj.config_dir)  # `tools init`: every role of every flow, now the project's own
+    rows = {r["role"]: r for r in common.tool_rows(Project.open(proj.root))}
+    assert rows["fpga_synth"]["from"].endswith("tools.json") and rows["asic_lec"]["modules"][-1] == "synopsys/formality/V-2023.12" and rows["fpga_pnr_ecp5"]["tool"] == "nextpnr-ecp5"
 
 
 def test_the_modules_loaded_before_every_tool(proj):
@@ -137,12 +141,13 @@ async def test_the_steps_run_and_report(proj, monkeypatch):
     from q3tui.eda import tools as toolmod
 
     monkeypatch.setattr(toolmod, "available", lambda tools, role: role.startswith("asic"))
+    toolmod.write_preset(proj.config_dir)  # (the project's tools file: every flow's roles)
     common.add_entry(proj, "c28", str(proj.root / "pdk" / "cells28" / "lib"))
     eng = Engine(Project.open(proj.root))
     await eng.run(yes=True)
     assert all(v.status == "done" for v in eng.status()), [(v.name, v.status, v.detail) for v in eng.status()]
     rep = lambda n: json.loads((proj.state_dir / "project" / f"{n}.json").read_text())  # noqa: E731
-    assert rep("project")["flow"] == "project" and rep("project")["files"] == {"q3tui.yaml": True, "tools.json": False, "pdks.json": True} and rep("project")["problems"] == []
+    assert rep("project")["flow"] == "project" and rep("project")["files"] == {"q3tui.yaml": True, "tools.json": True, "pdks.json": True} and rep("project")["problems"] == []
     t = rep("tools")
     assert "asic_synth" not in t["missing"] and "asic_lec" not in t["missing"] and "fpga_synth" in t["missing"]  # (the stand-in finds the asic roles only)
     assert common.load_tool_rows(proj) and t["found"] + len(t["missing"]) == t["roles"]
@@ -402,12 +407,12 @@ async def test_enter_edits_a_setting_too(proj):
 
 
 def test_a_role_is_saved_where_the_project_keeps_its_roles(proj):
-    # no tools file and no inline roles: tools.json is created from the preset, so the other roles stay
+    # no tools file and no inline roles: tools.json is created from the presets, so the other roles stay; the role edited starts from its template
     msg = common.set_role(proj, "lint", cmd="mylint -f {filelist}", modules="my/lint", timeout_s="120")
     assert msg == "tool role 'lint' saved to tools.json"
     data = json.loads((proj.root / "config" / "tools.json").read_text())
     assert data["roles"]["lint"]["cmd"] == "mylint -f {filelist}" and data["roles"]["lint"]["modules"] == ["my/lint"] and data["roles"]["lint"]["timeout_s"] == 120
-    assert {"synth", "sim", "run"} <= set(data["roles"]) and "_comment" not in data  # (the preset's others are kept)
+    assert {"synth", "sim", "run", "verible_lint", "fpga_synth"} <= set(data["roles"]) and "_comment" not in data  # (the presets' others are kept)
     assert data["roles"]["lint"]["parse"] == "vcs"  # what the role had stays
     from q3tui.eda import tools as toolmod
 
@@ -419,8 +424,8 @@ def test_a_role_is_saved_where_the_project_keeps_its_roles(proj):
     assert "saved to tools.json" in common.set_role(proj, "nonesuch", cmd="x {a}")
 
 
-def test_a_role_of_a_flows_default_becomes_the_projects_own(proj):
-    common.set_role(proj, "fpga_synth", modules="xilinx/vivado/2024.1")  # the FPGA flow's default (Vivado), another module
+def test_a_role_the_file_lacks_is_edited_from_its_template(proj):
+    common.set_role(proj, "fpga_synth", modules="xilinx/vivado/2024.1")  # the FPGA template (Vivado), another module
     r = json.loads((proj.root / "config" / "tools.json").read_text())["roles"]["fpga_synth"]
     assert r["modules"] == ["xilinx/vivado/2024.1"] and r["cmd"].startswith("vivado -mode batch") and r["parse"] == "vivado"
 
@@ -443,19 +448,17 @@ async def test_enter_edits_a_tool_role(proj, monkeypatch):
     from q3tui.tui.screens import EditScreen
 
     monkeypatch.setattr(toolmod, "available", lambda tools, role: True)
+    toolmod.write_preset(proj.config_dir)
     app = Q3TUIApp(proj)
     async with app.run_test(size=(150, 50)) as pilot:
         await pilot.pause()
         app._select_step("tools")
         await pilot.pause()
         tab = _tab(app, "ToolsTab")
-        tab.action_edit()  # not checked yet
-        await pilot.pause()
-        assert not isinstance(app.screen, EditScreen)
         tab.action_check()
         for _ in range(60):
             await pilot.pause(0.25)
-            if (proj.state_dir / "project" / "tools.json").is_file():
+            if (proj.state_dir / "project" / "tool_rows.json").is_file():
                 break
         await pilot.pause(0.5)
         tab.refresh_view()
@@ -488,14 +491,18 @@ async def test_the_tools_view_checks_and_sets_modules(proj, monkeypatch):
         await pilot.pause()
         tab = _tab(app, "ToolsTab")
         tab.refresh_view()
-        assert tab.query_one(DataTable).row_count == 0  # not checked yet
+        table = tab.query_one(DataTable)  # the roles of every flow are listed at once, none configured or checked yet
+        assert table.row_count >= 15 and {str(table.get_cell_at((i, 1))) for i in range(table.row_count)} == {"–"} and {str(table.get_cell_at((i, 4))) for i in range(table.row_count)} == {"not configured"}
+        toolmod.write_preset(proj.config_dir)  # the user writes config/tools.json: listed as configured without running anything
+        await pilot.pause()
+        tab.refresh_view()
+        assert "not configured" not in {str(tab.query_one(DataTable).get_cell_at((i, 4))) for i in range(tab.query_one(DataTable).row_count)}
         tab.action_check()
         for _ in range(60):
             await pilot.pause(0.25)
-            if (proj.state_dir / "project" / "tools.json").is_file():
+            if (proj.state_dir / "project" / "tool_rows.json").is_file():
                 break
-        await pilot.pause(0.5)
-        tab.refresh_view()
+        await pilot.pause(0.5)  # (no manual refresh: the check redraws the tab itself, from the thread's result)
         table = tab.query_one(DataTable)
         rows = {table.coordinate_to_cell_key((i, 0)).row_key.value: [str(table.get_cell_at((i, c))) for c in range(5)] for i in range(table.row_count)}
         assert rows["fpga_synth"][2] == "✔" and rows["asic_synth"][2] == "✘"  # (the stand-in finds fpga_synth only)
@@ -543,10 +550,15 @@ class ToolLLM(GuessLLM):
     pass
 
 
-def _tool_guess(**kw):
+def _one(**kw):
     g = dict(role="Sim", cmd="vsim -c -do {script}", parse="vcs", modules=["vendor/sim/1.2", "not/a/module"], description="Simulate with VendorSim", notes="vsim in batch mode; -do takes the script.")
     g.update(kw)
     return common.ToolGuess(**g)
+
+
+def _tool_guess(*more, **kw):
+    """The stage's answer: the default tool (changed by `kw`), then any more entries."""
+    return common.ToolGuesses(tools=[_one(**kw), *more])
 
 
 def test_scanning_a_tool(tooldir):
@@ -567,10 +579,10 @@ def test_the_llm_sets_up_the_tool_and_code_checks_it(proj, tooldir, monkeypatch)
     monkeypatch.setattr(common, "modules_available", lambda timeout=20.0: ["synopsys/syn/V-2023.12", "vendor/sim/1.2"])
     fake = GuessLLM(_tool_guess())
     monkeypatch.setattr(runtime, "run_stage", fake)
-    g = common.identify_tool(Ops(Engine(proj)), str(tooldir))
+    (g,) = common.identify_tool(Ops(Engine(proj)), str(tooldir))
     (stage,) = fake.stages
     assert stage.name == "tool_identify" and set(stage.builtin_tools) == {"Read", "Grep", "Glob"} and stage.cwd == tooldir  # read only, the tool's folder
-    assert "You set up a tool for Q3TUI's flows" in stage.system_prompt and str(tooldir / "bin" / "vsim") in stage.prompt
+    assert "You set up the tools found at a path for Q3TUI's flows" in stage.system_prompt and str(tooldir / "bin" / "vsim") in stage.prompt
     assert "- `sim`" in stage.prompt and "- `run`" in stage.prompt and "{tc}" in stage.prompt  # the roles that exist, with the placeholders their steps pass
     assert "vendor/sim/1.2" in stage.prompt and "vivado" in stage.prompt  # the modules, the log readers
     assert (g["role"], g["cmd"], g["parse"], g["modules"]) == ("sim", "vsim -c -do {script}", "vcs", ["vendor/sim/1.2"])  # the unknown module is dropped
@@ -586,7 +598,7 @@ def test_a_roles_own_log_patterns_are_kept_when_the_llm_says_generic(proj, tmp_p
     (fm / "fm_shell").chmod(0o755)
     monkeypatch.setattr(common, "modules_available", lambda timeout=20.0: ["synopsys/formality/V-2023.12"])
     monkeypatch.setattr(runtime, "run_stage", GuessLLM(_tool_guess(role="asic_lec", cmd="fm_shell -f {script}", parse="generic", modules=["synopsys/formality/V-2023.12"])))
-    g = common.identify_tool(Ops(Engine(proj)), str(fm.parent))
+    (g,) = common.identify_tool(Ops(Engine(proj)), str(fm.parent))
     assert g["role"] == "asic_lec" and g["parse"] == "" and g["warnings"] == []  # asic_lec reads its log with its own error / warning patterns: "generic" would lose them
     common.set_role(proj, "asic_lec", cmd=g["cmd"], modules=" ".join(g["modules"]), parse=g["parse"])
     r = json.loads((proj.root / "config" / "tools.json").read_text())["roles"]["asic_lec"]
@@ -598,11 +610,11 @@ def test_what_the_llm_got_wrong_about_a_tool_is_said(proj, tooldir, monkeypatch)
 
     monkeypatch.setattr(common, "modules_available", lambda timeout=20.0: [])
     monkeypatch.setattr(runtime, "run_stage", GuessLLM(_tool_guess(role="Brand New", cmd="mystery -x", parse="martian", modules=[])))
-    g = common.identify_tool(Ops(Engine(proj)), str(tooldir))
+    (g,) = common.identify_tool(Ops(Engine(proj)), str(tooldir))
     assert g["role"] == "brand_new" and g["parse"] == "generic"
     assert [w.split(" ")[0] for w in g["warnings"]] == ["'brand_new'", "the", "log"] and any("not among the executables found" in w for w in g["warnings"])
     monkeypatch.setattr(runtime, "run_stage", GuessLLM(_tool_guess(cmd="  ")))
-    with pytest.raises(ValueError, match="no command"):
+    with pytest.raises(ValueError, match="no tool it could set up"):
         common.identify_tool(Ops(Engine(proj)), str(tooldir))
 
 
@@ -614,7 +626,7 @@ def test_tool_add_with_only_a_path(proj, tooldir, monkeypatch):
     monkeypatch.setattr(runtime, "run_stage", fake)
     ops = Ops(Engine(proj))
     shown = ops.run_action("tool_identify", path=str(tooldir))
-    assert shown.startswith("role sim | vsim -c -do {tc}") and "log reader vcs" in shown and "! module(s) not available here, dropped: not/a/module" in shown
+    assert shown.startswith("1 tool(s) found") and "role sim | vsim -c -do {tc}" in shown and "log reader vcs" in shown and "! module(s) not available here, dropped: not/a/module" in shown
     assert not (proj.root / "config" / "tools.json").exists()  # (identify writes nothing)
     msg = ops.run_action("tool_add", path=str(tooldir), parse="verilator")  # what you give wins
     assert msg.startswith("tool role 'sim' saved to tools.json") and "vsim in batch mode" in msg
@@ -630,7 +642,7 @@ async def test_the_tools_view_adds_a_tool_with_only_a_path(proj, tooldir, monkey
     from textual.widgets import Button, Input, Select
 
     from q3tui.llm import runtime
-    from q3tui.tui.screens import EditScreen
+    from q3tui.tui.screens import EditScreen, PickToolsScreen
 
     monkeypatch.setattr(common, "modules_available", lambda timeout=20.0: ["vendor/sim/1.2"])
     fake = GuessLLM(_tool_guess(cmd="vsim -c -do {tc}"))
@@ -649,16 +661,46 @@ async def test_the_tools_view_adds_a_tool_with_only_a_path(proj, tooldir, monkey
         app.screen.action_save()
         for _ in range(40):
             await pilot.pause(0.25)
-            if isinstance(app.screen, EditScreen) and "role" in [f[0] for f in app.screen.fields]:
+            if isinstance(app.screen, PickToolsScreen):
                 break
         scr = app.screen
-        assert isinstance(scr, EditScreen) and scr.title_text == "Add a tool" and len(fake.stages) == 1
-        assert scr.query_one("#f-role", Input).value == "sim" and scr.query_one("#f-cmd", Input).value == "vsim -c -do {tc}" and scr.query_one("#f-modules", Input).value == "vendor/sim/1.2"
-        assert scr.query_one("#f-parse", Select).value == "vcs" and "vsim in batch mode" in scr.hint and "not/a/module" in scr.hint
-        scr.query_one("#f-cmd", Input).value = "vsim -c -do {tc} -quiet"
-        scr.action_save()
+        assert isinstance(scr, PickToolsScreen) and len(fake.stages) == 1 and "1 tool(s) found" in scr.title_text
+        assert scr.items[0][0] == "sim  —  vsim -c -do {tc}" and "vsim in batch mode" in scr.items[0][1] and "not/a/module" in scr.items[0][1] and "log reader: vcs" in scr.items[0][1]
+        scr.action_add()  # everything is checked
         await pilot.pause()
-    assert json.loads((proj.root / "config" / "tools.json").read_text())["roles"]["sim"]["cmd"] == "vsim -c -do {tc} -quiet"
+    r = json.loads((proj.root / "config" / "tools.json").read_text())["roles"]["sim"]
+    assert r["cmd"] == "vsim -c -do {tc}" and r["parse"] == "vcs" and r["modules"] == ["vendor/sim/1.2"]
+
+
+async def test_the_tools_dialog_lists_every_tool_found_and_adds_the_checked(proj, tooldir, monkeypatch):
+    from textual.widgets import Input, SelectionList
+
+    from q3tui.llm import runtime
+    from q3tui.tui.screens import PickToolsScreen
+
+    monkeypatch.setattr(common, "modules_available", lambda timeout=20.0: [])
+    monkeypatch.setattr(runtime, "run_stage", GuessLLM(_tool_guess(common.ToolGuess(role="lint", cmd=f"{tooldir}/bin/vlog -lint {{filelist}}", description="lint"), cmd="vsim -c -do {tc}")))
+    app = Q3TUIApp(Project.open(proj.root))
+    async with app.run_test(size=(160, 60)) as pilot:
+        await pilot.pause()
+        app._select_step("tools")
+        await pilot.pause()
+        tab = _tab(app, "ToolsTab")
+        tab.action_add()
+        await pilot.pause()
+        app.screen.query_one("#f-path", Input).value = str(tooldir)
+        app.screen.action_save()
+        for _ in range(40):
+            await pilot.pause(0.25)
+            if isinstance(app.screen, PickToolsScreen):
+                break
+        scr = app.screen
+        assert isinstance(scr, PickToolsScreen) and [i[0].split("  ")[0] for i in scr.items] == ["sim", "lint"] and len(scr.query_one(SelectionList).selected) == 2  # all checked
+        scr.query_one(SelectionList).deselect(0)  # leave sim out
+        scr.action_add()
+        await pilot.pause()
+    roles = json.loads((proj.root / "config" / "tools.json").read_text())["roles"]
+    assert roles["lint"]["cmd"].endswith("vlog -lint {filelist}") and roles["lint"]["description"] == "lint" and "vendor" not in roles["sim"]["cmd"]  # (sim stays the preset's)
 
 
 async def test_a_tool_the_llm_cannot_identify_opens_the_form_by_hand(proj, tooldir, monkeypatch):
@@ -685,3 +727,24 @@ async def test_a_tool_the_llm_cannot_identify_opens_the_form_by_hand(proj, toold
         assert isinstance(app.screen, EditScreen) and app.screen.title_text == "Add a tool (by hand)" and "Not identified" in app.screen.hint
         assert app.screen.query_one("#f-role", Input).value == "" and app.screen.query_one("#f-cmd", Input).value == str(tooldir)
         app.screen.dismiss(None)
+
+
+# -- a folder with many tools: every one is found ----------------------------------------------------------------------------------------------------
+
+
+def test_a_folder_with_many_tools_gives_one_entry_per_tool(proj, tooldir, monkeypatch):
+    from q3tui.llm import runtime
+
+    monkeypatch.setattr(common, "modules_available", lambda timeout=20.0: ["vendor/sim/1.2"])
+    two = _tool_guess(common.ToolGuess(role="lint", cmd=f"{tooldir}/bin/vlog -lint {{filelist}}", parse="generic", description="lint"),
+                      _one(role="sim", cmd="vcom {script}"), cmd="vsim -c -do {tc}")  # (the second 'sim' is a duplicate: dropped, said)
+    fake = GuessLLM(two)
+    monkeypatch.setattr(runtime, "run_stage", fake)
+    found = common.identify_tool(Ops(Engine(proj)), str(tooldir))
+    assert [g["role"] for g in found] == ["sim", "lint"] and any("another tool was proposed for 'sim'" in w for w in found[0]["warnings"])
+    assert "one entry per role" in fake.stages[0].prompt and fake.stages[0].max_turns >= 30
+    shown = Ops(Engine(proj)).run_action("tool_identify", path=str(tooldir))
+    assert shown.startswith("2 tool(s) found") and "role lint" in shown
+    msg = Ops(Engine(proj)).run_action("tool_add", path=str(tooldir))  # no role given: every tool found is saved
+    roles = json.loads((proj.root / "config" / "tools.json").read_text())["roles"]
+    assert "'sim' saved" in msg and "'lint' saved" in msg and roles["sim"]["cmd"] == "vsim -c -do {tc}" and roles["lint"]["cmd"].endswith("vlog -lint {filelist}")

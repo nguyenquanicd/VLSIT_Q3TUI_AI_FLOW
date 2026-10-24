@@ -10,7 +10,7 @@ it any time). Internal state lives in `.q3tui/`. A step names no folder: it asks
 ├── q3tui.yaml              ← optional project config (overrides ~/.q3tui/q3tui.yaml)                        yours
 ├── .gitignore              ← written by `q3tui init`: build/ and .q3tui/
 ├── config/                 ← what you configure                                                             yours
-│   ├── tools.json              tools by role (docs/spec/flows.md); default: the built-in Synopsys preset
+│   ├── tools.json              tools by role (docs/spec/flows.md): the one place every flow reads; `q3tui tools init` writes it
 │   ├── pdks.json               your standard-cell libraries (the ASIC flow's catalog; same id replaces a built-in)
 │   ├── rtl_rules.md            your RTL rules (rtl flow; `q3tui act rtl_rules_init` writes a skeleton)
 │   ├── skills/<name>/SKILL.md  your playbooks (replace or add one the LLM stages may read)

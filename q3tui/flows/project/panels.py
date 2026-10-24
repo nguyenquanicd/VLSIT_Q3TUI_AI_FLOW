@@ -22,7 +22,9 @@ if TYPE_CHECKING:
 DASH = Text("–", style="grey50")
 
 
-def _yes(v: bool) -> Text:
+def _yes(v: bool | None) -> Text:
+    if v is None:
+        return Text("?", style="grey50")  # (not checked yet)
     return Text("✔", style="green") if v else Text("✘", style="red")
 
 
@@ -123,14 +125,14 @@ class SettingsTab(_Tab):
 
 def _tool_rows(app: "Q3TUIApp") -> list[tuple]:
     rows = common.load_tool_rows(app.project)
-    return [(r["role"], r["role"], r["tool"] or DASH, _yes(r["found"]), ", ".join(r["modules"]) or DASH, r["from"]) for r in rows or []]
+    return [(r["role"], r["role"], r["tool"] or DASH, _yes(r["found"]), ", ".join(r["modules"]) or DASH, r["from"]) for r in rows]
 
 
 def _tool_detail(app: "Q3TUIApp", key: str) -> str:
-    r = next((r for r in common.load_tool_rows(app.project) or [] if r["role"] == key), None)
+    r = next((r for r in common.load_tool_rows(app.project) if r["role"] == key), None)
     if r is None:
         return ""
-    return (f"**{r['role']}** — {'found' if r['found'] else '**not found**'}\n\n{r['description'] or ''}\n\n- command: `{r['cmd'] or '(not defined)'}`\n- modules: {', '.join(r['modules']) or 'none'}\n"
+    return (f"**{r['role']}** — {'not checked yet' if r['found'] is None else 'found' if r['found'] else '**not found**'}\n\n{r['description'] or ''}\n\n- command: `{r['cmd'] or '(not defined)'}`\n- modules: {', '.join(r['modules']) or 'none'}\n"
             f"- from: {r['from']}\n- used by: {', '.join(r['used_by']) or '–'}\n- log reader: {r.get('parse', '–')}\n\n"
             "Enter / `e` edits the role (saved to the project's `config/tools.json`); `m` sets the modules loaded before every tool; `c` checks again.")
 
@@ -141,26 +143,49 @@ class ToolsTab(_Tab):
     KEEP = "(keep)"
 
     def action_add(self) -> None:
-        """a: give the path of a tool; an LLM stage reads it and works out the role, command, log reader and modules, then the form opens filled in."""
-        self._ask("Add a tool", [("path", "Path of the tool: its binary, or its install folder (the rest is filled in by reading it)", "", "line")],
+        """a: give a path (a binary, or an install folder with many tools); an LLM stage reads it and works out every tool there with its role, command, log reader and
+        modules, then a dialog lists them all (checked): ctrl+s adds the checked ones."""
+        self._ask("Add tools", [("path", "Path: a tool's binary, or an install folder (every tool in it is found; the rest is filled in by reading it)", "", "line")],
                   lambda v: self._identify(v["path"].strip()),
-                  hint="ctrl+s: a read-only LLM stage looks at what is there and which role it serves, then you review · Esc cancels")
+                  hint="ctrl+s: a read-only LLM stage looks at what is there and which role each tool serves, then you pick which to add · Esc cancels")
 
     def _identify(self, where: str) -> None:
         app = self.capp
-        app.notify("Reading the tool to identify it (an LLM stage, read only)…")
+        app.notify("Reading the path to identify its tools (an LLM stage, read only)…")
 
         async def go() -> None:  # (on the app's loop: the stage's events reach the log)
             try:
-                g = await common.identify_tool_async(app.ops, where)
+                found = await common.identify_tool_async(app.ops, where)
             except Exception as exc:  # noqa: BLE001 - no LLM, no executable, …: the form opens to fill in by hand
                 app.notify(f"Could not identify it: {exc}", severity="error")
                 self._tool_form({"role": "", "cmd": where, "modules": [], "parse": "generic", "description": ""}, "Not identified — fill in by hand.")
                 return
-            note = (g["notes"] + "\n" if g["notes"] else "") + "".join(f"! {w}\n" for w in g["warnings"]) + "Review, change what is wrong, ctrl+s saves."
-            self._tool_form(g, note)
+            app.notify(f"{len(found)} tool(s) found: {', '.join(g['role'] for g in found)}")
+            self._review_tools(found)
 
         self.run_worker(go(), exclusive=True, group="tool-identify")
+
+    def _review_tools(self, found: list[dict]) -> None:
+        """One dialog listing every tool found (all checked): what is checked is added to the project's tools file as proposed; Enter on a row edits it later."""
+        from q3tui.tui.screens import PickToolsScreen
+
+        configured = {r["role"] for r in common.load_tool_rows(self.capp.project) if r["from"] != "not configured"}
+        items = []
+        for g in found:
+            label = f"{g['role']}  —  {g['cmd']}" + ("   (replaces the configured role)" if g["role"] in configured else "")
+            reader = g["parse"] or "the role's own"
+            detail = (f"{g['description']}\n" if g["description"] else "") + f"log reader: {reader} · modules: {', '.join(g['modules']) or 'none'}\n" \
+                     + (f"{g['notes']}\n" if g["notes"] else "") + "".join(f"! {w}\n" for w in g["warnings"])
+            items.append((label, detail.strip()))
+
+        def done(chosen: list[int] | None) -> None:
+            for i in chosen or []:
+                g = found[i]
+                self._act("tool_set", role=g["role"], cmd=g["cmd"], modules=" ".join(g["modules"]), parse=g["parse"], description=g["description"])
+            if chosen:
+                self.capp.notify(f"{len(chosen)} tool role(s) added — c checks they are found")
+
+        self.capp.push_screen(PickToolsScreen(f"{len(found)} tool(s) found — add which?", items), done)
 
     def _tool_form(self, g: dict, note: str) -> None:
         from q3tui.eda import tools as toolmod
@@ -178,12 +203,15 @@ class ToolsTab(_Tab):
     def action_edit(self) -> None:
         """Enter / e: the command, the modules and the time limit of the highlighted role (saved to the project's config/tools.json)."""
         key = self.current_key()
-        r = next((r for r in common.load_tool_rows(self.capp.project) or [] if r["role"] == key), None)
+        r = next((r for r in common.load_tool_rows(self.capp.project) if r["role"] == key), None)
         if r is None:
-            self.app.notify("nothing to edit yet — press c to check the tools first", severity="information")
+            self.app.notify("nothing to edit here — add a tool (a) or run `q3tui tools init`", severity="information")
             return
-        fields = [("cmd", "Command (with {placeholders})", r["cmd"], "line"), ("modules", "Modules loaded for this role, separated by spaces (empty: keep)", " ".join(r.get("own_modules") or []), "line"),
-                  ("timeout_s", "Time limit (s; empty: keep)", str(r.get("timeout_s") or ""), "line")]
+        tpl = None if r["from"] != "not configured" else common.template_role(key)  # (a role the file lacks: start from its template)
+        cur = r if tpl is None else {"cmd": tpl.cmd, "own_modules": tpl.modules, "timeout_s": tpl.timeout_s}
+        fields = [("cmd", "Command (with {placeholders})" + (" — not configured: the template is filled in" if tpl else ""), cur["cmd"], "line"),
+                  ("modules", "Modules loaded for this role, separated by spaces (empty: keep)", " ".join(cur.get("own_modules") or []), "line"),
+                  ("timeout_s", "Time limit (s; empty: keep)", str(cur.get("timeout_s") or ""), "line")]
         self._ask(f"Tool role {r['role']}", fields,
                   lambda v: self._act("tool_set", role=r["role"], cmd=v["cmd"].strip(), modules=v["modules"].strip(), timeout_s=v["timeout_s"].strip()),
                   hint=f"saved to the project's config/tools.json (the role's log reader stays: {r.get('parse', '–')}) · ctrl+s saves · Esc cancels")
@@ -197,11 +225,11 @@ class ToolsTab(_Tab):
 
         async def go() -> None:
             try:
-                msg = await anyio.to_thread.run_sync(lambda: app.ops.run_action("tools_check"))
+                msg = await anyio.to_thread.run_sync(lambda: common.check_tools(app.project))  # (no event from the thread: they reach widgets)
             except Exception as exc:  # noqa: BLE001
                 app.notify(str(exc), severity="error")
                 return
-            app.log_info(msg)
+            app.ops._log("tools", msg)
             app.refresh_all()
 
         self.run_worker(go(), exclusive=True, group="tools-check")
@@ -363,7 +391,7 @@ def _tabs_for(kind: str) -> tuple[TabSpec, ...]:
     if kind == "project.tools":
         return (TabSpec("tools", "Tools", ("Role", "Tool", "Found", "Modules", "From"), _tool_rows, _tool_detail,
                         "a add a tool (give its path: the rest is filled in) · Enter / e edit a role · c check which tools are found · m modules loaded before every tool", widget=ToolsTab,
-                        empty="not checked yet — press c"),)
+                        empty="no tools file yet — `q3tui tools init` writes config/tools.json, or press a to add a tool"),)
     if kind == "project.libraries":
         return (TabSpec("libraries", "Libraries", ("Technology", "Node", "Corners", "From", "In use"), _lib_rows, _lib_detail,
                         "a add (give the folder: the rest is filled in) · Enter / e edit · d remove · u pick the corner used as the ASIC library", widget=LibTab, empty="no technology"),)

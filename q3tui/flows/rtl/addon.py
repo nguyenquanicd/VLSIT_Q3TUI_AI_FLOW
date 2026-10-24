@@ -44,7 +44,7 @@ def register(api) -> None:
 
         from q3tui.eda import tools as toolmod
 
-        role = toolmod.load_tools(ops.project.cfg, ops.project.root, ops.engine.flow).roles.get("csr_gen")
+        role = toolmod.load_tools(ops.project.cfg, ops.project.root).roles.get("csr_gen")
         found = csr.find_tool(ops.project.root, None, (role.env or {}).get("CSR_GEN_HOME") if role else None)
         if found:
             return ops._log("csr", f"the APB-CSR-Generator is already at {found}")

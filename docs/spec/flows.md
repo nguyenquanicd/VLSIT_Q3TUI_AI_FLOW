@@ -99,7 +99,6 @@ Core (CLI, TUI, assistant, `Ops`, engine) knows no flow by name. A flow *folder*
 | File | Brings |
 |---|---|
 | `addon.py` | `register(api)`: **actions** (`@api.action(name, help, {param: description}, optional=(…))` on `fn(ops, **params) -> str`; all params strings; a `ValueError` is a user error) step kinds (`api.kind`) and step options for the Settings dialog (`api.setting(step, key, label, kind, help, choices, nullable, default)`: the step's own tab, the assistant's get/set_settings; applied to the live step, saved to `pipeline.step_options.<step>.<key>` in q3tui.yaml; `step` may be another flow's step — a choice both flows share, e.g. the ASIC library from the FPGA flow — and `default` is its value while q3tui.yaml sets none) |
-| `tools.json` | default tool roles (`{"roles": {…}}`) for a role the flow needs and nothing configures — this flow only (`load_tools(cfg, root, flow)`); a project's roles are otherwise exactly its own |
 | `panels.py` | TUI panels of the flow's step kinds (`register_panel`); imported when the TUI opens the flow |
 
 Every action reaches the user three ways, all through `Ops.run_action`: an assistant tool per action, `q3tui act NAME key=value …`
@@ -167,12 +166,15 @@ switches on top. Change a mode: `q3tui gate STEP MODE`, TUI `/gate STEP MODE` (o
 
 ## Tools by role
 
-No tool file anywhere (no `config/tools.json` in the project, none in `~/.q3tui/`, no `tools.roles`)? The built-in **Synopsys preset**
-(VCS lint / compile / run, Design Compiler; `q3tui/eda/presets/synopsys.json`) is used, so a Synopsys site needs no setup;
-`q3tui tools init` copies it into the project to edit, and `q3tui tools check` shows what is used. Any tool file or inline role
-replaces it completely (it is not merged), so another tool set just writes its own `config/tools.json`.
+**One place:** the project's `config/tools.json` is the only source of tools; users write it. No flow brings defaults and there is no built-in
+fallback: a role it does not define is *not configured*, and a step that needs it waits (`missing_input`) saying so. `q3tui tools init` writes a
+starting file with the roles of every flow (the Synopsys preset `q3tui/eda/presets/synopsys.json` for lint / synth / sim / run, plus
+`presets/flows/*.json`: Verible, the CSR generator, Vivado / Yosys / nextpnr, Design Compiler / Formality, VC Static) to edit for your site.
+`q3tui tools check` and the Tools tab of the project flow list every role the flows need, found or not (`not configured` when the file lacks it).
+LLM stages that may run a tool get the in-process `mcp__q3tui__tools_available`, which names each role as available or not, and says
+"No tools are available" when none can run.
 
-A tools file (`tools.json` / `tools.yaml` in the project's `config/`, `tools.file`, or `~/.q3tui/`) — or `tools.roles:` in
+The tools file (`tools.json` / `tools.yaml` in the project's `config/`, or `tools.file`) — or `tools.roles:` in
 `q3tui.yaml` — maps a *role* to a command; steps call roles, never binaries:
 
 ```json

@@ -70,7 +70,7 @@ the flow starts at parse. `q3tui run` runs whatever is missing or stale, like `m
 
 - New blocks written from scratch, a few clock domains at most.
 - Tools by role (lint, synthesis, simulation, run, optionally mutation), configured in
-  `config/tools.json`; the built-in preset is Synopsys (VCS, Design Compiler).
+  `config/tools.json`, written by the user (`q3tui tools init` starts it from the Synopsys preset and the flows' templates).
 - Interfaces: CLI and TUI (Textual) over one pipeline engine.
 - Not in scope: formal, UVM, upgrading existing RTL, web UI.
 
