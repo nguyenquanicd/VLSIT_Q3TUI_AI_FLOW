@@ -125,15 +125,24 @@ class FlowMapScreen(ModalScreen[str | None]):
         if focus:
             focus.focus()
 
+    _finished = False  # (a double click, or Enter after a click, reaches here again once the screen is gone: dismissing twice raises)
+
+    def _close(self, result: str | None) -> None:
+        if not self._finished:
+            self._finished = True
+            self.dismiss(result)
+
     def pick(self, group: Group) -> None:
+        if self._finished:
+            return
         if not group.developed:
             self.notify(f"{group.border_title.split('  ·')[0]}: not developed yet", severity="warning")
             return
-        self.dismiss(group.flow)
+        self._close(group.flow)
 
     def action_select(self) -> None:
         if isinstance(self.focused, Group):
             self.pick(self.focused)
 
     def action_cancel(self) -> None:
-        self.dismiss(None)
+        self._close(None)
