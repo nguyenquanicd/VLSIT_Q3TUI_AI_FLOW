@@ -476,3 +476,55 @@ async def test_a_fix_that_goes_against_a_requirement_becomes_a_spec_decision(pro
     await eng.run(yes=True, stop="cdc_waivers")
     v2 = next(i for i in eng.by_name["cdc_waivers"].items(eng) if i["id"] == "V2")
     assert v2["action"] == "spec" and "go against a requirement" in v2["change"]
+
+
+# -- the TUI panels -----------------------------------------------------------------------------------------------------
+
+
+async def test_the_lane_panels_show_the_violations_the_review_and_the_check(proj, monkeypatch):
+    import sys
+
+    from textual.widgets import DataTable
+
+    from q3tui.llm import runtime
+    from q3tui.tui.app import Q3TUIApp
+
+    monkeypatch.setattr(runtime, "run_stage", ReviewLLM(_decide))
+    eng = Engine(proj)
+    await eng.run(yes=True, stop="cdc_waivers")
+    app = Q3TUIApp(proj)
+    sent = []
+    monkeypatch.setattr(app, "action_switch_flow", lambda name=None: sent.append(name))
+    async with app.run_test(size=(170, 50)) as pilot:
+        await pilot.pause()
+        mod = sys.modules[type(next(iter(app.query("ReviewTab")))).__module__]  # (the flow's panels.py is loaded by path)
+        for step in ("cdc", "cdc_waivers", "cdc_check", "rdc", "sdc"):
+            assert type(app._panel(step)).__name__ == "VlsitPanel", step  # a panel of its own, not the Files / Questions / Log default
+        vrows = mod._violation_rows("cdc")(app)
+        assert [r[0] for r in vrows] == ["V1", "V2", "V3"] and [str(r[5]) for r in vrows] == ["Yes", "No", "No"]
+        assert [str(r[6]) for r in vrows] == ["waive", "RTL fix", "SDC"]
+        assert "**Review:** waive (rule K1)" in mod._violation_detail("cdc")(app, "V1")
+        rrows = mod._review_rows("cdc")(app)
+        assert [(r[0], str(r[3]), str(r[7])) for r in rrows] == [("V1", "waive", ""), ("V2", "RTL fix", "not yet"), ("V3", "SDC", "not yet")]
+        assert "set_input_delay" in mod._review_detail("cdc")(app, "V3") and mod._review_urgent("cdc")(app) == 2
+
+        tab = app._panel("cdc_waivers").query_one("ReviewTab")
+        tab.refresh_view()
+        table = tab.query_one(DataTable)
+        assert table.row_count == 3
+        table.move_cursor(row=1)  # V2: H hands this one only
+        await pilot.pause()
+        tab.action_handoff_one()
+        await pilot.pause()
+        plan = json.loads((proj.schemas_dir / "cdc_waivers.json").read_text())
+        assert {i["id"]: bool(i.get("handed_off")) for i in plan["items"]} == {"V1": False, "V2": True, "V3": False}
+        assert sent == ["rtl"]  # (and the TUI moves to the owner flow, as the other flows do)
+        assert str(mod._review_rows("cdc")(app)[1][7]) == "→ rtl:rtl"
+
+    await eng.run(yes=True, only="cdc_check")
+    app = Q3TUIApp(proj)
+    async with app.run_test(size=(170, 50)):
+        mod = sys.modules[type(next(iter(app.query("ReviewTab")))).__module__]
+        by_item = {r[0]: r for r in mod._check_rows("cdc")(app)}
+        assert str(by_item["result"][4]) in ("pass", "fail") and by_item["total"][2] == "3"
+        assert mod._check_rows("rdc")(app) == []  # (a lane that has not run shows its empty message, not an error)
