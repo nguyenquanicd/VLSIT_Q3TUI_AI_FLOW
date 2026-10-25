@@ -69,6 +69,17 @@ waiting for you go to the LLM again (`options.batch`, default 40 violations per 
 
 A rule applies only when **all** its conditions are verified in the RTL, the SDC and the spec and cited. Both files are inputs of the review.
 
+## The TUI panels
+
+`flows/sanity/panels.py` gives each step kind its own tab before Files / Questions / Log (the default panel of a flow without one), over the JSON the steps write:
+
+| Step | Tab | Shows |
+|---|---|---|
+| `cdc` / `rdc` | **Violations** | every violation (No., Name, Severity, Description, Waived, Review); the detail has the tool's fields and the review's reason |
+| `cdc_waivers` / `rdc_waivers` | **Review** | the decision per violation (waive / RTL fix / spec / SDC / ask you), its rule or module, what it asks, your answer, where it was handed off. `h` hands every RTL / spec fix (and plain SDC lines) to the owner flow, `H` the highlighted one: the same `sanity_handoff` action, then the TUI switches to the owner flow. The hint turns urgent while fixes are not handed off |
+| `cdc_check` / `rdc_check` | **Check** | the run with the waivers: found / waived / open against expected, the mismatches, the `*_waive.tcl` it sourced |
+| `sdc` | **SDC** | the FPGA flow's SDC editor (the same files) |
+
 ## Hand-off
 
 `sanity_handoff` (`q3tui act sanity_handoff [ids=V1,cdc:V2]`, the assistant, the gate's offer after you approve) sends every `fix_rtl` and `spec` decision
