@@ -397,7 +397,12 @@ async def test_the_flow_map_has_the_asic_box(proj):
         assert isinstance(app.screen, FlowMapScreen)
         groups = {str(g.border_title).split("  ·")[0]: g for g in app.screen.query(Group)}
         assert groups["ASIC synthesis"].developed and groups["ASIC synthesis"].has_class("current")
-        app.screen.pick(groups["FPGA synthesis"])
+        assert groups["DV"].developed and groups["DV"].flow == "dv"  # (the dv flow exists: its box is not faded)
+        scr = app.screen
+        scr.pick(groups["FPGA synthesis"])
+        await pilot.pause()
+        scr.pick(groups["FPGA synthesis"])  # a double click: the second click finds the screen gone and must not dismiss it again
+        scr.action_cancel()
         await pilot.pause()
     assert app.return_value == ("flow", "fpga")
 

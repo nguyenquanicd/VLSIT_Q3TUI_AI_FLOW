@@ -10,9 +10,9 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-from q3tui.flows.dv.tb.uvm import binding as B
-from q3tui.flows.dv.tb.uvm import svgen as g
-from q3tui.flows.dv.tb.uvm.contract import VerificationContract
+from q3tui.flows.dv.uvm import binding as B
+from q3tui.flows.dv.uvm import svgen as g
+from q3tui.flows.dv.uvm.contract import VerificationContract
 
 SCHEMA_VERSION = 1
 

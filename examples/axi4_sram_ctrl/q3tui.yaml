@@ -1,10 +1,9 @@
-# axi4_sram_ctrl worked example: the VLSIT flow with the optional UVM/VIP testbench backend (docs/spec/dut-dv.md).
+# axi4_sram_ctrl worked example: the UVM testbench with an existing VIP, the dv_uvm flow's two steps (docs/spec/dut-dv.md).
 pipeline:
   flow: dut_tb
   session: fresh   # DUT-DV independence: the testbench stages never share a session that has seen the RTL
   step_options:
     tb:
-      backend: uvm_vip
       uvm_vip:
         vip:                        # the existing reusable AXI VIP: read-only input, never generated here
           path: $AXI_VIP_HOME       # e.g. the axi4_avip checkout (see README)

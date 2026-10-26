@@ -5,8 +5,8 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-from q3tui.flows.dv.tb.uvm import svgen as g
-from q3tui.flows.dv.tb.uvm.contract import VerificationContract
+from q3tui.flows.dv.uvm import svgen as g
+from q3tui.flows.dv.uvm.contract import VerificationContract
 
 HIER = re.compile(r"\b(?:u_dut|dut|tb_top\.u_dut)\s*\.\s*\w+")  # a hierarchical reference into the DUT
 TRACE = {"TC": re.compile(r"^\s*//\s*(TC-\d+)\s*\|\s*([^|\n]*)", re.M), "SBR": re.compile(r"^\s*//\s*(SBR-\d+)\s*\|\s*([^|\n]*)", re.M),

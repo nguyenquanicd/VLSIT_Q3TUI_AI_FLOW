@@ -1,4 +1,4 @@
-# axi4_sram_ctrl worked example (UVM / VIP testbench backend)
+# axi4_sram_ctrl worked example (UVM / VIP testbench: the `dv` flow)
 
 **Status: milestones M1-M9 done (M10 final docs open).** This example grows with the milestones of docs/spec/dut-dv.md. Nothing below is claimed
 as working until its row in the status table says `done` with the command that was run.
@@ -6,8 +6,8 @@ as working until its row in the status table says `done` with the command that w
 ## What this is
 
 `axi4_sram_ctrl` (top `m_vlsi_axi4_sram`) is an AXI4 slave that reads and writes synchronous SRAM banks. The example runs
-Q3TUI's `tb` step with the optional `uvm_vip` backend: the testbench is a UVM environment built from the approved
-specification and an existing AXI VIP. The existing plain-SystemVerilog backend is untouched (`backend: plain_sv`, the default).
+Q3TUI's `dv` flow (its `testplan`, `tb` and `simulate` steps, here without the spec flow's): the testbench is a UVM environment built from the approved
+specification and an existing AXI VIP, then the RTL is integrated as the DUT and simulated.
 
 ## Golden specification and RTL independence
 
@@ -22,7 +22,7 @@ specification and an existing AXI VIP. The existing plain-SystemVerilog backend 
 
 | Path | Content | Status |
 |---|---|---|
-| `q3tui.yaml` | selects `backend: uvm_vip`, VIP and integration inputs | done (M1) |
+| `q3tui.yaml` | the `uvm_vip` options of the `tb` step (read by the three dv steps): VIP and integration inputs | done (M1) |
 | `config/tools.json` | VCS tool roles (`sim_uvm`, `run_uvm`, ...) | done (M7/M8); VCS X-2025.06 |
 | `spec/`, `schemas/` | specification (`spec/spec.md`) and the approved `structured_spec.json`, `final_config.json` | done (M2); copied from the Design-flow project `axi4_sram_ctrl`, the `rtl_modules` / `modules` fields they carry are excluded as non-behavioral |
 | `src/rtl/` | the released RTL of the Design flow (copied from its `src/rtl`, DUT only) and its file list. The specification parameters were renamed to the RTL's `PARA_*`, so conformance is clean without a mapping | done (M6) |

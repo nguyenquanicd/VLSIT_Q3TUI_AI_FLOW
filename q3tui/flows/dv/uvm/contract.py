@@ -16,7 +16,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from q3tui.flows.dv.tb.uvm import spec_facts as sf
+from q3tui.flows.dv.uvm import spec_facts as sf
 
 SCHEMA_VERSION = 1
 Observability = Literal["PORT", "ELAB_CONFIG", "INTERNAL", "UNKNOWN"]
@@ -170,6 +170,10 @@ class OpenIssue(_S):
     question: str
     source: str = ""
     default_assumption: str = ""
+    scope: Literal["spec", "verification"] = Field(
+        "spec", description="spec: the specification is unclear or silent about the DUT's behavior, so the answer is a decision about the specification (the RTL "
+                            "follows it): it goes back to the spec step. verification: a choice of the testbench alone (how many random vectors, what a check waits for, "
+                            "whether the testbench runs a proof, what is not checked in simulation): it stays in the test plan and changes neither the specification nor the RTL")
     resolved: bool = Field(False, description="True once the user answered the question; the answer is then applied in the contract")
     resolution: str = Field("", description="What the user's answer decided (when resolved)")
 
@@ -372,6 +376,9 @@ def validate_contract(c: VerificationContract, final: bool = False) -> list[str]
 def contract_hash(c: VerificationContract) -> str:
     data = c.model_dump(mode="json")
     data["metadata"] = {k: v for k, v in data["metadata"].items() if k not in ("status", "contract_hash", "frozen_at")}
+    for o in data.get("open_issues") or []:  # (the default scope is left out: a contract frozen before issues had a scope keeps its hash)
+        if o.get("scope") == "spec":
+            o.pop("scope", None)
     return hashlib.sha256(json.dumps(data, sort_keys=True).encode()).hexdigest()
 
 

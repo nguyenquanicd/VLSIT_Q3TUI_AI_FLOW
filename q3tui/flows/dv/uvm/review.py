@@ -9,7 +9,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from q3tui.core.project import read_json, write_json
-from q3tui.flows.dv.tb.uvm.intent import question_id
+from q3tui.flows.dv.uvm.intent import question_id
 from q3tui.steps.common import load_answers
 
 DECISIONS_FILE = "dv_review_decisions.json"
@@ -52,7 +52,7 @@ def ledger(contract, answers: dict[str, str], decisions: dict[str, dict], auto_d
         else:
             stale = (decisions.get(qid) or {}).get("decision") == "accept_default"  # reviewed, but the issue changed since
             cls, detail = "pending", ({"note": "the issue changed after your review: review it again"} if stale else {})
-        rows.append({"issue_id": o.id, "question_id": qid, "kind": o.kind, "requirement_ids": o.requirement_ids, "question": o.question,
+        rows.append({"issue_id": o.id, "question_id": qid, "kind": o.kind, "scope": o.scope, "requirement_ids": o.requirement_ids, "question": o.question,
                      "source": o.source, "class": cls, "resolved_in_contract": o.resolved, "resolution": o.resolution, **detail})
     return rows
 
@@ -88,7 +88,8 @@ def render(data: dict, contract) -> str:
             continue
         out += [f"### {title}", ""]
         for r in rows:
-            out.append(f"- **{r['issue_id']}** ({', '.join(r['requirement_ids'])}; {r['source']}): {r['question']}")
+            out.append(f"- **{r['issue_id']}** ({', '.join(r['requirement_ids'])}; {r['source']}): {r['question']}"
+                       + (" *(a testbench choice: it stays in the test plan)*" if r.get("scope") == "verification" else ""))
             if cls == "user_answered":
                 out.append(f"  - answer: {r['answer']}")
                 out.append(f"  - in the contract: {'resolved: ' + r['resolution'] if r['resolved_in_contract'] else 'NOT applied yet'}")

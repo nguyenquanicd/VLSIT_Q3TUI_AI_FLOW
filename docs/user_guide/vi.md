@@ -80,10 +80,10 @@ spec ─► parse ─► config
 RTL do flow `rtl` tạo (`pipeline.flow: rtl`, `q3tui --flow rtl run`): flow này dùng lại 3 step trên và thêm rules, CSR, RTL,
 format + style lint bằng Verible, và smoke test (docs/spec/rtl-flow.md).
 
-Testbench do flow `dv` tạo (`pipeline.flow: dv`, `q3tui --flow dv run`): cùng 3 step đầu rồi thêm `tb`, viết testbench chỉ từ spec, không bao giờ từ RTL:
-một testbench SystemVerilog thuần (mặc định, `src/tb/`, test plan ở `schemas/selected_testplan.json`) hoặc, với `pipeline.step_options.tb.backend: uvm_vip`, một testbench UVM
-dựng từ VIP có sẵn và tích hợp RTL làm DUT (report ở `reports/`; docs/spec/dv-flow.md, docs/spec/dut-dv.md, ví dụ `examples/axi4_sram_ctrl`).
-SVA, verify và document sinh tự động vẫn đã bị gỡ; chưa import được file testbench vào `tb`.
+Testbench do flow `dv` tạo (`pipeline.flow: dv`, `q3tui --flow dv run`): cùng 3 step đầu rồi thêm `testplan` (verification contract và các test, kèm các open issue bạn trả lời),
+`tb` (testbench UVM dựng từ VIP có sẵn, chỉ từ spec, không bao giờ từ RTL cho đến phase cuối, khi RTL được tích hợp làm DUT) và `simulate` (chạy smoke và directed test, mọi status đọc từ log
+simulator); option ở `pipeline.step_options.tb.uvm_vip`, report ở `reports/` (docs/spec/dv-flow.md, docs/spec/dut-dv.md, ví dụ `examples/axi4_sram_ctrl`).
+SVA, verify và document sinh tự động vẫn đã bị gỡ; chưa import được file testbench.
 
 **Update, không chạy lại từ đầu:** sửa 1 requirement, 1 parameter, hay gửi change request chỉ khiến đúng
 phần bị ảnh hưởng chạy lại — các step trước và approval đã duyệt vẫn giữ nguyên, trừ khi thay đổi lan tới đó.

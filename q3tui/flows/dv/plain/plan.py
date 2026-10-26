@@ -18,8 +18,15 @@ class TbCase(BaseModel):
     conditional_value: str | None = Field(None, description="The value it must have (null: any non-zero value)")
 
 
+class TbExcluded(BaseModel):
+    req_id: str = Field(description="A REQ id no simulation of the DUT can check")
+    reason: str = Field("", description="Why (a goal, a lint / coding rule, a synthesis / SDC / timing constraint, a document, a tool flow): said once here, never asked as a question")
+
+
 class TbPlan(BaseModel):
     test_cases: list[TbCase]
+    excluded: list[TbExcluded] = Field(default_factory=list, description=(
+        "Requirements that cannot be checked by simulating the DUT, each with its reason. They are not uncovered and are not asked about: the user reviews them with the plan"))
     questions: list[Question] = Field(default_factory=list, description=(
         "Questions found while planning (usually none): spec_gap / req_gap (the requirement is wrong or unclear), design_choice"))
 
@@ -94,9 +101,25 @@ def required_reqs(spec: dict) -> dict[str, str]:
             if r.get("req_id") and r.get("sva_hint") not in ("static", "assume")}
 
 
-def coverage(selected: list[TbCase | dict], spec: dict) -> dict:
-    need = required_reqs(spec)
+def normalize_excluded(excluded: list[TbExcluded], known_reqs: set[str], covered: set[str]) -> tuple[list[dict], list[str]]:
+    """The requirements the planner left out of simulation, as {req_id, reason}: one entry per REQ, unknown ids dropped, and one a test case covers is not excluded."""
+    out: dict[str, dict] = {}
+    warnings: list[str] = []
+    for e in excluded:
+        if e.req_id not in known_reqs:
+            warnings.append(f"{e.req_id}: unknown requirement id dropped from the requirements left out of simulation")
+        elif e.req_id in covered:
+            warnings.append(f"{e.req_id}: a test case checks it, so it is not left out of simulation")
+        else:
+            out[e.req_id] = {"req_id": e.req_id, "reason": e.reason.strip()}
+    return list(out.values()), warnings
+
+
+def coverage(selected: list[TbCase | dict], spec: dict, excluded: set[str] | None = None) -> dict:
+    """REQ coverage of the selected test cases. `excluded`: the requirements the planner decided no simulation can check (with a reason): not uncovered."""
+    excluded = excluded or set()
+    need = {r: t for r, t in required_reqs(spec).items() if r not in excluded}
     covered = sorted({r for c in selected for r in (c["req_ids"] if isinstance(c, dict) else c.req_ids) if r in need})
     uncovered = sorted(set(need) - set(covered))
-    return {"total_req_ids": len(need), "covered_req_ids": covered, "uncovered_req_ids": uncovered,
+    return {"total_req_ids": len(need), "covered_req_ids": covered, "uncovered_req_ids": uncovered, "excluded_req_ids": sorted(excluded & set(required_reqs(spec))),
             "coverage_pct": round(100.0 * len(covered) / len(need), 1) if need else 100.0}

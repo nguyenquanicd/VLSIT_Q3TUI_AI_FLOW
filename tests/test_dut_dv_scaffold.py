@@ -6,12 +6,12 @@ from pathlib import Path
 
 import pytest
 
-from q3tui.flows.dv.tb.uvm import contract as C
-from q3tui.flows.dv.tb.uvm import evidence as ev
-from q3tui.flows.dv.tb.uvm import lint as L
-from q3tui.flows.dv.tb.uvm import scaffold as S
-from q3tui.flows.dv.tb.uvm import svgen as g
-from q3tui.flows.dv.tb.uvm import worklist as W
+from q3tui.flows.dv.uvm import contract as C
+from q3tui.flows.dv.uvm import evidence as ev
+from q3tui.flows.dv.uvm import lint as L
+from q3tui.flows.dv.uvm import scaffold as S
+from q3tui.flows.dv.uvm import svgen as g
+from q3tui.flows.dv.uvm import worklist as W
 from tests.test_dut_dv_intent import EXAMPLE, engine, llm, load_contract, run_tb  # noqa: F401  (fixtures)
 
 OPTS = {"vip": {"kind": "axi4_avip"}, "integration": {"smoke_test": "dut_smoke_test"}}
@@ -146,10 +146,15 @@ def test_step_writes_scaffold_worklist_validation_and_evidence(engine, llm):
     assert (tb / "tb_top.sv").is_file() and (tb / "scoreboard" / "dut_scoreboard.svh").is_file()
     wl = json.loads((root / "schemas" / "dv_worklist.json").read_text())
     assert wl["summary"]["open"] > 20 and json.loads((root / "schemas" / "dv_validation.json").read_text())["errors"] == 0
-    e = json.loads((root / "schemas" / "dv_evidence.json").read_text())["entries"]
-    assert [x["name"] for x in e] == ["tb + VIP + interface shell (no DUT)", "tb + VIP + RTL (DUT)"] and all(x["kind"] == "compile" and x["command"] == "true" and x["returncode"] == 0 and x["status"] == "PASS" for x in e)
-    assert "not a DUT result" in e[0]["note"] and "released RTL as the DUT" in e[1]["note"] and e[0]["uvm_error"] is None
-    assert engine2.by_name["tb"].outputs(engine2) and str(tb / "tb_top.sv") in {str(p) for p in engine2.by_name["tb"].outputs(engine2)}
+    ev = json.loads((root / "schemas" / "dv_tb_evidence.json").read_text())["entries"]  # the tb step's two compiles: against the interface shell, then with the RTL
+    assert [x["name"] for x in ev] == ["tb + VIP + interface shell (no DUT)", "tb + VIP + RTL (DUT)"]
+    assert all(x["kind"] == "compile" and x["command"] == "true" and x["returncode"] == 0 and x["status"] == "PASS" for x in ev)
+    assert "not a DUT result" in ev[0]["note"] and "released RTL as the DUT" in ev[1]["note"] and ev[0]["uvm_error"] is None
+    mine = {str(p) for p in engine2.by_name["tb"].outputs(engine2)}
+    plan = {str(p) for p in engine2.by_name["testplan"].outputs(engine2)}
+    sim = {str(p) for p in engine2.by_name["simulate"].outputs(engine2)}
+    assert str(tb / "tb_top.sv") in mine and str(tb / "integration" / "dut_wrapper.sv") in mine and str(root / "schemas" / "dut_integration.json") in mine
+    assert str(root / "schemas" / "verification_contract.json") in plan and not (plan & mine) and not (mine & sim)  # each step has its own files
 
 
 def test_no_tool_role_means_no_evidence(engine, llm):
@@ -190,3 +195,12 @@ def test_regeneration_keeps_agent_regions_even_when_the_file_is_as_recorded(tmp_
 
     res = S.write(tmp_path, files, {rel: hashlib.sha256(text.encode()).hexdigest()})
     assert (tmp_path / rel).read_text() == text and not list(tmp_path.rglob("*.scaffold_new")) and rel in res["unchanged"]
+
+
+def test_an_ip_without_axi_style_widths_is_refused_with_a_reason_not_a_traceback():
+    c, _ = baseline()
+    assert S.unsupported(c) is None  # the AXI SRAM controller: ID / ADDR / DATA width parameters
+    sorter = c.model_copy(update={"interface_contract": c.interface_contract.model_copy(update={"parameters": [
+        p.model_copy(update={"name": n}) for p, n in zip(c.interface_contract.parameters, ("PARA_K", "PARA_W"))][:2]})})
+    why = S.unsupported(sorter)
+    assert why and "only supports IPs with an AXI-style memory-mapped interface" in why and "PARA_K, PARA_W" in why and "ID_WD" in why and "Testbench kind to plain" in why

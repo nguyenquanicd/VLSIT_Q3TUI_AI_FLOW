@@ -14,9 +14,9 @@ from pathlib import Path
 
 from pydantic import BaseModel, Field
 
-from q3tui.flows.dv.tb.uvm import svgen as g
-from q3tui.flows.dv.tb.uvm import worklist as wl
-from q3tui.flows.dv.tb.uvm.contract import VerificationContract
+from q3tui.flows.dv.uvm import svgen as g
+from q3tui.flows.dv.uvm import worklist as wl
+from q3tui.flows.dv.uvm.contract import VerificationContract
 from q3tui.steps.common import Question
 
 FORBIDDEN = [(re.compile(r"DV_TODO"), "DV_TODO must be removed from an implemented region"),
@@ -42,7 +42,7 @@ class SemanticResult(BaseModel):
 
 def smoke_region_ids(c: VerificationContract) -> list[str]:
     """Regions on the smoke path: the SRAM model, the smoke sequence and the scoreboard rules the smoke test relies on."""
-    from q3tui.flows.dv.tb.uvm.scaffold import rule_uses_sram
+    from q3tui.flows.dv.uvm.scaffold import rule_uses_sram
 
     smoke = next((t for t in c.tests if t.kind == "smoke" and t.milestone == "v0_1"), None)
     rules = {r.id: r for r in c.scoreboard_rules}
@@ -57,7 +57,7 @@ def smoke_region_ids(c: VerificationContract) -> list[str]:
 def units(c: VerificationContract, scope: str = "smoke", items: list[dict] | None = None) -> list[dict]:
     """The agent's units of work. `smoke`: the SRAM model and the checker of the smoke path. `all`: also the remaining scoreboard rules and the directed
     tests, in groups of at most 6 tests. Coverage and assertions are not part of it. `items` (the worklist) limits the ids to regions that exist."""
-    from q3tui.flows.dv.tb.uvm.scaffold import rule_uses_sram
+    from q3tui.flows.dv.uvm.scaffold import rule_uses_sram
 
     ids = smoke_region_ids(c)
     out = [{"name": "sram", "regions": [i for i in ids if i.startswith("sram.")]},

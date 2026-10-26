@@ -172,7 +172,7 @@ def test_with_no_tools_file_nothing_is_configured_and_init_writes_every_flow_rol
         ts.role("lint")
     assert "No tools are available" in T.status_text(ts, ["lint", "sim"]) and "not configured" in T.status_text(ts, ["lint"])
     data = T.preset_data()
-    assert set(data["roles"]) >= {"lint", "synth", "sim", "run", "verible_lint", "verible_format", "csr_gen", "fpga_yosys", "asic_synth", "asic_lec", "cdc", "rdc"}
+    assert set(data["roles"]) >= {"lint", "synth", "sim", "run", "verible_lint", "verible_format", "csr_gen", "fpga_yosys", "asic_synth", "asic_lec", "cdc", "rdc", "sim_uvm", "run_uvm"}
     assert data["roles"]["lint"]["cmd"].startswith("vcs ") and data["roles"]["sim"]["supports"] == ["sva"]
     (tmp_path / "config").mkdir(exist_ok=True)
     (tmp_path / "config" / "tools.json").write_text(json.dumps({"roles": {"lint": {"cmd": "mylint {top}", "parse": "generic"}}}))

@@ -1,0 +1,9 @@
+{
+  "_comment": "Tool roles of the DV flow (docs/spec/dut-dv.md): compile the UVM testbench with the VIP and the RTL, run one UVM test. Written for Synopsys VCS (UVM from the VCS install; `{extra_args}` carries the VIP's compile options). `q3tui tools init` copies them into the project's config/tools.json, where they are yours to edit.",
+  "roles": {
+    "sim_uvm": {"cmd": "vcs -full64 -sverilog -ntb_opts uvm-ieee-2020-2.0 -timescale=1ns/1ps {extra_args} -debug_access+all -top {top} -f {filelist} -Mdir={workdir}/csrc -o {workdir}/simv",
+                "parse": "vcs", "description": "compile the UVM DUT testbench, the VIP and the RTL with VCS (UVM from the VCS install)"},
+    "run_uvm": {"cmd": "{workdir}/simv +UVM_TESTNAME={test} +ntb_random_seed={seed} +UVM_NO_RELNOTES",
+                "parse": "vcs", "description": "run one UVM test; the UVM report summary gives UVM_ERROR / UVM_FATAL counts"}
+  }
+}

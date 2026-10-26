@@ -34,7 +34,11 @@ Then define:
   DUT specification does not support merely because the protocol has it (locked or exclusive accesses, unsupported signals). Stimulus
   must respect the master obligations the specification states.
 - `open_issues` OI-001...: kind OPEN (a default exists) or BLOCKED (no acceptable default), each with the question, the specification
-  source and the default assumption.
+  source, the default assumption and its **scope**: `spec` when the specification is unclear or silent about what the DUT does (the answer is a decision about
+  the specification, and the RTL follows it: it goes back to the spec step); `verification` when it is a choice of the testbench alone (how many random vectors,
+  what a check waits for, whether the testbench runs a proof that lives elsewhere, what is not checked in simulation): it stays in the test plan and changes
+  neither the specification nor the RTL. Do not repeat an open issue in `questions`: `questions` is only for what is not an open issue. An existing issue keeps its scope unless a change
+  request asks you to reclassify it (for example "OI-004 is a spec gap: the specification must say how soon the outputs react"): then set the scope as asked.
 
 A question the user answered appears under "The user's answers" (key Q-TB-<issue id>). Apply it: the issue stays in `open_issues` with
 `resolved: true` and a `resolution` that states what the answer decided; the affected requirements follow the answer (an approved behavior

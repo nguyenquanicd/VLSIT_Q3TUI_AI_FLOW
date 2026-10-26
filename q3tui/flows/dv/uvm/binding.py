@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import re
 
-from q3tui.flows.dv.tb.uvm.contract import VerificationContract
+from q3tui.flows.dv.uvm.contract import VerificationContract
 
 PREFIX = re.compile(r"^[io]_")
 

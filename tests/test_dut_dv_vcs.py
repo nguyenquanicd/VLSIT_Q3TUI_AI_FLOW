@@ -9,8 +9,8 @@ from pathlib import Path
 
 import pytest
 
-from q3tui.flows.dv.tb.uvm import evidence as ev
-from q3tui.flows.dv.tb.uvm import scaffold as S
+from q3tui.flows.dv.uvm import evidence as ev
+from q3tui.flows.dv.uvm import scaffold as S
 from tests.test_dut_dv_scaffold import baseline, gen
 
 MODULE = os.environ.get("Q3TUI_VCS_MODULE")
@@ -40,8 +40,8 @@ REAL_VIP = os.environ.get("AXI_VIP_HOME")
 @pytest.mark.skipif(not REAL_VIP, reason="AXI_VIP_HOME is not set: the real axi4_avip is not available")
 def test_real_vip_with_the_scaffold_compiles_and_elaborates_with_vcs(tmp_path):
     """The scaffold with the real axi4_avip bound (stand-ins for what VCS rejects), against the interface shell: a compile and elaboration check."""
-    from q3tui.flows.dv.tb.uvm import binding as B
-    from q3tui.flows.dv.tb.uvm import vip as V
+    from q3tui.flows.dv.uvm import binding as B
+    from q3tui.flows.dv.uvm import vip as V
 
     c, a = baseline()
     vip_dir = Path(os.path.expandvars(REAL_VIP))
@@ -67,7 +67,7 @@ def test_example_runs_end_to_end_with_vcs_and_the_smoke_test_passes(tmp_path, mo
     import anyio
 
     from q3tui.core.project import Project
-    from q3tui.flows.dv.tb.uvm import contract as C
+    from q3tui.flows.dv.uvm import contract as C
     from q3tui.llm import runtime
     from q3tui.pipeline.engine import Engine
     from tests.test_dut_dv_intent import intent_from_contract
@@ -84,7 +84,8 @@ def test_example_runs_end_to_end_with_vcs_and_the_smoke_test_passes(tmp_path, mo
     monkeypatch.setattr(runtime, "run_stage", only_intent)
     monkeypatch.setenv("PATH", os.environ["PATH"])
     eng = Engine(Project.open(root))
-    anyio.run(lambda: eng.run_step(eng.by_name["tb"]))
+    for name in ("testplan", "tb", "simulate"):
+        anyio.run(lambda: eng.run_step(eng.by_name[name]))
     entries = json.loads((root / "schemas" / "dv_evidence.json").read_text())["entries"]
     runs = {e["name"]: e for e in entries if e["kind"] == "run"}  # the last run of each test
     smoke = runs["dut_smoke_test"]

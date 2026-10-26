@@ -10,10 +10,10 @@ import anyio
 import pytest
 
 from q3tui.core.project import Project
-from q3tui.flows.dv.tb.uvm import arch as arch_mod
-from q3tui.flows.dv.tb.uvm import contract as C
-from q3tui.flows.dv.tb.uvm import spec_facts as sf
-from q3tui.flows.dv.tb.uvm.intent import DvIntent, ReqDecision, apply_intent
+from q3tui.flows.dv.uvm import arch as arch_mod
+from q3tui.flows.dv.uvm import contract as C
+from q3tui.flows.dv.uvm import spec_facts as sf
+from q3tui.flows.dv.uvm.intent import DvIntent, ReqDecision, apply_intent
 from q3tui.llm import runtime
 from q3tui.pipeline.engine import Engine
 from q3tui.flows.spec.lib import artifacts
@@ -21,7 +21,9 @@ from tests.fakes import FakeLLM
 from tests.vlsit_fakes import register
 
 EXAMPLE = Path(__file__).resolve().parents[1] / "examples" / "axi4_sram_ctrl"
-FLOW = "name: t\nsteps:\n  - {id: tb, kind: dv_tb, gate: auto, deps: []}\n"
+FLOW = ("name: t\nsteps:\n  - {id: testplan, kind: dv_testplan, gate: auto, deps: []}\n"
+        "  - {id: tb, kind: dv_tb, gate: auto, deps: [testplan]}\n"
+        "  - {id: simulate, kind: dv_simulate, gate: auto, deps: [tb]}\n")
 
 
 def example_draft() -> C.VerificationContract:
@@ -69,10 +71,16 @@ def llm(monkeypatch):
     @register
     def handler(f, stage, emit):
         if f is fake and stage.name.startswith("tb_semantic_"):
-            from q3tui.flows.dv.tb.uvm.semantic import RegionImpl, SemanticResult
+            from q3tui.flows.dv.uvm.semantic import RegionImpl, SemanticResult
             import re as _re
             out = f.dv_semantic.pop(0) if f.dv_semantic else SemanticResult(regions=[RegionImpl(id=i, body=f"// fake agent: {i}") for i in _re.findall(r"## Region `([^`]+)`", stage.prompt)])
             return runtime.StageResult("ok", out, 0.0, 1, "s")
+        if f is fake and stage.name == "dv_triage":  # (the simulation triage: the verdicts the test queued, else it cannot run)
+            if getattr(f, "dv_verdicts", None) is None:
+                raise RuntimeError("no credentials")
+            from q3tui.flows.dv.triage import DvTriage
+            from q3tui.flows.rtl.lib.models import Verdict
+            return runtime.StageResult("ok", DvTriage(verdicts=[Verdict(**v) for v in f.dv_verdicts]), 0.0, 1, "s")
         if stage.name != "tb_intent" or f is not fake:
             return None
         out = f.dv_intents.pop(0) if f.dv_intents else good_intent(example_draft())
@@ -94,7 +102,7 @@ def engine(tmp_path):
     from tests.dutdv_rtl import mini_rtl
 
     (tmp_path / "src" / "rtl" / "dut.sv").write_text(mini_rtl())  # a conforming stand-in top (carries RTL_SENTINEL_TOKEN)
-    (tmp_path / "q3tui.yaml").write_text("pipeline:\n  flow: t\n  step_options:\n    tb:\n      backend: uvm_vip\n      uvm_vip: {vip: {path: vip, kind: axi4_avip}}\n"
+    (tmp_path / "q3tui.yaml").write_text("pipeline:\n  flow: t\n  step_options:\n    tb:\n      uvm_vip: {vip: {path: vip, kind: axi4_avip}}\n"
                                          "tools:\n  roles:\n    sim: {cmd: 'true', parse: vcs}\n")
     (tmp_path / "flows").mkdir()
     (tmp_path / "flows" / "t.yaml").write_text(FLOW)
@@ -102,7 +110,13 @@ def engine(tmp_path):
 
 
 def run_tb(eng, **kw):
-    return anyio.run(lambda: eng.run_step(eng.by_name["tb"], **kw))
+    """The dv flow: the test plan (the verification contract), then the testbench with the RTL as its DUT, then the simulations: each step runs when what it
+    needs is there (a contract with BLOCKED issues is not frozen: nothing is built from it)."""
+    anyio.run(lambda: eng.run_step(eng.by_name["testplan"], **kw))
+    for name in ("tb", "simulate"):
+        step = eng.by_name[name]
+        if step.missing_input(eng) is None:
+            anyio.run(lambda: eng.run_step(step, **kw))
 
 
 def load_contract(root: Path) -> C.VerificationContract:
@@ -233,7 +247,7 @@ def test_step_freezes_contract_and_architecture_without_rtl(engine, llm):
     assert st.builtin_tools == ["Read", "Grep", "Glob"] and "RTL_SENTINEL_TOKEN" not in st.prompt and "m_sentinel_rtl_only" not in st.prompt
     assert "rtl_modules" not in st.prompt
     # the open issue about the assumption became a question
-    qs = json.loads((root / "schemas" / "questions" / "tb.json").read_text())
+    qs = json.loads((root / "schemas" / "questions" / "testplan.json").read_text())
     assert any("reset" in q["question"] and not q["blocking"] for q in qs)
 
 
@@ -273,7 +287,7 @@ def test_blocked_issue_stops_before_freezing(engine, llm):
     run_tb(engine)  # no failure: the step waits for the answer
     c = load_contract(engine.project.root)
     assert c.metadata.status == "draft" and not (engine.project.root / "schemas" / "tb_architecture.json").exists()
-    qs = json.loads((engine.project.root / "schemas" / "questions" / "tb.json").read_text())
+    qs = json.loads((engine.project.root / "schemas" / "questions" / "testplan.json").read_text())
     assert any(q["blocking"] for q in qs)
 
 
@@ -282,7 +296,7 @@ def test_blocked_issue_stops_before_freezing(engine, llm):
 def test_issue_questions_have_stable_ids(engine, llm):
     with pytest.raises(Exception, match="NOT_RUN|nothing was simulated"):
         run_tb(engine)
-    qs = json.loads((engine.project.root / "schemas" / "questions" / "tb.json").read_text())
+    qs = json.loads((engine.project.root / "schemas" / "questions" / "testplan.json").read_text())
     assert [q["id"] for q in qs] == ["Q-TB-OI-001"]
 
 
@@ -311,7 +325,7 @@ def test_an_answered_issue_must_be_applied():
 
 
 def test_review_ledger_separates_who_decided(tmp_path):
-    from q3tui.flows.dv.tb.uvm import review
+    from q3tui.flows.dv.uvm import review
 
     d = example_draft()
     c, _ = apply_intent(d, good_intent(d))
@@ -360,3 +374,86 @@ def test_example_baseline_review_report(engine, llm):
     assert "Answered by you" in md and "TC-012" in md and "thaphan@nvidia.com" in md and "reworded" not in md
     assert "keeps incrementing (modulo 2**PR_ADDR_WD" in md  # the user's recorded answer keeps its original wording
     assert "keeps incrementing modulo 2**PARA_ADDR_WD" in md  # the contract uses the renamed parameter
+
+
+# -- where an open issue's answer goes: the spec step, or nowhere (a testbench choice); and no question asked twice ----------------------------------------
+
+def _issue(oid, question, scope):
+    return C.OpenIssue(id=oid, kind="OPEN", requirement_ids=["REQ-001"], question=question, source="spec.md:1", default_assumption="the default", scope=scope)
+
+
+def test_a_testbench_choice_stays_in_the_test_plan_and_a_spec_issue_goes_to_the_spec(tmp_path):
+    from q3tui.flows.dv.uvm.intent import issue_questions
+
+    d = example_draft()
+    c = d.model_copy(update={"open_issues": [
+        _issue("OI-001", "How many random vectors should the reduced-configuration random tests run?", "verification"),
+        _issue("OI-002", "How soon after asynchronous assertion of reset must o_busy and o_done be low?", "spec"),
+        C.OpenIssue(id="OI-003", kind="OPEN", question="an issue from a contract written before scopes existed", default_assumption="x")]})
+    assert [(q.id, q.kind) for q in issue_questions(c)] == [("Q-TB-OI-001", "design_choice"), ("Q-TB-OI-002", "spec_gap"), ("Q-TB-OI-003", "spec_gap")]  # (the default: the spec)
+    # the engine sends only a spec_gap back to the spec step: the testbench choice stays with the step that asked
+    from q3tui.core.project import Project
+    from q3tui.pipeline.engine import Engine
+
+    (tmp_path / "q3tui.yaml").write_text("pipeline: {flow: dv}\n")
+    eng = Engine(Project.open(tmp_path))
+    assert eng.gap_target("testplan", {"kind": "spec_gap"}) == "spec" and eng.gap_target("testplan", {"kind": "design_choice"}) is None
+    assert eng.gap_target("testplan", {}) is None  # (no kind: a testplan question is about its own work)
+
+
+def test_an_updated_contract_keeps_the_scope_the_user_reviewed():
+    d = example_draft()
+    first = d.model_copy(update={"open_issues": [_issue("OI-001", "How many random vectors?", "verification")]})
+    i = good_intent(d)
+    i.open_issues = [_issue("OI-001", "How many random vectors?", "spec")]  # the model changes its mind on a later run
+    c, _ = apply_intent(d, i, previous=first)
+    assert c.open_issues[0].scope == "verification"
+
+
+def test_a_question_that_only_repeats_an_open_issue_is_not_asked_twice():
+    from q3tui.flows.dv.uvm.intent import drop_repeats, issue_questions
+    from q3tui.steps.common import Question
+
+    d = example_draft()
+    c = d.model_copy(update={"open_issues": [
+        _issue("OI-001", "How many random vectors should the reduced-configuration random tests (CFG-MIN and CFG-MAX) run?", "verification"),
+        _issue("OI-003", "TEST-012 is a formal proof (K=2, W=2..3). Is the UVM testbench expected to run it?", "verification")]})
+    issues = issue_questions(c)
+    own = [Question(id="", question="How many random vectors should the reduced-configuration random tests (CFG-MIN, CFG-MAX) use?", blocking=False, default_assumption="1000"),
+           Question(id="", question="TEST-012 is a formal proof. Should this UVM contract include only a simulation check of it?", blocking=False, default_assumption="yes"),
+           Question(id="", question="Which clock edge samples i_start?", blocking=False, default_assumption="rising")]
+    kept, dropped = drop_repeats(own, issues)
+    assert [q.question for q in kept] == ["Which clock edge samples i_start?"] and len(dropped) == 2
+
+
+def test_the_review_report_marks_a_testbench_choice():
+    from q3tui.flows.dv.uvm import review
+
+    d = example_draft()
+    c = d.model_copy(update={"open_issues": [_issue("OI-001", "How many random vectors?", "verification"), _issue("OI-002", "Reset timing?", "spec")]})
+    rows = review.ledger(c, {}, {}, {})
+    assert [r["scope"] for r in rows] == ["verification", "spec"]
+    md = review.render({"summary": {k: 0 for k in review.CLASSES} | {"pending": 2}, "issues": rows, "contract_hash": "h", "contract_status": "draft",
+                        "requirements": {s: 0 for s in ("planned", "open", "blocked", "not_observable", "excluded")}, "assumption_candidates_decided_normative": []}, c)
+    assert md.count("a testbench choice: it stays in the test plan") == 1
+
+
+def test_a_contract_frozen_before_issues_had_a_scope_keeps_its_hash():
+    d = example_draft()
+    plain = d.model_copy(update={"open_issues": [C.OpenIssue(id="OI-001", kind="OPEN", question="q", default_assumption="x")]})
+    spec = d.model_copy(update={"open_issues": [plain.open_issues[0].model_copy(update={"scope": "spec"})]})
+    verification = d.model_copy(update={"open_issues": [plain.open_issues[0].model_copy(update={"scope": "verification"})]})
+    assert C.contract_hash(plain) == C.contract_hash(spec) != C.contract_hash(verification)
+
+
+def test_a_change_request_can_reclassify_an_issue_but_a_plain_update_cannot():
+    d = example_draft()
+    first = d.model_copy(update={"open_issues": [_issue("OI-001", "Reset timing?", "verification")]})
+
+    def intent():  # (apply_intent rewrites the intent's issues: a fresh one per call)
+        i = good_intent(d)
+        i.open_issues = [_issue("OI-001", "Reset timing?", "spec")]
+        return i
+
+    assert apply_intent(d, intent(), previous=first)[0].open_issues[0].scope == "verification"  # an update keeps what you saw
+    assert apply_intent(d, intent(), previous=first, keep_scope=False)[0].open_issues[0].scope == "spec"  # a change request asked for it

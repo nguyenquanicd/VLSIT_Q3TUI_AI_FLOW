@@ -1,16 +1,22 @@
 ---
 name: dv
-title: DV — spec → requirements → config → testbench (plain SystemVerilog or UVM with an existing VIP)
+title: DV — spec → requirements → config → test plan → testbench (plain SystemVerilog, or UVM with a VIP) → simulation
 version: 1
 session: fresh
 tools:
 - sim
 - run
+- sim_uvm
+- run_uvm
 sees:
-  tb:
+  testplan:
   - spec
   - parse
   - config
+  tb:
+  - testplan
+  simulate:
+  - tb
 gap_targets:
   spec_gap: spec
   req_gap: parse
@@ -19,6 +25,8 @@ steps:
 - spec
 - parse
 - config
+- testplan
 - tb
+- simulate
 ---
-Design verification on its own: the testbench is written from the spec, the requirements and the configuration alone, never from the RTL (the RTL is a black box DUT). `tb` has two backends (`pipeline.step_options.tb.backend`): `plain_sv` (default: a test plan of test cases, each with the REQs it checks, and a plain SystemVerilog testbench) and `uvm_vip` (a UVM testbench from the approved spec and an existing VIP, with the released RTL integrated as the DUT in a separate phase, compiled and smoke-tested with VCS: docs/spec/dv-flow.md). spec, parse and config are the spec flow's own steps. Needs the RTL from the `rtl` flow in `src/rtl/` for the `uvm_vip` integration phase.
+Design verification on its own. The testbench is built from the spec, the requirements and the configuration alone, never from the RTL (the RTL is a black box DUT until the testbench is compiled with it). Its kind is the `testbench` option of the `tb` step (Settings → tb): **plain** SystemVerilog (any IP, no VIP) or **UVM** from an existing reusable protocol VIP (AXI-style memory-mapped IPs only so far); `auto` (the default) takes UVM when a VIP location is set and plain otherwise. `testplan` makes what you review before anything is built (a human gate): the test plan (each test case with the requirements it checks, plain) or the verification contract with its open issues (UVM). `tb` builds the testbench and compiles it with the released RTL (plain: tb_top and one file per test case, tool role `sim`; UVM: architecture, VIP binding, scaffold, the agent's regions, then the RTL as the DUT, tool role `sim_uvm`). `simulate` runs the tests and reads every status from the simulator log (plain: `run`, +TC=<id>; UVM: `run_uvm`). spec, parse and config are the spec flow's own steps (docs/spec/dv-flow.md, docs/spec/dut-dv.md). Needs the RTL from the `rtl` flow in `src/rtl/`.

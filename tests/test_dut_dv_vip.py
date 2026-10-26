@@ -8,11 +8,11 @@ from pathlib import Path
 
 import pytest
 
-from q3tui.flows.dv.tb.uvm import binding as B
-from q3tui.flows.dv.tb.uvm import contract as C
-from q3tui.flows.dv.tb.uvm import lint as L
-from q3tui.flows.dv.tb.uvm import scaffold as S
-from q3tui.flows.dv.tb.uvm import vip as V
+from q3tui.flows.dv.uvm import binding as B
+from q3tui.flows.dv.uvm import contract as C
+from q3tui.flows.dv.uvm import lint as L
+from q3tui.flows.dv.uvm import scaffold as S
+from q3tui.flows.dv.uvm import vip as V
 from tests.test_dut_dv_intent import EXAMPLE, engine, intent_from_contract, llm, load_contract, run_tb  # noqa: F401  (fixtures)
 from tests.test_dut_dv_scaffold import OPTS, baseline
 

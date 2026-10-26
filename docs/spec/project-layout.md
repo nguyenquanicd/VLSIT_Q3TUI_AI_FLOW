@@ -26,7 +26,7 @@ it any time). Internal state lives in `.q3tui/`. A step names no folder: it asks
 │   └── sdc/                ← sdc.json (source of truth) and the Tcl files rendered from it                  generated, you edit
 ├── src/
 │   ├── rtl/                ← RTL (+ filelist.f); rtl flow: also csr/, style_lint/, smoke/ (below)           generated
-│   ├── tb/                 ← the dv flow's testbench (plain SystemVerilog, or the uvm_vip scaffold and tests)      generated
+│   ├── tb/                 ← the dv flow's UVM testbench (scaffold, integration, tests)      generated
 │   └── sva/                ← (reserved: no flow writes assertions now)
 ├── schemas/                ← JSON artifacts: structured_spec.json, final_config.json, synth_report.json,    generated
 │                             fpga_synth / ppa / asic_* / cdc_* / rdc_* …; structured_spec.md;
@@ -53,7 +53,7 @@ it any time). Internal state lives in `.q3tui/`. A step names no folder: it asks
 
 The rtl flow keeps its own working files inside the RTL folder: `src/rtl/csr/` (register map, report, provided modules),
 `src/rtl/style_lint/` (Verible flags, findings) and `src/rtl/smoke/` (the smoke testbench and its report); see
-[rtl-flow.md](rtl-flow.md) "Layout". The dv flow ([dv-flow.md](dv-flow.md)) writes `src/tb/` (`project.tb_dir`), `schemas/selected_testplan.json` (`plain_sv`) or the `uvm_vip` artifacts
+[rtl-flow.md](rtl-flow.md) "Layout". The dv flow ([dv-flow.md](dv-flow.md)) writes `src/tb/` (`project.tb_dir`) and the UVM artifacts
 (`golden_manifest.json`, `verification_contract.json`, `tb_architecture.json`, `vip_integration.json`, `dut_integration.json`, `dv_*.json`) and the
 `reports/dv_*` / conformance reports. The sva, verify and doc steps were removed with their outputs (`src/sva`, `rtm.json`, `verification_report.json`,
 `docs/specification.md`). `reviews/` holds only what is listed above, and `docs/` is reserved for a final specification that no built-in flow writes now.

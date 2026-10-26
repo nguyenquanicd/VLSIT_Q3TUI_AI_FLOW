@@ -91,12 +91,12 @@ class FlowMapScreen(ModalScreen[str | None]):
                             yield Box("VTB    SVA   ▸ Basic test")
                 yield Static("▼", classes="arrow")
                 with Horizontal(classes="row"):
-                    with self._g("DV", None, classes="col"):
+                    with self._g("DV", "dv", classes="col"):
                         yield Box(stage("Testplan", "Spec"))
-                        yield Box(stage("UVM env", "Spec, RTL"))
-                        yield Box(stage("Formal", "Spec, RTL"))
-                        yield Box(stage("Sim tests", "Spec, RTL"))
-                        yield Box(stage("Coverage closure", "Spec, RTL"))
+                        yield Box(stage("Testbench (UVM · DUT integration)", "Testplan, RTL"))
+                        yield Box(stage("Simulate", "Testbench"))
+                        yield Box(stage("Formal", "Spec, RTL") + "  (not yet)")
+                        yield Box(stage("Coverage closure", "Spec, RTL") + "  (not yet)")
                     with Vertical(classes="col"):
                         with self._g("FPGA synthesis", "fpga"):
                             yield Box(stage("FPGA synthesis", "RTL"))
@@ -125,15 +125,24 @@ class FlowMapScreen(ModalScreen[str | None]):
         if focus:
             focus.focus()
 
+    _finished = False  # (a double click, or Enter after a click, reaches here again once the screen is gone: dismissing twice raises)
+
+    def _close(self, result: str | None) -> None:
+        if not self._finished:
+            self._finished = True
+            self.dismiss(result)
+
     def pick(self, group: Group) -> None:
+        if self._finished:
+            return
         if not group.developed:
             self.notify(f"{group.border_title.split('  ·')[0]}: not developed yet", severity="warning")
             return
-        self.dismiss(group.flow)
+        self._close(group.flow)
 
     def action_select(self) -> None:
         if isinstance(self.focused, Group):
             self.pick(self.focused)
 
     def action_cancel(self) -> None:
-        self.dismiss(None)
+        self._close(None)
