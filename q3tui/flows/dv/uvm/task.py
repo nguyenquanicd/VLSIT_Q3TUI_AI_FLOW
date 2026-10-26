@@ -6,13 +6,13 @@ from pathlib import Path
 
 from q3tui.flows import skill_sections
 
-TEXT = skill_sections(Path(__file__).parents[1] / "md" / "uvm_vip.md")
+TEXT = skill_sections(Path(__file__).parents[1] / "tb" / "md" / "uvm_vip.md")
 INTENT_SYSTEM = TEXT["INTENT_SYSTEM"]
 SEMANTIC_SYSTEM = TEXT["SEMANTIC_SYSTEM"]
 
 
 def intent_prompt(*, contract: dict, spec_files: list[str], answers: dict[str, str], settled: str, feedback: list[str], problems: list[str],
-                  previous: bool) -> str:
+                  previous: bool, vip: str | None = None) -> str:
     ic = contract["interface_contract"]
     parts = [f"# Task: verification contract of `{contract['metadata']['top_module']}`" + (" (update: keep every existing ID)" if previous else ""),
              f"\nSpecification documents (read them; they are the only behavioral source): {', '.join(spec_files)}",
@@ -41,5 +41,7 @@ def intent_prompt(*, contract: dict, spec_files: list[str], answers: dict[str, s
         parts.append("\n## Change requests\n" + "\n".join(f"- {f}" for f in feedback))
     if problems:
         parts.append("\n## Problems found by Q3TUI's checks (fix every one)\n" + "\n".join(f"- {p}" for p in problems))
+    parts.append("\n## The existing protocol VIP\n" + (f"`{vip}`: an interface it can drive as the master has the stimulus agent `vip_master`."
+                 if vip else "None is configured: never use `vip_master`. Give a protocol interface the stimulus agent `none` (the testbench's own sequences drive its pins)."))
     parts.append("\nReturn the complete result: every requirement decision, interfaces, objectives, scoreboard rules, coverage, tests, open issues.")
     return "\n".join(parts)

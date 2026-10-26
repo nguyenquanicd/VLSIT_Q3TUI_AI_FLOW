@@ -530,7 +530,7 @@ class Engine:
         from q3tui.steps.common import GAP_TARGETS
 
         # no kind given: the testbench's question is about its own work (a design choice), anyone else's a gap
-        kind = q.get("kind") or ("design_choice" if origin.split(":")[-1] == "tb" else "spec_gap")
+        kind = q.get("kind") or ("design_choice" if origin.split(":")[-1] in ("tb", "testplan") else "spec_gap")
         target = self.flow.gap_targets.get(kind, GAP_TARGETS.get(kind))
         order = [s.name for s in self.steps]
         if target not in order or origin not in order or order.index(target) >= order.index(origin):

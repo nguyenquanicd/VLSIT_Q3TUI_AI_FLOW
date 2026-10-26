@@ -15,10 +15,23 @@ import json
 import re
 from pathlib import Path
 
-from q3tui.flows.dv.tb.uvm import svgen as g
-from q3tui.flows.dv.tb.uvm.contract import PortSpec, VerificationContract
+from q3tui.flows.dv.uvm import svgen as g
+from q3tui.flows.dv.uvm.contract import PortSpec, VerificationContract
 
 ROLES = {"@ID_WD@": r"(^|_)ID(_|$)", "@ADDR_WD@": r"ADDR", "@DATA_WD@": r"DATA"}   # width roles the templates use, found among the contract's parameters
+
+
+def unsupported(c: VerificationContract) -> str | None:
+    """Why the scaffold cannot be generated for this contract, None when it can. The templates are those of an AXI-style memory-mapped slave (transactions with an ID,
+    an address and data words, a memory model, an AXI scoreboard): they need one width parameter each for the roles ID / ADDR / DATA. Any other IP (a sorter, a counter,
+    a stream block) has none of them and needs a different testbench, which this backend does not generate yet."""
+    try:
+        param_roles(c)
+    except ValueError as exc:
+        names = ", ".join(p.name for p in c.interface_contract.parameters) or "none"
+        return (f"the UVM testbench generator only supports IPs with an AXI-style memory-mapped interface so far ({exc}). The parameters of {c.metadata.top_module or 'this IP'}: {names}. "
+                "For any other IP set Settings → tb → Testbench kind to plain (a plain SystemVerilog testbench).")
+    return None
 
 
 def param_roles(c: VerificationContract) -> dict[str, str]:
@@ -600,7 +613,7 @@ def generate(c: VerificationContract, arch: dict, opts: dict, project: str, auth
     """Every scaffold file (path relative to the TB directory) -> text. Deterministic for the same contract."""
     h = c.metadata.contract_hash
     H = lambda desc: g.file_header(project, author, day, desc, h)  # noqa: E731
-    from q3tui.flows.dv.tb.uvm import vipgen
+    from q3tui.flows.dv.uvm import vipgen
 
     files = {
         "dut_tb_params_pkg.sv": params_pkg(c, H("Approved parameters of the DUT configuration.")),

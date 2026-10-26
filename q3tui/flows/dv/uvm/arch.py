@@ -5,7 +5,7 @@ and coverage goals with their contract IDs. VIP binding and RTL integration stay
 
 from __future__ import annotations
 
-from q3tui.flows.dv.tb.uvm.contract import VerificationContract
+from q3tui.flows.dv.uvm.contract import VerificationContract
 
 SCHEMA_VERSION = 1
 # stimulus agents of the architecture: the VIP drives protocol interfaces, the TB models memories and clock/reset
@@ -19,7 +19,8 @@ def derive(c: VerificationContract, backend_options: dict) -> dict:
     interfaces = []
     for i in ic.interfaces:
         interfaces.append({"id": i.id, "kind": i.kind, "protocol": i.protocol, "role": i.role, "ports": i.ports, "stimulus_agent": i.stimulus_agent,
-                           "vip_binding": ({"status": "pending", "family": backend_options["vip"]["kind"]} if i.stimulus_agent == "vip_master" else None)})
+                           "vip_binding": ({"status": "pending", "family": backend_options["vip"]["kind"]}
+                                           if i.stimulus_agent == "vip_master" and backend_options.get("vip") else None)})
     has_mem = any(i.kind == "sram" for i in ic.interfaces)
     smoke = next((t for t in c.tests if t.kind == "smoke" and t.milestone == "v0_1"), None)
     return {
@@ -57,9 +58,16 @@ def check(arch: dict, c: VerificationContract) -> list[str]:
     for i in arch.get("interfaces") or []:
         if i["stimulus_agent"] not in AGENT_KINDS:
             p.append(f"interface {i['id']}: stimulus agent '{i['stimulus_agent']}' is not one of {', '.join(AGENT_KINDS)}")
+        if i["stimulus_agent"] == "vip_master" and not i.get("vip_binding"):
+            p.append(f"interface {i['id']}: driven by a protocol VIP, and no VIP is set (Settings → tb → VIP location)")
     if not arch.get("smoke_test"):
         p.append("no deterministic smoke test (DUT-DV-015)")
     return p
+
+
+def needs_vip(c: VerificationContract) -> list[str]:
+    """The interfaces whose stimulus agent is an existing protocol VIP: the `tb` step cannot build the testbench for them without one."""
+    return [i.id for i in c.interface_contract.interfaces if i.stimulus_agent == "vip_master"]
 
 
 def render_md(arch: dict) -> str:

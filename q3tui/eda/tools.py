@@ -103,7 +103,7 @@ def presets() -> list[str]:
 
 def preset_data(preset: str = "synopsys") -> dict:
     """What `tools init` writes: the preset (lint / synth / sim / run), plus the roles the flows use that it does not have (`presets/flows/*.json`:
-    Verible, CSR generator, Vivado / Yosys / nextpnr, Design Compiler / Formality, VC Static)."""
+    Verible, CSR generator, Vivado / Yosys / nextpnr, Design Compiler / Formality, VC Static, the dv flow's UVM roles)."""
     src = PRESET_DIR / f"{preset}.json"
     if not src.is_file():
         raise ToolUnavailable(f"no tools preset '{preset}' (presets: {', '.join(presets()) or 'none'})")

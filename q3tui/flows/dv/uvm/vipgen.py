@@ -7,8 +7,8 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-from q3tui.flows.dv.tb.uvm import svgen as g
-from q3tui.flows.dv.tb.uvm.contract import VerificationContract
+from q3tui.flows.dv.uvm import svgen as g
+from q3tui.flows.dv.uvm.contract import VerificationContract
 
 
 def derived_globals(vip_dir: Path, probe: dict, binding: dict, hdr: str) -> str:

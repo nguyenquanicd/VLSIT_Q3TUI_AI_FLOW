@@ -1,23 +1,24 @@
-# DUT design verification: the `uvm_vip` testbench backend
+# DUT design verification: the `dv` flow (UVM testbench with an existing VIP)
 
-Optional backend of the dv flow's `tb` step: a UVM DUT testbench built from the approved specification and an existing reusable
-protocol VIP. The default backend, `plain_sv` (docs/spec/dv-flow.md), is unchanged. Rules: `q3tui/flows/dv/tb/rules/vlsit_dut_dv_rule.md`
+The `dv` flow (docs/spec/dv-flow.md): a UVM DUT testbench built from the approved specification and an existing reusable
+protocol VIP. Rules: `q3tui/flows/dv/tb/rules/vlsit_dut_dv_rule.md`
 (DUT-DV-001..031). Worked example: `examples/axi4_sram_ctrl/`.
 
 **Golden source = the approved specification (and approved standards). RTL = the DUT only.** The RTL is read by code in a separate
-integration phase, after the verification contract is frozen, for structure and compilation only.
+integration phase, after the verification contract is frozen, for structure and compilation only: the last phase of the `tb` step (docs/spec/dv-flow.md);
+the contract is the `testplan` step's, the simulations the `simulate` step's: `tb` builds the testbench and never reads the RTL, so a changed RTL re-runs only the integration.
 
 ## Selecting it
 
 ```yaml
 pipeline:
+  flow: dv
   session: fresh            # the testbench stages must not share a session that has seen the RTL
   step_options:
     tb:
-      backend: uvm_vip      # plain_sv (default) | uvm_vip
       uvm_vip:
         standards: []                     # behavioral: approved standard documents
-        vip: {path: $AXI_VIP_HOME, kind: axi4_avip, revision: <commit>, config: {}}   # the existing VIP (read-only)
+        vip: {path: $AXI_VIP_HOME, kind: axi4_avip, revision: <commit>, config: {}}   # the existing VIP (read-only); optional: omit it for an IP with no protocol interface
         integration: {rtl_dir: src/rtl, top: null, incdirs: [], defines: {}, simulator: vcs, smoke_test: dut_smoke_test}
 ```
 
@@ -30,7 +31,7 @@ the behavioral phase stale.
 
 | Milestone | Content | State |
 |---|---|---|
-| M1 | rule file, option model, backend switch, example layout | done |
+| M1 | rule file, option model, the `dv` flow (UVM only: it was a `backend` switch of a single `tb` step), example layout | done |
 | M2 | specification to verification contract and TB architecture | done (fake-LLM tests; no live LLM run yet) |
 | M3 | deterministic UVM scaffold | done (VCS compile and smoke run checked on the interface shell; slang type-check) |
 | M4 | existing AXI VIP probe, binding and adapter | done (real axi4_avip probed; VCS compile and elaboration of the VIP-bound testbench against the interface shell) |
@@ -86,8 +87,8 @@ assertion bind point, `tb_top`, `filelist_tb.f`.
 - **Worklist and validators.** `schemas/dv_worklist.json` lists every region with its requirement context. `schemas/dv_validation.json`: required files,
   filelist entries exist, TC/SBR/COV traces match the contract (no dangling, none dropped), no hierarchical DUT reference outside `integration/`
   (DUT-DV-028), no tabs, scaffold-owned regions still stubs, VIP package names only in the adapter (DUT-DV-019).
-- **Evidence.** `schemas/dv_evidence.json` records only commands that ran. The shell compile (tool role `sim_uvm`) is entered as a compile of the testbench
-  against the interface shell: "not a DUT result". Without the role it is `NOT_RUN` and nothing is recorded.
+- **Evidence.** `schemas/dv_tb_evidence.json` (the `tb` step) records the compiles: against the interface shell ("not a DUT result") and with the RTL; `schemas/dv_evidence.json`
+  (the `simulate` step) the runs. Only commands that ran are recorded. Without the tool role it is `NOT_RUN` and nothing is recorded.
 - **Tests.** `tests/test_dut_dv_scaffold.py` (deterministic). `tests/test_dut_dv_vcs.py` runs real VCS and skips unless `Q3TUI_VCS_MODULE` is set:
   `Q3TUI_VCS_MODULE=synopsys/vcs/X-2025.06 uv run pytest -m vcs`.
 
@@ -163,7 +164,7 @@ findings; `reports/dut_conformance_report.md` is the readable report.
 ## M9: the example as a regression
 
 `examples/axi4_sram_ctrl/` is a finished run (`src/tb`, `.q3tui/pipeline.json`, reports). `tests/test_dut_dv_vcs.py::test_example_runs_end_to_end_with_vcs_and_the_smoke_test_passes`
-copies it, runs the `tb` step with only `tb_intent` answered (from the reviewed contract; any other LLM stage fails the test), and checks a `PASS` run
+copies it, runs the `testplan`, `tb` and `simulate` steps with only `tb_intent` answered (from the reviewed contract; any other LLM stage fails the test), and checks a `PASS` run
 read from the log with zero UVM_ERROR/UVM_FATAL and that no generated file changed. It found a real defect: a regeneration put the scaffold stubs back
 over agent-implemented regions when the file matched its recorded hash; `scaffold.write` now always keeps agent/user regions.
 

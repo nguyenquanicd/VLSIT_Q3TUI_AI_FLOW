@@ -5,9 +5,9 @@ import shutil
 
 import pytest
 
-from q3tui.flows.dv.tb.uvm import contract as C
-from q3tui.flows.dv.tb.uvm import integrate as I
-from q3tui.flows.dv.tb.uvm import spec_facts as sf
+from q3tui.flows.dv.uvm import contract as C
+from q3tui.flows.dv.uvm import integrate as I
+from q3tui.flows.dv.uvm import spec_facts as sf
 from tests.dutdv_rtl import EXAMPLE as EX, mini_rtl
 from tests.test_dut_dv_intent import EXAMPLE, engine, intent_from_contract, llm, load_contract, run_tb  # noqa: F401  (fixtures)
 from tests.test_dut_dv_scaffold import baseline
@@ -84,7 +84,7 @@ def test_step_integrates_the_rtl_after_the_freeze(engine, llm):
     assert d["conformance"]["ok"] and d["rtl"]["top"] == "m_vlsi_axi4_sram" and d["rtl"]["files"] == ["src/rtl/dut.sv"] and "structure and compilation only" in d["rtl"]["read_for"]
     assert set(d["frozen_inputs"]) == {"verification_contract.json", "tb_architecture.json", "golden_manifest.json"}
     assert "integration/dut_wrapper.sv" in (root / "src" / "tb" / "filelist_dut.f").read_text() and "dut_wrapper_shell" not in (root / "src" / "tb" / "filelist_dut.f").read_text()
-    ev = json.loads((root / "schemas" / "dv_evidence.json").read_text())["entries"]
+    ev = json.loads((root / "schemas" / "dv_tb_evidence.json").read_text())["entries"]
     assert ev[-1]["name"] == "tb + VIP + RTL (DUT)" and ev[-1]["status"] == "PASS"
     # independence: no LLM stage of the behavioral phase or of the implementation saw the RTL
     assert all("RTL_SENTINEL_TOKEN" not in c.prompt and root / "src" / "rtl" in c.deny_dirs for c in llm.calls)
@@ -114,11 +114,11 @@ def test_a_nonconforming_rtl_stops_with_a_report_and_changes_nothing_else(engine
 
 def test_integration_needs_a_frozen_contract(engine, llm):
     root, eng = prepare(engine, llm)
-    from q3tui.flows.dv.tb.uvm import integration_phase  # noqa: F401
+    from q3tui.flows.dv.uvm import integration_phase  # noqa: F401
     c = contract().model_copy(update={"metadata": contract().metadata.model_copy(update={"status": "draft"})})
     import anyio
     from types import SimpleNamespace
-    from q3tui.flows.dv.tb.uvm import integration_phase as ip, parse_options
+    from q3tui.flows.dv.uvm import integration_phase as ip, parse_options
     with pytest.raises(Exception, match="frozen verification contract"):
         anyio.run(lambda: ip(SimpleNamespace(lay=lambda e: None, options={}), SimpleNamespace(engine=None, project=None), parse_options({"uvm_vip": {"vip": {"path": "x"}}}), c, {}, None))
 
@@ -170,3 +170,50 @@ def test_a_second_run_does_not_treat_the_integration_files_as_hand_edited(engine
     first = wr.read_text()
     run_tb(type(eng)(type(eng.project).open(root)))
     assert wr.read_text() == first and not list((root / "src" / "tb").rglob("*.scaffold_new"))
+
+
+# -- the RTL is the testbench step's input, never the test plan's -------------------------------------------------------------------------------------
+
+def test_a_changed_rtl_re_runs_the_testbench_and_the_simulation_not_the_test_plan(engine, llm, tmp_path):
+    root, eng = prepare(engine, llm)
+    with_run_role(root, tmp_path, "pass")
+    eng = type(eng)(type(eng.project).open(root))
+    plan, tb, sim = eng.by_name["testplan"], eng.by_name["tb"], eng.by_name["simulate"]
+    run_tb(eng)
+    assert [eng.evaluate(s).status for s in (plan, tb, sim)] == ["done", "done", "done"]
+    rtl = root / "src" / "rtl" / "dut.sv"
+    assert rtl not in plan.inputs(eng) and rtl in tb.inputs(eng)  # independence, visible in the inputs: the contract is built without the RTL
+    rtl.write_text(rtl.read_text() + "// a comment: the RTL changed\n")
+    assert eng.evaluate(plan).status == "done" and eng.evaluate(tb).status == "stale"
+    n = len(llm.calls)
+    run_tb(eng)  # (the helper runs the three steps; the contract is reused: the LLM is not asked again)
+    assert len(llm.calls) == n and [eng.evaluate(s).status for s in (plan, tb, sim)] == ["done", "done", "done"]
+
+
+def test_each_step_owns_its_files_and_the_tool_roles_are_declared(engine, llm, tmp_path):
+    root, eng = prepare(engine, llm)
+    with_run_role(root, tmp_path, "pass")
+    eng = type(eng)(type(eng.project).open(root))
+    run_tb(eng)
+    out = {n: {str(p.relative_to(root)) for p in eng.by_name[n].outputs(eng)} for n in ("testplan", "tb", "simulate")}
+    assert {"schemas/verification_contract.json", "schemas/golden_manifest.json", "schemas/dv_review.json", "reports/dv_review_report.md"} <= out["testplan"]
+    assert {"schemas/tb_architecture.json", "schemas/dut_integration.json", "schemas/dv_tb_evidence.json", "reports/dut_conformance_report.md",
+            "src/tb/integration/dut_wrapper.sv", "src/tb/filelist_dut.f", "src/tb/tb_top.sv"} <= out["tb"]
+    assert {"schemas/dv_evidence.json"} <= out["simulate"] and not (out["testplan"] & out["tb"]) and not (out["tb"] & out["simulate"])
+    assert (eng.by_name["tb"].tool_roles, eng.by_name["simulate"].tool_roles) == (("sim", "sim_uvm"), ("run", "run_uvm"))
+
+
+def test_a_missing_contract_leaves_the_testbench_waiting(engine, llm):
+    eng = engine  # (nothing run yet: no verification contract)
+    assert "verification contract is needed first" in eng.by_name["tb"].missing_input(eng)
+    assert "verification contract is needed first" in eng.by_name["simulate"].missing_input(eng)
+
+
+def test_the_testbench_waits_for_a_vip_only_when_an_interface_needs_one(engine, llm):
+    root, eng = prepare(engine, llm)  # the AXI SRAM controller's AXI interface is driven by a VIP
+    assert eng.by_name["tb"].missing_input(eng) is None
+    (root / "q3tui.yaml").write_text((root / "q3tui.yaml").read_text().replace("uvm_vip: {vip: {path: vip, kind: axi4_avip}}", "testbench: uvm\n      uvm_vip: {}"))
+    no_vip = type(eng)(type(eng.project).open(root))
+    msg = no_vip.by_name["tb"].missing_input(no_vip)
+    assert msg and "driven by a protocol VIP and none is set" in msg and "Settings → tb → VIP location" in msg
+    assert no_vip.by_name["testplan"].missing_input(no_vip) is None  # the test plan never needs it

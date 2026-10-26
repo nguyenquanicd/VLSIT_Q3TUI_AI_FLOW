@@ -169,7 +169,7 @@ switches on top. Change a mode: `q3tui gate STEP MODE`, TUI `/gate STEP MODE` (o
 **One place:** the project's `config/tools.json` is the only source of tools; users write it. No flow brings defaults and there is no built-in
 fallback: a role it does not define is *not configured*, and a step that needs it waits (`missing_input`) saying so. `q3tui tools init` writes a
 starting file with the roles of every flow (the Synopsys preset `q3tui/eda/presets/synopsys.json` for lint / synth / sim / run, plus
-`presets/flows/*.json`: Verible, the CSR generator, Vivado / Yosys / nextpnr, Design Compiler / Formality, VC Static) to edit for your site.
+`presets/flows/*.json`: Verible, the CSR generator, Vivado / Yosys / nextpnr, Design Compiler / Formality, VC Static, the UVM compile and run roles of the dv flow) to edit for your site.
 `q3tui tools check` and the Tools tab of the project flow list every role the flows need, found or not (`not configured` when the file lacks it).
 LLM stages that may run a tool get the in-process `mcp__q3tui__tools_available`, which names each role as available or not, and says
 "No tools are available" when none can run.

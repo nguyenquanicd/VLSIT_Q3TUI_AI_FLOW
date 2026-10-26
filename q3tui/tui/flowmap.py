@@ -91,12 +91,12 @@ class FlowMapScreen(ModalScreen[str | None]):
                             yield Box("VTB    SVA   ▸ Basic test")
                 yield Static("▼", classes="arrow")
                 with Horizontal(classes="row"):
-                    with self._g("DV", None, classes="col"):
+                    with self._g("DV", "dv", classes="col"):
                         yield Box(stage("Testplan", "Spec"))
-                        yield Box(stage("UVM env", "Spec, RTL"))
-                        yield Box(stage("Formal", "Spec, RTL"))
-                        yield Box(stage("Sim tests", "Spec, RTL"))
-                        yield Box(stage("Coverage closure", "Spec, RTL"))
+                        yield Box(stage("Testbench (UVM · DUT integration)", "Testplan, RTL"))
+                        yield Box(stage("Simulate", "Testbench"))
+                        yield Box(stage("Formal", "Spec, RTL") + "  (not yet)")
+                        yield Box(stage("Coverage closure", "Spec, RTL") + "  (not yet)")
                     with Vertical(classes="col"):
                         with self._g("FPGA synthesis", "fpga"):
                             yield Box(stage("FPGA synthesis", "RTL"))

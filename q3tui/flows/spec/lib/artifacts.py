@@ -5,8 +5,9 @@
 | schemas/structured_spec.json | structured_spec_schema.json | parse (Gate 1) |
 | schemas/final_config.json | final_config_schema.json | config (Gate 2) |
 | schemas/synth_report.json | (none) | rtl (rtl flow) |
-| schemas/selected_testplan.json | (inline: TESTPLAN_SCHEMA) | tb (dv flow) |
-| schemas/golden_manifest.json, verification_contract.json, tb_architecture.json, vip_integration.json, dut_integration.json | (their pydantic models in flows/dv/tb/uvm/) | tb, backend `uvm_vip` (dv flow) |
+| schemas/test_plan.json | (none) | testplan (dv flow, plain testbench: the test cases and the REQs each checks) |
+| schemas/selected_testplan.json | (inline: TESTPLAN_SCHEMA) | tb (dv flow, plain testbench: the plan with the compile result) |
+| schemas/golden_manifest.json, verification_contract.json, tb_architecture.json, vip_integration.json, dut_integration.json | (their pydantic models in flows/dv/uvm/) | testplan, tb (dv flow) |
 """
 
 from __future__ import annotations
@@ -23,8 +24,9 @@ NAMES = {  # artifact file -> schema file (None: not validated against a file)
     "structured_spec.json": "structured_spec_schema.json",
     "final_config.json": "final_config_schema.json",
     "synth_report.json": None,
+    "test_plan.json": None,
     "selected_testplan.json": None,
-    # the dv flow's `uvm_vip` tb backend (docs/spec/dv-flow.md): validated by their pydantic models in flows/dv/tb/uvm/
+    # the dv flow's UVM testbench (docs/spec/dv-flow.md): validated by their pydantic models in flows/dv/uvm/
     "golden_manifest.json": None,
     "verification_contract.json": None,
     "tb_architecture.json": None,
@@ -32,7 +34,8 @@ NAMES = {  # artifact file -> schema file (None: not validated against a file)
     "dut_integration.json": None,
 }
 
-# selected_testplan.json (tb_generator.md "Schema output"): written by the dv flow's tb step
+
+# selected_testplan.json (tb_generator.md "Schema output"): written by the dv flow's tb step (plain testbench)
 TESTPLAN_SCHEMA = {
     "type": "object",
     "required": ["metadata", "test_cases"],
@@ -47,6 +50,7 @@ TESTPLAN_SCHEMA = {
                            "selected": {"type": "boolean"}, "file": {"type": "string"}}}},
     },
 }
+
 
 def path(project: Project, name: str) -> Path:
     return project.schemas_dir / name

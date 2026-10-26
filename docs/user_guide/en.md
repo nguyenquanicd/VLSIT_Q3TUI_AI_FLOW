@@ -80,10 +80,10 @@ spec ─► parse ─► config
 The RTL comes from the `rtl` flow (`pipeline.flow: rtl`, `q3tui --flow rtl run`), which reuses these three steps and adds the
 rules, the CSR, the RTL, a Verible format and style lint, and a smoke test (docs/spec/rtl-flow.md).
 
-The testbench comes from the `dv` flow (`pipeline.flow: dv`, `q3tui --flow dv run`): the same three steps plus `tb`, which writes a testbench from the spec alone, never
-from the RTL: a plain SystemVerilog one (default, `src/tb/`, with a test plan in `schemas/selected_testplan.json`) or, with `pipeline.step_options.tb.backend: uvm_vip`, a UVM
-testbench from an existing VIP with the RTL integrated as the DUT (reports in `reports/`; docs/spec/dv-flow.md, docs/spec/dut-dv.md, example `examples/axi4_sram_ctrl`).
-SVA, verification and the generated document stay removed; testbench files cannot be imported into `tb` yet.
+The testbench comes from the `dv` flow (`pipeline.flow: dv`, `q3tui --flow dv run`): the same three steps plus `testplan` (the verification contract and the tests, with the
+open issues you answer), `tb` (a UVM testbench from an existing VIP, built from the spec alone and never from the RTL until its last phase, where the RTL is integrated as the DUT)
+and `simulate` (the smoke and directed tests, every status read from the simulator log); options in `pipeline.step_options.tb.uvm_vip`, reports in `reports/` (docs/spec/dv-flow.md,
+docs/spec/dut-dv.md, example `examples/axi4_sram_ctrl`). SVA, verification and the generated document stay removed; testbench files cannot be imported yet.
 
 **Updates, not re-runs:** editing a requirement, a parameter, or asking for a change re-runs only what that
 change actually affects — earlier steps and your existing approvals are untouched unless the change reaches

@@ -10,7 +10,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-from q3tui.flows.dv.tb.uvm.contract import (
+from q3tui.flows.dv.uvm.contract import (
     CoverageGoal, InterfaceSpec, Objective, OpenIssue, ScoreboardRule, TestSpec, VerificationContract, validate_contract)
 from q3tui.steps.common import Question
 
@@ -35,7 +35,8 @@ class DvIntent(BaseModel):
     tests: list[TestSpec] = Field(default_factory=list)
     open_issues: list[OpenIssue] = Field(default_factory=list)
     summary: str = ""
-    questions: list[Question] = Field(default_factory=list, description="Only questions about the specification itself (spec_gap / req_gap)")
+    questions: list[Question] = Field(default_factory=list, description="Only questions about the specification itself (spec_gap / req_gap) that are NOT open issues: "
+                                                                        "never repeat an open issue here")
 
 
 def _id_key(item) -> str:
@@ -43,8 +44,9 @@ def _id_key(item) -> str:
 
 
 def apply_intent(draft: VerificationContract, intent: DvIntent, previous: VerificationContract | None = None,
-                 answered: set[str] | None = None) -> tuple[VerificationContract, list[str]]:
-    """The draft completed by the intent, and the problems of the result (empty: the contract can be frozen)."""
+                 answered: set[str] | None = None, keep_scope: bool = True) -> tuple[VerificationContract, list[str]]:
+    """The draft completed by the intent, and the problems of the result (empty: the contract can be frozen). `keep_scope`: an issue that existed keeps the scope you
+    saw (its question goes to the same step); False while a change request is being applied, so a request to reclassify an issue (a spec gap, or a testbench choice) can."""
     problems: list[str] = []
     reqs = {r.req_id: r for r in draft.requirements}
     for d in intent.decisions:
@@ -94,7 +96,7 @@ def apply_intent(draft: VerificationContract, intent: DvIntent, previous: Verifi
     # only resolve it (DUT-DV-006, 017); a changed wording would make an earlier review say something the user never saw
     if previous is not None:
         old = {o.id: o for o in previous.open_issues}
-        intent.open_issues = [o.model_copy(update={"kind": old[o.id].kind, "question": old[o.id].question, "source": old[o.id].source,
+        intent.open_issues = [o.model_copy(update={"kind": old[o.id].kind, "scope": old[o.id].scope if keep_scope else o.scope, "question": old[o.id].question, "source": old[o.id].source,
                                                    "default_assumption": old[o.id].default_assumption, "requirement_ids": old[o.id].requirement_ids,
                                                    "resolved": o.resolved or old[o.id].resolved, "resolution": o.resolution or old[o.id].resolution})
                               if o.id in old else o for o in intent.open_issues]
@@ -135,5 +137,22 @@ def issue_questions(c: VerificationContract) -> list[Question]:
         if o.resolved:
             continue
         out.append(Question(id=question_id(o.id), question=f"{o.question} [{o.id}; {', '.join(o.requirement_ids)}" + (f"; {o.source}" if o.source else "") + "]",
-                            blocking=o.kind == "BLOCKED", default_assumption=o.default_assumption, kind="spec_gap"))
+                            blocking=o.kind == "BLOCKED", default_assumption=o.default_assumption,
+                            kind="spec_gap" if o.scope == "spec" else "design_choice"))  # (a testbench choice stays in the test plan: the spec step is not asked)
     return out
+
+
+def _tokens(text: str) -> set[str]:
+    text = re.sub(r"\s*\[OI-[^\]]*\]\s*$", "", text)  # (an issue's question carries its ID, requirements and source at the end: not part of what it asks)
+    return {w for w in re.findall(r"[a-z0-9_\-]+", text.lower()) if len(w) >= 4}
+
+
+def drop_repeats(questions: list[Question], issues: list[Question], threshold: float = 0.6) -> tuple[list[Question], list[Question]]:
+    """(kept, dropped): the intent stage's own questions that only repeat an open issue (the same words, worded again): the issue keeps its permanent ID, the user is
+    asked once. A question that shares less than `threshold` of its words with every issue is its own."""
+    kept, dropped = [], []
+    for q in questions:
+        qt = _tokens(q.question)
+        repeat = bool(qt) and any((lambda it: bool(it) and len(qt & it) / min(len(qt), len(it)) >= threshold)(_tokens(i.question)) for i in issues)
+        (dropped if repeat else kept).append(q)
+    return kept, dropped

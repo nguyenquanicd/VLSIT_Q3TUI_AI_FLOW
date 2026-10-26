@@ -5,8 +5,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from q3tui.flows.dv.tb.uvm import svgen as g
-from q3tui.flows.dv.tb.uvm.contract import VerificationContract
+from q3tui.flows.dv.uvm import svgen as g
+from q3tui.flows.dv.uvm.contract import VerificationContract
 
 KINDS = (("SBR-", "scoreboard_rule"), ("COV-", "coverage_goal"), ("test.", "test"), ("seq.", "sequence"), ("sram.", "sram_model"),
          ("adapter.", "adapter"), ("assertions", "assertion"))

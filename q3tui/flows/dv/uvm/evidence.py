@@ -37,13 +37,15 @@ def judge_run(text: str, returncode: int | None, test: str) -> tuple[str, str]:
     return "PASS", ""
 
 
-def path(project) -> Path:
-    return project.schemas_dir / "dv_evidence.json"
+def path(project, file: str = "dv_evidence.json") -> Path:
+    return project.schemas_dir / file
 
 
-def record(project, kind: str, name: str, res, note: str, at: str, status: str | None = None, seed: int | None = None) -> dict:
-    """Append the entry of a command that ran (`res` is a q3tui.eda.base.ToolResult). `status` overrides ok/FAIL for runs judged by the log."""
-    data = read_json(path(project), default=None) or {"schema_version": 1, "entries": []}
+def record(project, kind: str, name: str, res, note: str, at: str, status: str | None = None, seed: int | None = None, file: str = "dv_evidence.json") -> dict:
+    """Append the entry of a command that ran (`res` is a q3tui.eda.base.ToolResult) to schemas/`file`: dv_evidence.json (the `simulate` step: the runs)
+    or dv_tb_evidence.json (the `tb` step's compiles: against the interface shell, and with the RTL). `status` overrides ok/FAIL for runs
+    judged by the log."""
+    data = read_json(path(project, file), default=None) or {"schema_version": 1, "entries": []}
     log = Path(res.log_path) if res.log_path else None
     text = log.read_text(errors="replace") if log and log.is_file() else ""
     counts = uvm_counts(text) if kind == "run" else {"UVM_ERROR": None, "UVM_FATAL": None}
@@ -51,5 +53,5 @@ def record(project, kind: str, name: str, res, note: str, at: str, status: str |
              "duration_s": round(res.duration_s, 1), "log": project.rel(log) if log else "", "uvm_error": counts["UVM_ERROR"], "uvm_fatal": counts["UVM_FATAL"],
              "seed": seed, "status": status or ("PASS" if res.ok else "FAIL"), "note": note, "at": at}
     data["entries"].append(entry)
-    write_json(path(project), data)
+    write_json(path(project, file), data)
     return entry

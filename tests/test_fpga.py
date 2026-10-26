@@ -643,9 +643,9 @@ async def test_the_flow_map_picks_the_flow_of_a_box(proj):
         await pilot.pause()
         assert isinstance(app.screen, FlowMapScreen)
         by_title = {g.border_title.split("  ·")[0]: g for g in app.screen.query(Group)}
-        assert {t for t, g in by_title.items() if g.developed} == {"Spec", "RTL gen", "FPGA synthesis", "ASIC synthesis", "Sanity", "Project settings"}
-        assert by_title["DV"].has_class("off") and by_title["FPGA synthesis"].has_class("current")
-        app.screen.pick(by_title["DV"])  # not developed: stays open
+        assert {t for t, g in by_title.items() if g.developed} == {"Spec", "RTL gen", "DV", "FPGA synthesis", "ASIC synthesis", "Sanity", "Project settings"}
+        assert by_title["Convergence gate"].has_class("off") and by_title["FPGA synthesis"].has_class("current")
+        app.screen.pick(by_title["Convergence gate"])  # not developed: stays open
         await pilot.pause()
         assert isinstance(app.screen, FlowMapScreen)
         app.screen.pick(by_title["Spec"])  # a box of the spec flow

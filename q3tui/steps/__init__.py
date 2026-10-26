@@ -11,7 +11,9 @@ KINDS: dict[str, str] = {
     "vlsit_parse": "q3tui.flows.spec.parse.step:ParseStep",
     "vlsit_config": "q3tui.flows.spec.config.step:ConfigStep",
     # the dv flow (docs/spec/dv-flow.md)
-    "dv_tb": "q3tui.flows.dv.tb.step:TbGenStep",
+    "dv_testplan": "q3tui.flows.dv.testplan.step:PlanStep",
+    "dv_tb": "q3tui.flows.dv.tb.step:TbStep",
+    "dv_simulate": "q3tui.flows.dv.simulate.step:SimulateStep",
 }
 
 

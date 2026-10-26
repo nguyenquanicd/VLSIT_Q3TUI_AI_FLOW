@@ -5,11 +5,11 @@ import shutil
 
 import pytest
 
-from q3tui.flows.dv.tb.uvm import lint as L
-from q3tui.flows.dv.tb.uvm import scaffold as S
-from q3tui.flows.dv.tb.uvm import semantic as sem
-from q3tui.flows.dv.tb.uvm import worklist as W
-from q3tui.flows.dv.tb.uvm.semantic import RegionImpl, SemanticResult
+from q3tui.flows.dv.uvm import lint as L
+from q3tui.flows.dv.uvm import scaffold as S
+from q3tui.flows.dv.uvm import semantic as sem
+from q3tui.flows.dv.uvm import worklist as W
+from q3tui.flows.dv.uvm.semantic import RegionImpl, SemanticResult
 from tests.test_dut_dv_intent import EXAMPLE, engine, intent_from_contract, llm, load_contract, run_tb  # noqa: F401  (fixtures)
 from tests.test_dut_dv_scaffold import OPTS, baseline, gen
 
@@ -84,7 +84,7 @@ def test_step_runs_the_agent_per_unit_and_does_not_redo_unchanged_units(engine, 
     owners = {i["id"]: i["owner"] for i in wl["items"]}
     assert owners["sram.responder"] == owners["SBR-001"] == owners["seq.smoke"] == "agent" and owners["SBR-004"] == "scaffold" and owners["test.TC-002"] == "scaffold"
     assert wl["summary"]["open"] == wl["summary"]["regions"] - 10
-    ev = json.loads((root / "schemas" / "dv_evidence.json").read_text())["entries"]
+    ev = json.loads((root / "schemas" / "dv_tb_evidence.json").read_text())["entries"]
     assert ev and all(e["kind"] == "compile" and e["status"] == "PASS" for e in ev)
     n = len(llm.calls)
     with pytest.raises(Exception, match="NOT_RUN|nothing was simulated"):

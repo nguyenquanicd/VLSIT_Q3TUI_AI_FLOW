@@ -1,4 +1,4 @@
-"""Task input of the VLSIT testbench step (adapted from <step>/md/tb_generator.md; Vietnamese as in the original)."""
+"""Task input of the plain testbench stages (adapted from md/tb_generator.md; Vietnamese as in the original)."""
 
 from __future__ import annotations
 
@@ -6,8 +6,8 @@ from pathlib import Path
 
 from q3tui.flows import skill_sections
 
-# the stage system prompts are the named sections of md/skill.md (this file only assembles the per-task input)
-TEXT = skill_sections(Path(__file__).parent / "md" / "skill.md")
+# the stage system prompts are the named sections of md/prompts.md (this file only assembles the per-task input)
+TEXT = skill_sections(Path(__file__).parent / "md" / "prompts.md")
 
 PLAN_SYSTEM = TEXT["PLAN_SYSTEM"]
 
@@ -27,7 +27,7 @@ def plan_prompt(*, reqs: list[tuple[str, str, str]], params: dict[str, str], spe
         if changes:
             parts.append("\n## Đầu vào đã thay đổi\n" + "\n".join(f"- {c}" for c in changes))
     if uncovered:
-        parts.append("\n## Chưa có TC cover (thêm TC, hoặc giải thích trong questions vì sao không kiểm tra được bằng mô phỏng)\n"
+        parts.append("\n## Chưa có TC cover (thêm TC; nếu không thể kiểm tra bằng mô phỏng DUT thì đưa vào `excluded` kèm lý do — KHÔNG hỏi trong questions)\n"
                      + "\n".join(f"- {r}" for r in uncovered))
     if answers:
         parts.append("\n## Câu trả lời của người dùng\n" + "\n".join(f"- {k}: {v}" for k, v in answers.items()))

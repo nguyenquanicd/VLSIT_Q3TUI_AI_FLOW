@@ -1,8 +1,9 @@
-"""Optional `uvm_vip` backend of the VLSIT `tb` step (docs/spec/dut-dv.md): a UVM DUT testbench from the approved
-specification and an existing reusable protocol VIP.
+"""The `dv` flow's UVM testbench (docs/spec/dut-dv.md): a UVM DUT testbench from the approved specification and an existing reusable protocol VIP.
 
-The backend is chosen by the step option `backend` (`plain_sv`, the default and the existing behavior, or `uvm_vip`).
-Its options keep three input classes apart (rules DUT-DV-001..004, 026..027):
+The flow has three steps of its own after the spec flow's: `testplan` (the verification contract: objectives, scoreboard rules, coverage, the tests, the open
+issues you answer; `run_testplan`), `tb` (the architecture, the VIP binding, the scaffold, the agent's regions, then the RTL as the DUT: conformance, wrapper,
+compile; `run_testbench`) and `simulate` (the smoke test and the directed tests, judged from the logs; `run_simulate`). The options are the `tb` step's
+(`pipeline.step_options.tb.uvm_vip`), read by all three (`tb_options`), and keep three input classes apart (rules DUT-DV-001..004, 026..027):
 
 | class | where it comes from | may define expected behavior |
 |---|---|---|
@@ -20,9 +21,6 @@ from pathlib import Path
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
-
-BACKENDS = ("plain_sv", "uvm_vip")
-DEFAULT_BACKEND = "plain_sv"
 
 # input class of each option group (machine-checkable: tests and the validator read this table)
 INPUT_CLASSES = {"standards": "behavioral", "vip": "vip", "integration": "integration"}
@@ -70,24 +68,49 @@ class SemanticOptions(_Strict):
 
 class UvmVipOptions(_Strict):
     standards: list[str] = Field(default_factory=list, description="Approved standard documents (behavioral); paths relative to the project")
-    vip: VipInputs
+    vip: VipInputs | None = Field(None, description="The existing protocol VIP, or none: a simple IP has no protocol interface to drive with one. The `tb` step needs it only "
+                                                    "for an interface whose stimulus agent is `vip_master`")
     integration: IntegrationInputs = Field(default_factory=IntegrationInputs)
     semantic: SemanticOptions = Field(default_factory=SemanticOptions)
 
 
-def backend_of(options: dict | None) -> str:
-    """The backend a tb step runs; the absent option means the existing plain-SystemVerilog generator."""
-    value = (options or {}).get("backend", DEFAULT_BACKEND)
-    if value not in BACKENDS:
-        raise OptionsError(f"tb option backend: '{value}' is not one of {', '.join(BACKENDS)}")
-    return value
+# options a user sets in the Settings dialog (Settings → tb) or the assistant sit flat on the tb step; they are the nested `uvm_vip` group's leaves
+FLAT_OPTIONS = {"vip_path": ("vip", "path"), "vip_kind": ("vip", "kind"), "vip_revision": ("vip", "revision"), "vip_env": ("vip", "env"),
+                "rtl_dir": ("integration", "rtl_dir"), "top": ("integration", "top"), "smoke_test": ("integration", "smoke_test"), "scope": ("semantic", "scope")}
+
+
+def merged_options(options: dict | None) -> dict | None:
+    """The `uvm_vip` group with the flat options laid over it (a value set in the Settings dialog wins over q3tui.yaml's group); None when neither is given."""
+    options = options or {}
+    group = options.get("uvm_vip")
+    flat = {k: v for k, v in options.items() if k in FLAT_OPTIONS and v not in (None, "")}
+    if not isinstance(group, dict) and not flat:
+        return None
+    out = json.loads(json.dumps(group)) if isinstance(group, dict) else {}
+    for key, value in flat.items():
+        section, leaf = FLAT_OPTIONS[key]
+        out.setdefault(section, {})[leaf] = value
+    return out
+
+
+def testbench_kind(options: dict | None) -> str:
+    """`plain` or `uvm`: the kind of testbench the three steps of the dv flow build, from the `testbench` option of the tb step (Settings → tb). `auto` (the default): `uvm`
+    when a VIP location is set (a VIP means a UVM environment), `plain` otherwise (any IP: the UVM generator covers AXI-style memory-mapped IPs only so far)."""
+    value = (options or {}).get("testbench") or "auto"
+    if value in ("plain", "uvm"):
+        return value
+    if value != "auto":
+        raise OptionsError(f"tb option testbench: '{value}' is not one of auto, plain, uvm")
+    raw = merged_options(options) or {}
+    return "uvm" if (raw.get("vip") or {}).get("path") else "plain"
 
 
 def parse_options(options: dict | None) -> UvmVipOptions:
-    """The validated `uvm_vip` options (`options['uvm_vip']`); a clear error names what is missing or unknown."""
-    raw = (options or {}).get("uvm_vip")
-    if not isinstance(raw, dict):
-        raise OptionsError("tb option backend=uvm_vip needs the option group `uvm_vip` (vip.path is required)")
+    """The validated `uvm_vip` options (the group `options['uvm_vip']` and the flat options of the Settings dialog; none given: the defaults, without a VIP); a clear error
+    names what is unknown. A `vip` without a path is the same as none."""
+    raw = merged_options(options) or {}
+    if not (raw.get("vip") or {}).get("path"):
+        raw.pop("vip", None)
     try:
         return UvmVipOptions.model_validate(raw)
     except ValidationError as exc:
@@ -106,36 +129,45 @@ def _digest(data: object) -> str:
 
 
 def behavioral_fingerprint(options: dict | None) -> str:
-    """Hash of what may shape expected behavior and the TB architecture: the backend, the standards and the VIP
+    """Hash of what may shape expected behavior and the TB architecture: the standards and the VIP
     inputs. Integration inputs are left out on purpose: changing the RTL location, defines or include directories
     never makes the behavioral phase stale (DUT-DV-026)."""
-    if backend_of(options) == DEFAULT_BACKEND:
-        return _digest({"backend": DEFAULT_BACKEND})
     o = parse_options(options)
-    return _digest({"backend": "uvm_vip", "standards": o.standards, "vip": o.vip.model_dump()})
+    return _digest({"backend": "uvm_vip", "standards": o.standards, "vip": o.vip.model_dump() if o.vip else None})
 
 
 def integration_fingerprint(options: dict | None) -> str:
     """Hash of the integration inputs only (compile and run configuration)."""
-    if backend_of(options) == DEFAULT_BACKEND:
-        return _digest({})
     return _digest(parse_options(options).integration.model_dump())
 
 
 def input_problem(options: dict | None, project_root: Path) -> str | None:
-    """Why a `uvm_vip` tb step cannot start (None: the options are usable). Plain-SV steps never have one."""
+    """Why the dv flow's UVM steps cannot start (None: the options are usable)."""
     try:
-        if backend_of(options) == DEFAULT_BACKEND:
-            return None
         o = parse_options(options)
     except OptionsError as exc:
         return str(exc)
-    if not resolve_path(o.vip.path, project_root).is_dir():
+    if o.vip and not resolve_path(o.vip.path, project_root).is_dir():
         return f"the VIP was not found: uvm_vip.vip.path = {o.vip.path} (the VIP is an existing component; the flow never generates it)"
     return None
 
 
-ARTIFACTS = ("golden_manifest.json", "verification_contract.json", "tb_architecture.json", "vip_integration.json", "dut_integration.json")  # in schemas/; reports/tb_architecture.md too
+TB_EVIDENCE = "dv_tb_evidence.json"  # the compiles of the `tb` step: against the interface shell (a syntax / integration check, never a DUT result) and with the RTL
+EVIDENCE = "dv_evidence.json"  # the simulations of the `simulate` step: only what ran
+
+# what each step writes (schemas/, reports/, src/tb/): hashed, reset and checked for edits by the engine
+TESTPLAN_SCHEMAS = ("golden_manifest.json", "verification_contract.json", "dv_review.json")
+TESTPLAN_REPORTS = ("dv_review_report.md",)
+TB_SCHEMAS = ("tb_architecture.json", "vip_integration.json", "dv_worklist.json", "dv_validation.json", "dut_integration.json", TB_EVIDENCE)
+TB_REPORTS = ("tb_architecture.md", "dut_conformance_report.md")
+SIM_SCHEMAS = (EVIDENCE,)
+SIM_REPORTS = ("dv_test_results.md",)
+
+
+def tb_options(engine) -> dict:
+    """The options of the dv flow's UVM steps: the `tb` step's (`uvm_vip`), whichever step reads them."""
+    tb = engine.by_name.get("tb")
+    return tb.options if tb is not None else {}
 
 
 class NotApproved(RuntimeError):
@@ -174,7 +206,7 @@ def _write_questions(step, ctx, questions: list) -> None:
 
 def refresh_review(step, engine, contract) -> None:
     """Rewrite schemas/dv_review.json and reports/dv_review_report.md from the contract, the answers and the accepted defaults."""
-    from q3tui.flows.dv.tb.uvm import review
+    from q3tui.flows.dv.uvm import review
     from q3tui.flows.spec.lib import artifacts
 
     lay = step.lay(engine)
@@ -183,7 +215,7 @@ def refresh_review(step, engine, contract) -> None:
 
 def refresh_review_from_disk(step, engine) -> None:
     from q3tui.core.project import read_json
-    from q3tui.flows.dv.tb.uvm import contract as C
+    from q3tui.flows.dv.uvm import contract as C
     from q3tui.flows.spec.lib import artifacts
 
     p = artifacts.path(engine.project, "verification_contract.json")
@@ -191,22 +223,33 @@ def refresh_review_from_disk(step, engine) -> None:
         refresh_review(step, engine, C.VerificationContract.model_validate(read_json(p)))
 
 
-def output_files(step, engine) -> list[Path]:
-    """Files the `uvm_vip` backend has written so far (the step's outputs, hashed and reset with it)."""
+def testplan_files(step, engine) -> list[Path]:
+    """Files the `testplan` step has written: the golden manifest, the verification contract and the review of its open issues."""
     lay = step.lay(engine)
-    names = [lay.schemas / n for n in (*ARTIFACTS, "dv_review.json", "dv_worklist.json", "dv_validation.json", "dv_evidence.json")]
-    names += [lay.reports / "tb_architecture.md", lay.reports / "dv_review_report.md", lay.reports / "dut_conformance_report.md"]
+    return [p for p in [*(lay.schemas / n for n in TESTPLAN_SCHEMAS), *(lay.reports / n for n in TESTPLAN_REPORTS)] if p.is_file()]
+
+
+def tb_files(step, engine) -> list[Path]:
+    """Files the `tb` step has written: the architecture, the VIP binding, the worklist, the integration of the RTL and the testbench itself."""
+    lay = step.lay(engine)
+    names = [*(lay.schemas / n for n in TB_SCHEMAS), *(lay.reports / n for n in TB_REPORTS)]
     tb = [p for p in sorted(lay.tb.rglob("*")) if p.is_file() and (p.suffix in (".sv", ".svh", ".f") or p.name.endswith(".scaffold_new"))] if lay.tb.is_dir() else []
     return [p for p in [*names, *tb] if p.is_file()]
 
 
-async def behavioral_phase(step, ctx, opts: UvmVipOptions):
-    """Spec to frozen verification contract and TB architecture (no RTL involved). Returns (contract, architecture or None)."""
+def simulate_files(step, engine) -> list[Path]:
+    """Files the `simulate` step has written: the evidence of the runs and the table of the test results."""
+    lay = step.lay(engine)
+    return [p for p in [*(lay.schemas / n for n in SIM_SCHEMAS), *(lay.reports / n for n in SIM_REPORTS)] if p.is_file()]
+
+
+async def contract_phase(step, ctx, opts: UvmVipOptions, raw: dict):
+    """The `testplan` step: spec to verification contract, frozen by hash unless an issue is BLOCKED (no RTL involved); `raw` are the tb options (their
+    behavioral part is in the fingerprint of what the contract was built from). Returns the contract."""
     from q3tui.core.project import sha256_json
-    from q3tui.flows.dv.tb.uvm import arch as arch_mod
-    from q3tui.flows.dv.tb.uvm import contract as C
-    from q3tui.flows.dv.tb.uvm import task as tasks
-    from q3tui.flows.dv.tb.uvm.intent import DvIntent, apply_intent, issue_questions
+    from q3tui.flows.dv.uvm import contract as C
+    from q3tui.flows.dv.uvm import task as tasks
+    from q3tui.flows.dv.uvm.intent import DvIntent, apply_intent, drop_repeats, issue_questions
     from q3tui.llm.runtime import Stage
     from q3tui.pipeline.base import StepFailed
     from q3tui.steps.common import load_answers, settled_block, split_feedback
@@ -241,7 +284,7 @@ async def behavioral_phase(step, ctx, opts: UvmVipOptions):
     answers = load_answers(step._q_paths(engine)[1])
     by_unit, general = split_feedback(ctx.feedback, step.name)
     feedback = [*general, *by_unit.get("intent", [])]
-    inputs_hash = sha256_json({"sources": [(s.path, s.sha256) for s in manifest.sources], "answers": answers, "behavioral": behavioral_fingerprint(step.options)})
+    inputs_hash = sha256_json({"sources": [(s.path, s.sha256) for s in manifest.sources], "answers": answers, "behavioral": behavioral_fingerprint(raw)})
     reuse = bool(previous and C.frozen_ok(previous) and meta.get("intent_hash") == inputs_hash and not ctx.regenerate and not feedback)
     if c_path.is_file() and meta.get("contract_sha") and sha256_file(c_path) != meta["contract_sha"]:
         project.backup([c_path])  # edited by hand since it was written: never overwritten without a copy
@@ -263,13 +306,18 @@ async def behavioral_phase(step, ctx, opts: UvmVipOptions):
                                                                                     "tests": [o.model_dump() for o in previous.tests],
                                                                                     "open_issues": [o.model_dump() for o in previous.open_issues]} if previous else {}),
                                            spec_files=[project.rel(p) for p in docs], answers=answers, settled=settled_block(engine.settled_questions(step.name)),
-                                           feedback=feedback, problems=problems, previous=previous is not None)))
+                                           feedback=feedback, problems=problems, previous=previous is not None, vip=opts.vip.kind if opts.vip else None)))
             intent = res.output
-            contract, problems = apply_intent(draft, intent, previous, answered={k.removeprefix('Q-TB-') for k in answers if k.startswith('Q-TB-OI-')})
+            contract, problems = apply_intent(draft, intent, previous, answered={k.removeprefix('Q-TB-') for k in answers if k.startswith('Q-TB-OI-')},
+                                              keep_scope=not feedback)  # (a change request may reclassify an issue: "OI-004 is a spec gap")
             if not problems:
                 break
         meta["intent_hash"] = inputs_hash
-        _write_questions(step, ctx, [*intent.questions, *issue_questions(contract)])
+        issues_q = issue_questions(contract)
+        own, repeats = drop_repeats(intent.questions, issues_q)
+        for q in repeats:
+            ctx.emit("log", message=f"question dropped, an open issue already asks it: {q.question[:80]}")
+        _write_questions(step, ctx, [*own, *issues_q])
         if problems:
             raise StepFailed("the verification contract still has problems after the fix rounds:\n" + "\n".join(f"- {p}" for p in problems[:15]))
         artifacts.write(project, "golden_manifest.json", manifest.model_dump(mode="json"), check=False)
@@ -281,7 +329,17 @@ async def behavioral_phase(step, ctx, opts: UvmVipOptions):
     refresh_review(step, engine, contract)
     if contract.metadata.status != "frozen":
         ctx.emit("warning", message="the contract is not frozen: BLOCKED open issue(s) need your answer before the testbench can be built")
-        return contract, None
+    return contract
+
+
+def architecture_phase(step, ctx, opts: UvmVipOptions, contract) -> dict:
+    """The `tb` step: the testbench architecture derived from the frozen contract, checked against it (schemas/tb_architecture.json, reports/tb_architecture.md)."""
+    from q3tui.flows.dv.uvm import arch as arch_mod
+    from q3tui.pipeline.base import StepFailed
+    from q3tui.flows.spec.lib import artifacts
+
+    project = ctx.project
+    lay = step.lay(ctx.engine)
     architecture = arch_mod.derive(contract, opts.model_dump(mode="json"))
     bad = arch_mod.check(architecture, contract)
     if bad:
@@ -289,14 +347,14 @@ async def behavioral_phase(step, ctx, opts: UvmVipOptions):
     artifacts.write(project, "tb_architecture.json", architecture, check=False)
     (lay.reports).mkdir(parents=True, exist_ok=True)
     (lay.reports / "tb_architecture.md").write_text(arch_mod.render_md(architecture))
-    return contract, architecture
+    return architecture
 
 
 def vip_phase(step, ctx, opts: UvmVipOptions, contract) -> dict:
     """Probe the existing VIP and bind it to the interface contract (DUT-DV-010): schemas/vip_integration.json. The VIP is only read."""
     from q3tui.core.project import write_json
-    from q3tui.flows.dv.tb.uvm import binding as B
-    from q3tui.flows.dv.tb.uvm import vip as V
+    from q3tui.flows.dv.uvm import binding as B
+    from q3tui.flows.dv.uvm import vip as V
     from q3tui.pipeline.base import StepFailed
     from q3tui.flows.spec.lib import artifacts
 
@@ -323,10 +381,10 @@ def vip_phase(step, ctx, opts: UvmVipOptions, contract) -> dict:
 async def scaffold_phase(step, ctx, opts: UvmVipOptions, contract, architecture, vip: dict | None = None) -> dict:
     """Frozen contract and architecture to the UVM scaffold: files, worklist, validation, and the shell compile (no DUT, no VIP yet)."""
     from q3tui.core.project import write_json
-    from q3tui.flows.dv.tb.uvm import evidence as ev
-    from q3tui.flows.dv.tb.uvm import lint as lint_mod
-    from q3tui.flows.dv.tb.uvm import scaffold as sc
-    from q3tui.flows.dv.tb.uvm import worklist as wl
+    from q3tui.flows.dv.uvm import evidence as ev
+    from q3tui.flows.dv.uvm import lint as lint_mod
+    from q3tui.flows.dv.uvm import scaffold as sc
+    from q3tui.flows.dv.uvm import worklist as wl
     from q3tui.pipeline.base import StepFailed
     from q3tui.flows.spec.lib import artifacts
 
@@ -355,13 +413,13 @@ async def scaffold_phase(step, ctx, opts: UvmVipOptions, contract, architecture,
     return {"files": res, "worklist": wl.summary(items)}
 
 
-async def compile_tb(step, ctx, vip: dict | None, note: str, filelist: str = "filelist_tb.f", name: str | None = None):
+async def compile_tb(step, ctx, vip: dict | None, note: str, filelist: str = "filelist_tb.f", name: str | None = None, evidence: str = TB_EVIDENCE):
     """One compile of the testbench (with the VIP, against the interface shell) through the tool role `sim_uvm`. Returns (result, evidence entry), or
     (None, None) when the role is not configured / the tool is not found (NOT_RUN: nothing is recorded)."""
     import anyio
 
     from q3tui.eda import tools as T
-    from q3tui.flows.dv.tb.uvm import evidence as ev
+    from q3tui.flows.dv.uvm import evidence as ev
     from q3tui.flows.spec.lib import artifacts
 
     engine, project = ctx.engine, ctx.project
@@ -385,7 +443,7 @@ async def compile_tb(step, ctx, vip: dict | None, note: str, filelist: str = "fi
     n = len(list(work.glob("compile_*.log"))) + 1
     res = await anyio.to_thread.run_sync(lambda: T.run_role(ts, "sim_uvm", work, {"filelist": absf, "top": "tb_top", "workdir": work, "project": project.root,
                                                                                     "files": [], "incdirs": [], "extra_args": extra}, log_name=f"compile_{n:03d}.log"))
-    entry = ev.record(project, "compile", name or ("tb + VIP + interface shell (no DUT)" if vip else "tb + interface shell (no DUT)"), res, note, artifacts.now())
+    entry = ev.record(project, "compile", name or ("tb + VIP + interface shell (no DUT)" if vip else "tb + interface shell (no DUT)"), res, note, artifacts.now(), file=evidence)
     ctx.emit("log", message=f"compile: {entry['status']} (rc={entry['returncode']}), log {entry['log']}")
     return res, entry
 
@@ -400,10 +458,10 @@ async def semantic_phase(step, ctx, opts: UvmVipOptions, contract, vip: dict | N
     """The agent implements the smoke-path regions; code splices, validates and compiles them (fix rounds on the compiler's errors)."""
     import anyio
 
-    from q3tui.flows.dv.tb.uvm import lint as lint_mod
-    from q3tui.flows.dv.tb.uvm import semantic as sem
-    from q3tui.flows.dv.tb.uvm import task as tasks
-    from q3tui.flows.dv.tb.uvm import worklist as wl
+    from q3tui.flows.dv.uvm import lint as lint_mod
+    from q3tui.flows.dv.uvm import semantic as sem
+    from q3tui.flows.dv.uvm import task as tasks
+    from q3tui.flows.dv.uvm import worklist as wl
     from q3tui.llm.runtime import Stage
     from q3tui.pipeline.base import StepFailed
     from q3tui.steps.common import load_answers, split_feedback
@@ -414,12 +472,12 @@ async def semantic_phase(step, ctx, opts: UvmVipOptions, contract, vip: dict | N
     by_unit, general = split_feedback(ctx.feedback, step.name)
     vip_names = ({u["unit"] for u in vip["probe"]["compile"]["order"] if u["kind"] == "package"} | {c["name"] for c in vip["probe"]["classes"]}) if vip else None
     deny = [lay.rtl, lay.sva, lay.schemas, project.model_dir, project.arch_dir, project.rtl_dir, project.tb_dir]
-    from q3tui.flows.dv.tb.uvm import review as rv
+    from q3tui.flows.dv.uvm import review as rv
 
     decisions = []
-    for i in rv.ledger(contract, load_answers(project.schemas_dir / "questions" / f"{step.name}.answers.json"),
+    for i in rv.ledger(contract, load_answers(project.schemas_dir / "questions" / "testplan.answers.json"),  # (the issues are the testplan step's: its answers and accepted defaults)
                        __import__("q3tui.core.project", fromlist=["read_json"]).read_json(rv.decisions_path(project), default={}) or {},
-                       dict(engine.state.accepted_defaults.get(step.name, {}))):
+                       dict(engine.state.accepted_defaults.get("testplan", {}))):
         if i["class"] in ("user_answered", "user_accepted_default"):
             decisions.append(f"{i['issue_id']} ({', '.join(i['requirement_ids'])}): {i['question']} -> " + (i.get("answer") or f"the default is accepted: {i.get('default', '')}"))
     problems_by_unit: dict[str, list[str]] = {}
@@ -511,12 +569,12 @@ async def integration_phase(step, ctx, opts: UvmVipOptions, contract, architectu
     import os
 
     from q3tui.core.project import sha256_file, write_json
-    from q3tui.flows.dv.tb.uvm import contract as C
-    from q3tui.flows.dv.tb.uvm import integrate as I
-    from q3tui.flows.dv.tb.uvm import lint as lint_mod
-    from q3tui.flows.dv.tb.uvm import scaffold as sc
-    from q3tui.flows.dv.tb.uvm import spec_facts as sf
-    from q3tui.flows.dv.tb.uvm import svgen as g
+    from q3tui.flows.dv.uvm import contract as C
+    from q3tui.flows.dv.uvm import integrate as I
+    from q3tui.flows.dv.uvm import lint as lint_mod
+    from q3tui.flows.dv.uvm import scaffold as sc
+    from q3tui.flows.dv.uvm import spec_facts as sf
+    from q3tui.flows.dv.uvm import svgen as g
     from q3tui.pipeline.base import StepFailed
     from q3tui.flows.spec.lib import artifacts
 
@@ -590,7 +648,7 @@ async def run_one_test(step, ctx, test: str, seed: int, note: str) -> dict | Non
     import anyio
 
     from q3tui.eda import tools as T
-    from q3tui.flows.dv.tb.uvm import evidence as ev
+    from q3tui.flows.dv.uvm import evidence as ev
     from q3tui.flows.spec.lib import artifacts
 
     engine, project = ctx.engine, ctx.project
@@ -617,8 +675,8 @@ async def smoke_phase(step, ctx, opts: UvmVipOptions) -> dict | None:
 async def tests_phase(step, ctx, opts: UvmVipOptions, contract) -> list[dict]:
     """Run every directed test whose body the agent implemented (an unimplemented one stays a todo and is not run). One entry per test; the
     table reports/dv_test_results.md lists them with the tests that were not run (status `todo`)."""
-    from q3tui.flows.dv.tb.uvm import svgen as g
-    from q3tui.flows.dv.tb.uvm import worklist as wl
+    from q3tui.flows.dv.uvm import svgen as g
+    from q3tui.flows.dv.uvm import worklist as wl
 
     lay = step.lay(ctx.engine)
     owner = {i["id"]: i["owner"] for i in wl.scan(lay.tb, contract)}
@@ -644,18 +702,51 @@ async def tests_phase(step, ctx, opts: UvmVipOptions, contract) -> list[dict]:
     return entries
 
 
-async def run(step, ctx) -> None:
-    """Entry of the `uvm_vip` backend (called by TbGenStep.run). Stages are added milestone by milestone."""
+def frozen_inputs(project):
+    """(contract, architecture) written by the steps before, or (None, why) when they are not there (not run, or the contract is not frozen)."""
+    from q3tui.core.project import read_json
+    from q3tui.flows.dv.uvm import contract as C
+    from q3tui.flows.spec.lib import artifacts
+
+    c_path = artifacts.path(project, "verification_contract.json")
+    if not c_path.is_file():
+        return None, "the verification contract is needed first (step testplan: schemas/verification_contract.json)"
+    try:
+        contract = C.VerificationContract.model_validate(read_json(c_path))
+    except Exception:  # noqa: BLE001 - a contract of another version: the testplan step writes it again
+        return None, "schemas/verification_contract.json is not readable (run step testplan again)"
+    if not C.frozen_ok(contract):
+        return None, "the verification contract is not frozen: answer the open issues of step testplan first (DUT-DV-026)"
+    return contract, ""
+
+
+async def run_testplan(step, ctx) -> None:
+    """Entry of the `testplan` step: the verification contract (code drafts it, the `tb_intent` stage completes it, code validates and freezes it). The open
+    issues the specification leaves are questions for you, with their review report; the step never reads the RTL."""
+    from q3tui.pipeline.base import StepFailed
+
+    raw = tb_options(ctx.engine)
+    problem = input_problem(raw, ctx.project.root)
+    if problem:
+        raise StepFailed(problem)
+    await contract_phase(step, ctx, parse_options(raw), raw)
+
+
+async def run_testbench(step, ctx) -> None:
+    """Entry of the `tb` step: from the frozen contract the architecture, the VIP binding, the scaffold and the agent's implementation of the regions (compiled
+    against an interface shell; the stages never see the RTL, rule DUT-DV-026), then the released RTL as the DUT: read by code for structure and compilation,
+    checked against the contract (a difference is a finding, never adapted to), the wrapper and file list, and the compile with the RTL."""
     from q3tui.pipeline.base import StepFailed
 
     problem = input_problem(step.options, ctx.project.root)
     if problem:
         raise StepFailed(problem)
     opts = parse_options(step.options)
-    contract, architecture = await behavioral_phase(step, ctx, opts)
-    if architecture is None:
-        return  # blocked on open questions
-    vip = vip_phase(step, ctx, opts, contract)
+    contract, why = frozen_inputs(ctx.project)
+    if contract is None:
+        raise StepFailed(why)
+    architecture = architecture_phase(step, ctx, opts, contract)
+    vip = vip_phase(step, ctx, opts, contract) if opts.vip else None  # (no VIP: the interface shell and the pins only; an interface that needs one was refused above)
     await scaffold_phase(step, ctx, opts, contract, architecture, vip)
     await semantic_phase(step, ctx, opts, contract, vip)
     integ = await integration_phase(step, ctx, opts, contract, architecture, vip)
@@ -663,6 +754,21 @@ async def run(step, ctx) -> None:
         raise StepFailed("the testbench was not compiled with the RTL (tool role sim_uvm is not available): nothing was simulated")
     if integ["compile"]["status"] != "PASS":
         raise StepFailed("the testbench does not compile with the RTL (see " + integ["compile"]["log"] + ")")
+
+
+async def run_simulate(step, ctx) -> None:
+    """Entry of the `simulate` step: the smoke test and, with `semantic.scope: all`, the directed tests, run with the tool role `run_uvm` on the simv the `tb`
+    step built. The status of every run is read from the simulator log only (rules DUT-DV-012, 023)."""
+    from q3tui.pipeline.base import StepFailed
+
+    raw = tb_options(ctx.engine)
+    problem = input_problem(raw, ctx.project.root)
+    if problem:
+        raise StepFailed(problem)
+    opts = parse_options(raw)
+    contract, why = frozen_inputs(ctx.project)
+    if contract is None:
+        raise StepFailed(why)
     smoke = await smoke_phase(step, ctx, opts)
     if smoke is None:
         raise StepFailed("the smoke simulation is NOT_RUN (tool role run_uvm is not available)")
@@ -678,7 +784,6 @@ async def run(step, ctx) -> None:
         if failed:
             raise StepFailed("directed tests that did not pass (details: reports/dv_test_results.md): " + ", ".join(f"{e['name']} ({e['note']})" for e in failed)
                              + ". The expected behavior comes from the approved specification; a failure is a finding about the DUT or the testbench, never a reason to change it")
-    return
 
 
 def opts_sim(step) -> str:

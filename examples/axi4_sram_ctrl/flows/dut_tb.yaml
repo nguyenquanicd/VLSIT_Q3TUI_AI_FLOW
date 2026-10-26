@@ -1,4 +1,8 @@
 name: dut_tb
-# The tb step alone: the specification, configuration and RTL are already approved inputs of this example (docs/spec/dut-dv.md).
+# The dv flow's three steps, without the spec flow's: the specification and configuration are already approved inputs of this example, and so is the RTL
+# (docs/spec/dut-dv.md). testplan: the verification contract and its open issues; tb: the testbench (never reads the RTL until its last phase) and the RTL as the
+# DUT; simulate: the smoke test and the directed tests.
 steps:
-  - {id: tb, kind: dv_tb, gate: auto, deps: []}
+  - {id: testplan, kind: dv_testplan, gate: auto, deps: []}
+  - {id: tb, kind: dv_tb, gate: auto, deps: [testplan]}
+  - {id: simulate, kind: dv_simulate, gate: auto, deps: [tb]}

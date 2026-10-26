@@ -11,7 +11,7 @@ Testbench, assertions, verification and the final document were removed.
 | [spec-flow.md](spec-flow.md) | The spec flow (the default): spec → parse → config, artifacts, review API, importing |
 | [flows.md](flows.md) | Flows as data (YAML / folders / markdown), gate modes, sessions, tools by role (`config/tools.json`), the TUI picker and panels |
 | [rtl-flow.md](rtl-flow.md) | The RTL flow: rules → Verible flags, RTL, format, style lint (LLM judge, fix loop), smoke test; skills for the LLM stages |
-| [dv-flow.md](dv-flow.md) | The DV flow: spec → parse → config → `tb` (plain SystemVerilog testbench, or a UVM testbench from an existing VIP with the RTL as the DUT: [dut-dv.md](dut-dv.md)) |
+| [dv-flow.md](dv-flow.md) | The DV flow: spec → parse → config → `testplan` (verification contract) → `tb` (UVM testbench from an existing VIP, the RTL as the DUT: [dut-dv.md](dut-dv.md)) → `simulate` |
 | [fpga-flow.md](fpga-flow.md) | The FPGA flow: SDC, Vivado out-of-context synthesis, timing / utilization report (PPA estimation) |
 | [project-flow.md](project-flow.md) | The project settings flow: the project's settings, the tools (found or not, modules), the ASIC libraries (add one by scanning a folder) |
 | [asic-flow.md](asic-flow.md) | The ASIC flow: port check, SDC, Design Compiler synthesis (netlist, area / timing / power), Formality equivalence check |
@@ -39,7 +39,7 @@ spec ─► rules ─► parse ─► config ─► csr ─► rtl ─► format
 | **rtl** (rtl flow) | SystemVerilog per module, lint clean, synthesis report | — |
 
 The built-in `rtl` flow ([rtl-flow.md](rtl-flow.md)) generates the RTL alone and checks it (rules → Verible flags, CSR from the APB-CSR-Generator,
-format, style lint, smoke test); `dv` ([dv-flow.md](dv-flow.md)) writes a testbench from the spec alone (never from the RTL); `fpga`, `asic` and `project` are the synthesis and settings flows. The built-in `example` flow (spec → parse) is a minimal folder flow to copy. Users write
+format, style lint, smoke test); `dv` ([dv-flow.md](dv-flow.md)) builds a UVM testbench from the spec alone (never from the RTL until the last phase of `tb`): a reviewed verification contract (`testplan`), the testbench with the RTL as its DUT (`tb`), the simulations (`simulate`); `fpga`, `asic` and `project` are the synthesis and settings flows. The built-in `example` flow (spec → parse) is a minimal folder flow to copy. Users write
 their own flows from the registered step kinds ([flows.md](flows.md)).
 
 Who sees what (enforced): the smoke-test writer and the `tb` step read only spec, parse and config, never the RTL; the RTL stages never see `src/tb/`. Details
