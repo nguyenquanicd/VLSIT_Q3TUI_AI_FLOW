@@ -108,7 +108,9 @@ class PlainTb(VlsitStep):
 
     def _deny(self, run: _Run) -> list[Path]:
         p = run.ctx.project
-        return [run.lay.rtl, run.lay.sva, p.model_dir, p.arch_dir, p.rtl_dir, p.tb_dir]  # independence: spec + requirements only
+        # independence: spec + requirements only. Not the testbench folder (project.tb_dir): the stages write their files there and must read them to edit them
+        # (it once held an older testbench that was kept away from the stages; denying it now blocks every write: "not accessible to this stage")
+        return [run.lay.rtl, run.lay.sva, p.model_dir, p.arch_dir, p.rtl_dir]
 
     def _write_stage(self, run: _Run, name: str, prompt: str, files: list[Path]) -> Stage:
         ctx = run.ctx

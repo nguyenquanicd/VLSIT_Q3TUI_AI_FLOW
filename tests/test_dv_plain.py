@@ -552,3 +552,17 @@ def test_the_plan_prompt_tells_a_testbench_choice_from_a_spec_gap():
 
     s = task.PLAN_SYSTEM
     assert "`design_choice`" in s and "spec_gap" in s and "không đổi spec và không đổi RTL" in s  # (how the testbench checks something stays in the plan)
+
+
+def test_no_stage_is_denied_a_file_it_must_write(tmp_path, tools_dir, llm):
+    """The fake LLM does not enforce the file guard, a real run does: a stage whose write_files / write_dirs sit inside its deny_dirs is blocked
+    ("is not accessible to this stage"): the testbench folder was denied to the stages that write it."""
+    eng = make_engine(tmp_path, tools_dir)
+    llm.vlsit_top_bad = 1  # (the fix stages too)
+    llm.vlsit_tc_bad = {"tc_002_b_reg.sv": 1}
+    run_all(eng)
+    writers = [c for c in llm.calls if c.write_files or c.write_dirs]
+    assert {c.name for c in writers} >= {"tb_top", "tb_top_fix", "tb_g1"}
+    for c in writers:
+        targets = [*(c.write_files or []), *(c.write_dirs or [])]
+        assert targets and not [(f, d) for f in targets for d in c.deny_dirs if Path(f).resolve().is_relative_to(Path(d).resolve())], c.name
