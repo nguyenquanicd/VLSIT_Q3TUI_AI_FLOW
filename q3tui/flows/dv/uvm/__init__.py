@@ -160,7 +160,7 @@ TESTPLAN_SCHEMAS = ("golden_manifest.json", "verification_contract.json", "dv_re
 TESTPLAN_REPORTS = ("dv_review_report.md",)
 TB_SCHEMAS = ("tb_architecture.json", "vip_integration.json", "dv_worklist.json", "dv_validation.json", "dut_integration.json", TB_EVIDENCE)
 TB_REPORTS = ("tb_architecture.md", "dut_conformance_report.md")
-SIM_SCHEMAS = (EVIDENCE,)
+SIM_SCHEMAS = (EVIDENCE, "dv_triage.json")
 SIM_REPORTS = ("dv_test_results.md",)
 
 
@@ -769,12 +769,17 @@ async def run_simulate(step, ctx) -> None:
     contract, why = frozen_inputs(ctx.project)
     if contract is None:
         raise StepFailed(why)
+    from q3tui.flows.dv import triage
+
+    lay = step.lay(ctx.engine)
     smoke = await smoke_phase(step, ctx, opts)
     if smoke is None:
         raise StepFailed("the smoke simulation is NOT_RUN (tool role run_uvm is not available)")
     if smoke["status"] != "PASS":
-        raise StepFailed(f"the smoke test {smoke['name']} did not pass: {smoke['note']} (log {smoke['log']}; UVM_ERROR={smoke['uvm_error']}, UVM_FATAL={smoke['uvm_fatal']}). "
-                         "The expected behavior comes from the approved specification; a failure is a finding about the DUT or the testbench, never a reason to change it")
+        original = (f"the smoke test {smoke['name']} did not pass: {smoke['note']} (log {smoke['log']}; UVM_ERROR={smoke['uvm_error']}, UVM_FATAL={smoke['uvm_fatal']}). "
+                    "The expected behavior comes from the approved specification; a failure is a finding about the DUT or the testbench, never a reason to change it")
+        await triage.handle_failures(step, ctx, [{"id": smoke["name"], "name": "smoke test", "note": smoke["note"], "log": smoke["log"], "reqs": []}], lay.rtl, "uvm", original)
+        return
     if opts.semantic.scope == "all":
         entries = await tests_phase(step, ctx, opts, contract)
         for e in entries:
@@ -782,8 +787,11 @@ async def run_simulate(step, ctx) -> None:
                 ctx.emit("warning", message=f"{e['name']} made no check (INCOMPLETE): it is not evidence for its requirements")
         failed = [e for e in entries if e["status"] != "PASS" and not e["note"].startswith("result line says INCOMPLETE")]
         if failed:
-            raise StepFailed("directed tests that did not pass (details: reports/dv_test_results.md): " + ", ".join(f"{e['name']} ({e['note']})" for e in failed)
-                             + ". The expected behavior comes from the approved specification; a failure is a finding about the DUT or the testbench, never a reason to change it")
+            original = ("directed tests that did not pass (details: reports/dv_test_results.md): " + ", ".join(f"{e['name']} ({e['note']})" for e in failed)
+                        + ". The expected behavior comes from the approved specification; a failure is a finding about the DUT or the testbench, never a reason to change it")
+            await triage.handle_failures(step, ctx, [{"id": e["name"], "name": "", "note": e["note"], "log": e["log"], "reqs": []} for e in failed], lay.rtl, "uvm", original)
+            return
+    triage.reset(ctx.engine, step)
 
 
 def opts_sim(step) -> str:

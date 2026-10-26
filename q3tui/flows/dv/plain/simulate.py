@@ -96,6 +96,15 @@ async def run(step, ctx) -> None:
         "# Test results (released RTL as the DUT)\n\nStatus is read from the simulator log of each run (`schemas/dv_evidence.json`).\n\n| Test | Name | Requirements | Status | Note |\n|---|---|---|---|---|\n"
         + "".join(f"| {a} | `{b}` | {c} | {d} | {e} |\n" for a, b, c, d, e in rows))
     if failed:
-        raise StepFailed("test cases that did not pass (details: reports/dv_test_results.md): " + ", ".join(f"{t} ({n})" for t, n in failed)
-                         + ". The expected behavior comes from the approved specification; a failure is a finding about the DUT or the testbench, never a reason to change it")
+        from q3tui.flows.dv import triage
+
+        original = ("test cases that did not pass (details: reports/dv_test_results.md): " + ", ".join(f"{t} ({n})" for t, n in failed)
+                    + ". The expected behavior comes from the approved specification; a failure is a finding about the DUT or the testbench, never a reason to change it")
+        by_id = {c["tc_id"]: c for c in cases}
+        failures = [{"id": t, "name": by_id[t].get("name", ""), "note": n, "log": project.rel(work / f"run_{t}.log"), "reqs": by_id[t].get("req_ids") or []} for t, n in failed]
+        await triage.handle_failures(step, ctx, failures, lay.rtl, "plain", original)  # whose fault: the testbench goes back to tb, the RTL to the rtl flow, the spec to you
+        return
+    from q3tui.flows.dv import triage
+
+    triage.reset(engine, step)
     ctx.emit("log", message=f"simulate: {len(rows)} test case(s) PASS")

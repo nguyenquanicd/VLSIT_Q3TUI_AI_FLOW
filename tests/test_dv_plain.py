@@ -180,6 +180,14 @@ def vlsit_handler(fake, stage, emit):
         stage.write_files[0].write_text(_rtl_text(fake, name, bad))
         return StageResult("", VModuleResult(summary=f"{name} done", requirements=fake.vlsit_modules[name]["reqs"],
                                              questions=fake.vlsit_questions.pop(name, [])), 0.01, 2, f"sess-{name}")
+    if n == "dv_triage":
+        fake.vlsit_triage_calls += 1
+        if fake.vlsit_triage_verdicts is None:
+            raise RuntimeError("no credentials")  # (the triage cannot run: the step reports the failure as it was)
+        from q3tui.flows.dv.triage import DvTriage
+        from q3tui.flows.rtl.lib.models import Verdict
+
+        return StageResult("", DvTriage(verdicts=[Verdict(**v) for v in fake.vlsit_triage_verdicts]), 0.0, 1, "s")
     if n == "tb_plan":
         fake.vlsit_tb_plan_calls += 1
         cases = fake.vlsit_tb_plans.pop(0) if len(fake.vlsit_tb_plans) > 1 else fake.vlsit_tb_plans[0]
@@ -243,6 +251,8 @@ def llm(monkeypatch):
     fake.vlsit_questions = {}
     fake.vlsit_plan_calls = 0
     fake.vlsit_tb_plan_calls = 0
+    fake.vlsit_triage_calls = 0
+    fake.vlsit_triage_verdicts = None
     fake.vlsit_tb_plans = [[{"tc_id": "TC-001", "name": "a_reg", "description": "a", "req_ids": ["REQ-001", "REQ-003"]},
                             {"tc_id": "TC-002", "name": "b_reg", "description": "b", "req_ids": ["REQ-002"]}]]
     fake.vlsit_top_bad = 0
@@ -566,3 +576,99 @@ def test_no_stage_is_denied_a_file_it_must_write(tmp_path, tools_dir, llm):
     for c in writers:
         targets = [*(c.write_files or []), *(c.write_dirs or [])]
         assert targets and not [(f, d) for f in targets for d in c.deny_dirs if Path(f).resolve().is_relative_to(Path(d).resolve())], c.name
+
+
+# -- a failing test is judged: the testbench goes back to tb, the RTL to the rtl flow, the spec to you ---------------------------------------------------------
+
+def failing(tmp_path, tools_dir, llm, verdicts, run_mode="failtc2"):
+    llm.vlsit_triage_verdicts = verdicts
+    eng = make_engine(tmp_path, tools_dir, run_mode=run_mode)
+    run_all(eng)
+    return eng
+
+
+def test_a_testbench_bug_goes_back_to_tb_scoped_to_the_test_and_the_chain_runs_again(tmp_path, tools_dir, llm):
+    eng = failing(tmp_path, tools_dir, llm, [{"id": "TC-002", "verdict": "tb_bug", "summary": "the check compares the wrong value", "request": "compare with the value the spec gives"}])
+    run_step(eng, "simulate")  # (no failure: the fix is dispatched and the engine's loop runs it)
+    assert llm.vlsit_triage_calls == 1
+    fb = eng.state.feedback["tb"]
+    assert len(fb) == 1 and fb[0].startswith("[tb:TC-002] From the simulation triage (TC-002): the check compares the wrong value compare with the value the spec gives")
+    meta = eng.state.step_meta["simulate"]
+    assert meta["loop"] is True and meta["rounds"] == 1
+    report = json.loads((tmp_path / "schemas" / "dv_triage.json").read_text())
+    assert report["round"] == 1 and report["verdicts"][0]["verdict"] == "tb_bug" and report["failures"][0]["id"] == "TC-002"
+    # the loop: tb rewrites that test case only, the tests pass, the rounds start afresh
+    (tmp_path / "q3tui.yaml").write_text((tmp_path / "q3tui.yaml").read_text().replace("failtc2", "pass"))
+    eng2 = Engine(Project.open(tmp_path))
+    n = len(llm.calls)
+    run_step(eng2, "tb")
+    new = [c for c in llm.calls[n:] if c.write_files]
+    assert [c.name for c in new] == ["tb_g1"] and new[0].write_files == [tmp_path / "src/tb/tests/tc_002_b_reg.sv"] and "compare with the value the spec gives" in new[0].prompt
+    run_step(eng2, "simulate")
+    assert eng2.state.step_meta["simulate"]["rounds"] == 0 and not eng2.state.step_meta["simulate"]["loop"] and "history" not in eng2.state.step_meta["simulate"]
+    assert {e["name"]: e["status"] for e in json.loads((tmp_path / "schemas" / "dv_evidence.json").read_text())["entries"]} == {"TC-001": "PASS", "TC-002": "PASS"}
+
+
+def test_an_rtl_bug_is_handed_to_the_rtl_flow_and_the_step_waits(tmp_path, tools_dir, llm):
+    from q3tui import flows
+
+    eng = failing(tmp_path, tools_dir, llm, [{"id": "TC-002", "verdict": "rtl_bug", "module": "leaf_b", "summary": "b is not registered", "request": "register b on the clock edge"}])
+    with pytest.raises(StepFailed, match="handed to the rtl flow") as exc:
+        run_step(eng, "simulate")
+    assert "leaf_b" in str(exc.value) and "tb and simulate run on the new RTL" in str(exc.value)
+    rtl_flow = Engine(Project.open(tmp_path), flow=flows.load_flow("rtl"))  # the other flow's engine reads the same state
+    assert [f for f in rtl_flow.state.feedback.get("rtl", [])] == ["[rtl:leaf_b] From the simulation of the testbench (TC-002): b is not registered register b on the clock edge"]
+    assert not eng.state.feedback.get("tb") and not eng.state.step_meta["simulate"].get("loop")  # (the testbench is not touched)
+
+
+@pytest.mark.parametrize("verdict,kind", [("spec_issue", "spec_gap"), ("unsure", "design_choice")])
+def test_a_spec_issue_or_an_unsure_verdict_is_a_blocking_question_and_nothing_changes(tmp_path, tools_dir, llm, verdict, kind):
+    eng = failing(tmp_path, tools_dir, llm, [{"id": "TC-002", "verdict": verdict, "summary": "the spec does not say when b is visible", "request": "assume one cycle"}])
+    with pytest.raises(StepFailed, match="need your decision"):
+        run_step(eng, "simulate")
+    qs = eng.by_name["simulate"].question_list(eng)
+    assert len(qs) == 1 and qs[0]["blocking"] and qs[0]["kind"] == kind and "TC-002" in qs[0]["question"] and qs[0]["default_assumption"] == "assume one cycle"
+    assert not eng.state.feedback.get("tb") and not eng.state.feedback.get("rtl")
+
+
+def test_the_same_testbench_fix_coming_back_is_a_question_not_another_round(tmp_path, tools_dir, llm):
+    v = [{"id": "TC-002", "verdict": "tb_bug", "summary": "still the wrong value", "request": "use the spec's value"}]
+    eng = failing(tmp_path, tools_dir, llm, v)
+    run_step(eng, "simulate")
+    run_step(eng, "simulate")  # (the same verdict again: handed over twice)
+    with pytest.raises(StepFailed, match="need your decision"):  # the third time: it is not a thing another round settles
+        run_step(eng, "simulate")
+    qs = eng.by_name["simulate"].question_list(eng)
+    assert len(qs) == 1 and "keeps failing" in qs[0]["question"] and qs[0]["kind"] == "design_choice"
+    assert len(eng.state.feedback["tb"]) == 2
+
+
+def test_the_fix_rounds_are_bounded(tmp_path, tools_dir, llm):
+    eng = failing(tmp_path, tools_dir, llm, [{"id": "TC-002", "verdict": "tb_bug", "summary": "x", "request": "y"}])
+    eng.project.cfg.pipeline.max_fix_iterations = 1
+    run_step(eng, "simulate")
+    with pytest.raises(StepFailed, match="still failing after 1 fix round"):
+        run_step(eng, "simulate")
+
+
+def test_without_a_triage_the_failure_is_reported_as_it_was(tmp_path, tools_dir, llm):
+    eng = failing(tmp_path, tools_dir, llm, None)  # (no credentials)
+    with pytest.raises(StepFailed, match="did not pass") as exc:
+        run_step(eng, "simulate")
+    assert "TC-002" in str(exc.value) and "the triage could not run" in str(exc.value) and llm.vlsit_triage_calls == 1
+
+
+def test_the_triage_method_is_the_sim_triage_skill_and_yours_wins(tmp_path, tools_dir, llm):
+    eng = failing(tmp_path, tools_dir, llm, [{"id": "TC-002", "verdict": "tb_bug", "summary": "x", "request": "y"}])
+    run_step(eng, "simulate")
+    (stage,) = [c for c in llm.calls if c.name == "dv_triage"]
+    assert "Read the skill `sim-triage`" in stage.system_prompt and "sim-triage" in stage.prompt and "flows/dv/skills/sim-triage/SKILL.md" in stage.prompt.replace("\\", "/")
+    assert "demo spec" in stage.prompt and "TC-002" in stage.prompt and "log " in stage.prompt  # (the spec, the failing test and the end of its log)
+    assert stage.builtin_tools == ["Read", "Grep", "Glob"] and tmp_path / "src" / "rtl" not in stage.deny_dirs and tmp_path / "src" / "tb" not in stage.deny_dirs  # (it may read the RTL and the testbench)
+    mine = tmp_path / "config" / "skills" / "sim-triage"
+    mine.mkdir(parents=True)
+    (mine / "SKILL.md").write_text("---\nname: sim-triage\ndescription: my own triage rules\n---\n# mine\n")
+    llm.calls.clear()
+    run_step(Engine(Project.open(tmp_path)), "simulate")
+    (stage,) = [c for c in llm.calls if c.name == "dv_triage"]
+    assert "my own triage rules" in stage.prompt and "config/skills/sim-triage/SKILL.md" in stage.prompt.replace("\\", "/")

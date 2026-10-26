@@ -83,7 +83,7 @@ async def test_the_simulate_step_has_the_evidence(proj):
         await pilot.pause()
         tabs = _tabs(app, "simulate")
         await pilot.pause()
-        assert set(tabs) == {"evidence"}
+        assert set(tabs) == {"evidence", "triage"}
         ev = _rows(tabs["evidence"])
         assert ev["run-001"][3] == "PASS" and ev["run-002"][3] == "FAIL" and ev["run-002"][4] == "2/0"
         assert panels._evidence_urgent(app) == 1  # a run that failed
@@ -139,3 +139,20 @@ async def test_the_plain_testbench_has_its_plan_its_coverage_and_its_compile_res
         cases = _rows(tb["cases"])
         assert cases["TC-001"][:3] == ["TC-001", "reset", "1"] and cases["TC-001"][4] != cases["TC-002"][4]  # (passes vs fails to compile)
         assert panels._case_hint(app) == 1
+
+
+async def test_the_simulate_step_shows_the_verdicts(plain):
+    from q3tui.flows.dv import panels
+
+    (plain.root / "schemas" / "dv_triage.json").write_text(json.dumps({"round": 1, "verdicts": [
+        {"id": "TC-019", "verdict": "tb_bug", "summary": "the check says X while printing 0", "request": "fix the check"},
+        {"id": "TC-020", "verdict": "rtl_bug", "module": "m_core", "summary": "o_done is late", "request": "assert o_done in the same cycle"}]}))
+    app = Q3TUIApp(plain)
+    async with app.run_test(size=(170, 50)) as pilot:
+        await pilot.pause()
+        tabs = _tabs(app, "simulate")
+        await pilot.pause()
+        assert set(tabs) == {"evidence", "triage"}
+        rows = _rows(tabs["triage"])
+        assert rows["TC-019"][1:3] == ["tb_bug", "→ tb"] and rows["TC-020"][1:4] == ["rtl_bug", "→ rtl flow", "m_core"]
+        assert panels._verdict_urgent(app) == 1  # the RTL bug waits for the rtl flow

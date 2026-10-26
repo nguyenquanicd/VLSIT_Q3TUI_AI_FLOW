@@ -10,6 +10,8 @@ def register(api) -> None:
                 "plain: a plain SystemVerilog testbench from the reviewed test plan, any IP, no VIP. uvm: a UVM testbench from a verification contract and an existing VIP "
                 "(AXI-style memory-mapped IPs only so far). auto (default): uvm when a VIP location is set, plain otherwise.",
                 (("auto", "auto — uvm when a VIP is set, else plain"), ("plain", "plain — plain SystemVerilog, any IP"), ("uvm", "uvm — UVM with an existing VIP")), nullable=True)
+    api.setting("tb", "max_rounds", "Fix rounds", "int", "How many times a failing simulation is judged and the testbench fixed before it stops and asks you (default: pipeline.max_fix_iterations).")
+    api.setting("tb", "handoff_flow", "Hand RTL fixes to flow", "text", "The flow that owns the RTL: an RTL bug the triage finds becomes a change request for its rtl step (default rtl).")
     api.setting("tb", "vip_path", "VIP location", "text",
                 "The existing protocol VIP the testbench is built on (a folder, e.g. the axi4_avip checkout; $VARs are expanded). Empty for an IP with no protocol interface to drive: "
                 "the flow never generates a VIP, and `tb` waits only when an interface needs one.", nullable=True)

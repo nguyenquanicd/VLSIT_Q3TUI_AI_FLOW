@@ -83,6 +83,21 @@ change the expected behavior.
 - **`simulate`**: each selected test case runs with `+TC=<id>`; `TC_RESULT <id> PASS|FAIL` (and `TC_DETAIL <id> FAIL: <msg>` for each failed check) is read from the log. No result line is a
   FAIL, never a guess. A failure is a finding about the DUT or the testbench, never a reason to change the expected behavior.
 
+## A failing test is judged (`flows/dv/triage.py`)
+
+`simulate` does not stop at a failing test. A second LLM stage (`dv_triage`, a fresh read-only session that may read the RTL, which the testbench stages may not) decides whose fault each failure is, against the
+spec, by the playbook skill `sim-triage` (`flows/dv/skills/`; yours in `config/skills/` wins, as for the rtl flow's `smoke-triage` this is modelled on), and code dispatches the verdict, the way the rtl flow's smoke test does:
+
+| Verdict | What happens |
+|---|---|
+| `tb_bug` | a change request for `tb`, scoped to that test (`[tb:TC-019] …`; the UVM kind: the whole step). `simulate` marks its loop: the engine updates `tb`, then runs `simulate` again |
+| `rtl_bug` | a change request for the `rtl` step of the flow that owns the RTL (`handoff_flow`, default `rtl`), scoped to the module (`[rtl:<module>] …`). `simulate` stays failed until that flow has run; the RTL is an input of `tb`, so the next run of this flow rebuilds `tb` and `simulate` on the new RTL |
+| `spec_issue` / `unsure` | a blocking question for you (`spec_gap` / `design_choice`); nothing is changed |
+
+The rounds are bounded (`max_rounds`, else `pipeline.max_fix_iterations`) and counted until the tests pass, you regenerate, or you answer. A fix handed over and coming back again after
+`pipeline.escalate_after_repeats` rounds becomes a question, not another round. The testbench is never changed to agree with the RTL: the spec is the reference. Every verdict is in
+`schemas/dv_triage.json` (the **Triage** tab). When the triage cannot run (no credentials), the failure is reported as it was.
+
 ## Inputs, outputs, folders
 
 | Where | What |
@@ -90,7 +105,7 @@ change the expected behavior.
 | `spec/`, `schemas/structured_spec.json`, `schemas/final_config.json` | The inputs of `testplan`: the spec flow's results (the testbench sees only these). |
 | `src/rtl/` | The released RTL, the DUT: read by code only, by the last phase of `tb` (top, ports, parameters, files). It comes from the [rtl flow](rtl-flow.md). |
 | `src/tb/` (`project.tb_dir`) | The testbench: plain SystemVerilog files (`tb_top.sv`, `tests/`, `run.sh`), or the UVM scaffold, the integration (wrapper, `filelist_dut.f`) and the tests. |
-| `schemas/` | plain: `test_plan.json` (`testplan`), `selected_testplan.json` (`tb`). UVM: `testplan`: `golden_manifest.json`, `verification_contract.json`, `dv_review.json`, `questions/testplan.*`. `tb`: `tb_architecture.json`, `vip_integration.json`, `dv_worklist.json`, `dv_validation.json`, `dut_integration.json`, `dv_tb_evidence.json`. `simulate`: `dv_evidence.json`. |
+| `schemas/` | plain: `test_plan.json` (`testplan`), `selected_testplan.json` (`tb`). UVM: `testplan`: `golden_manifest.json`, `verification_contract.json`, `dv_review.json`, `questions/testplan.*`. `tb`: `tb_architecture.json`, `vip_integration.json`, `dv_worklist.json`, `dv_validation.json`, `dut_integration.json`, `dv_tb_evidence.json`. `simulate`: `dv_evidence.json`, `dv_triage.json`. |
 | `reports/` | Rendered by code: `dv_review_report.md` (`testplan`); `tb_architecture.md`, `dut_conformance_report.md` (`tb`); `dv_test_results.md` (`simulate`). |
 | `build/sim/` | Compile and simulation logs (`tb_uvm/*.log`) |
 
@@ -127,6 +142,7 @@ Read-only tables over what the steps wrote, before the usual Files / Questions t
 | `tb` | **Regions** | each region of the testbench the agent (or you) implement: kind, owner, done (`dv_worklist.json`) | regions are still open |
 | `tb` | **Conformance** | where the released RTL differs from the contract, and the validation findings (`dut_integration.json`, `dv_validation.json`) | a finding has severity error |
 | `simulate` | **Evidence** | each run: status read from the log, UVM_ERROR / UVM_FATAL, log (`dv_evidence.json`) | a run is not PASS |
+| `simulate` | **Triage** | each judged failure: verdict, where it goes, RTL module, summary (`dv_triage.json`) | an RTL bug, a spec issue or an unsure verdict waits for someone |
 
 The tables are empty (with a note on what writes them) until the step has run.
 

@@ -213,6 +213,32 @@ def _evidence_urgent(app: "Q3TUIApp") -> int:
     return sum(e.get("status") not in ("PASS",) for e in _evidence(app))
 
 
+# -- the triage of the failing tests ---------------------------------------------------------------------------------------------
+
+
+def _verdicts(app: "Q3TUIApp") -> list[dict]:
+    return [v for v in ((artifact(app, "dv_triage.json", {}) or {}).get("verdicts") or []) if isinstance(v, dict)]
+
+
+_WHERE = {"tb_bug": "→ tb", "rtl_bug": "→ rtl flow", "spec_issue": "→ you (spec)", "unsure": "→ you"}
+
+
+def _verdict_rows(app: "Q3TUIApp") -> list[tuple]:
+    return [(v.get("id", ""), v.get("id", ""), Text(str(v.get("verdict", "")), "red" if v.get("verdict") == "rtl_bug" else "yellow"), _WHERE.get(v.get("verdict", ""), ""),
+             str(v.get("module") or "–"), short(v.get("summary", ""), 80)) for v in _verdicts(app)]
+
+
+def _verdict_detail(app: "Q3TUIApp", key: str) -> str:
+    v = next((v for v in _verdicts(app) if v.get("id") == key), None)
+    if v is None:
+        return ""
+    return f"**{key}** — {v.get('verdict')} {_WHERE.get(v.get('verdict', ''), '')}\n\n{v.get('summary', '')}\n\n- request: {v.get('request') or '–'}" + (f"\n- RTL module: {v['module']}" if v.get("module") else "")
+
+
+def _verdict_urgent(app: "Q3TUIApp") -> int:
+    return sum(v.get("verdict") in ("rtl_bug", "spec_issue", "unsure") for v in _verdicts(app))
+
+
 def _tabs_for(kind: str) -> tuple[TabSpec, ...]:
     if kind == "dv_testplan":
         return (TabSpec("tests", "Tests", ("TC", "Name", "Kind", "REQs", "Description"), _test_rows, _test_detail,
@@ -234,7 +260,10 @@ def _tabs_for(kind: str) -> tuple[TabSpec, ...]:
     if kind == "dv_simulate":
         return (TabSpec("evidence", "Evidence", ("ID", "Kind", "Name", "Status", "UVM err/fatal", "Log"), _evidence_rows, _evidence_detail,
                         "what was really run with the released RTL — a status comes from the simulator log only",
-                        urgent=_evidence_urgent, empty="no dv_evidence.json yet — run (r)"),)
+                        urgent=_evidence_urgent, empty="no dv_evidence.json yet — run (r)"),
+                TabSpec("triage", "Triage", ("Test", "Verdict", "Goes to", "RTL module", "Summary"), _verdict_rows, _verdict_detail,
+                        "whose fault each failing test is: a testbench bug goes back to tb (the chain runs again), an RTL bug is handed to the rtl flow, a spec issue waits for your answer",
+                        urgent=_verdict_urgent, empty="no failing test judged yet"))
     return ()
 
 

@@ -217,3 +217,20 @@ def test_the_testbench_waits_for_a_vip_only_when_an_interface_needs_one(engine, 
     msg = no_vip.by_name["tb"].missing_input(no_vip)
     assert msg and "driven by a protocol VIP and none is set" in msg and "Settings → tb → VIP location" in msg
     assert no_vip.by_name["testplan"].missing_input(no_vip) is None  # the test plan never needs it
+
+
+def test_a_failing_uvm_smoke_test_is_judged_too(engine, llm, tmp_path):
+    root, eng = prepare(engine, llm)
+    with_run_role(root, tmp_path, "todo")  # the smoke test ran but made no check: INCOMPLETE, a FAIL
+    llm.dv_verdicts = [{"id": "dut_smoke_test", "verdict": "tb_bug", "summary": "the smoke sequence never checks anything", "request": "implement the smoke check"}]
+    eng = type(eng)(type(eng.project).open(root))
+    run_tb(eng)  # (the fix is dispatched: no failure, the engine's loop runs it)
+    assert eng.state.feedback["tb"] == ["From the simulation triage (dut_smoke_test): the smoke sequence never checks anything implement the smoke check"]  # (the UVM testbench: not scoped to a test)
+    assert eng.state.step_meta["simulate"]["loop"] is True
+    report = json.loads((root / "schemas" / "dv_triage.json").read_text())
+    assert report["failures"][0]["id"] == "dut_smoke_test" and "INCOMPLETE" in report["failures"][0]["note"]
+    llm.dv_verdicts = [{"id": "dut_smoke_test", "verdict": "rtl_bug", "module": "dut", "summary": "no response", "request": "answer the read"}]
+    from q3tui.pipeline.base import StepFailed
+
+    with pytest.raises(StepFailed, match="handed to the rtl flow"):
+        run_tb(type(eng)(type(eng.project).open(root)))

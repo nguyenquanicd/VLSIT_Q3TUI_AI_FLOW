@@ -75,6 +75,12 @@ def llm(monkeypatch):
             import re as _re
             out = f.dv_semantic.pop(0) if f.dv_semantic else SemanticResult(regions=[RegionImpl(id=i, body=f"// fake agent: {i}") for i in _re.findall(r"## Region `([^`]+)`", stage.prompt)])
             return runtime.StageResult("ok", out, 0.0, 1, "s")
+        if f is fake and stage.name == "dv_triage":  # (the simulation triage: the verdicts the test queued, else it cannot run)
+            if getattr(f, "dv_verdicts", None) is None:
+                raise RuntimeError("no credentials")
+            from q3tui.flows.dv.triage import DvTriage
+            from q3tui.flows.rtl.lib.models import Verdict
+            return runtime.StageResult("ok", DvTriage(verdicts=[Verdict(**v) for v in f.dv_verdicts]), 0.0, 1, "s")
         if stage.name != "tb_intent" or f is not fake:
             return None
         out = f.dv_intents.pop(0) if f.dv_intents else good_intent(example_draft())
