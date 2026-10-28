@@ -229,6 +229,26 @@ def _line_of(text: str, m: re.Match) -> int:
     return text.count("\n", 0, m.start()) + 1
 
 
+_ENUM_BODY = re.compile(r"\benum\b[^{;]*\{([^}]*)\}")
+_TERNARY = re.compile(r"\?\s*(\w+)\s*:\s*(\w+)")
+
+
+def enum_ternaries(code: str) -> list[int]:
+    """Lines where an assignment picks an enum member (of an enum declared in this file) with `? :` and no cast: the
+    conditional's type is not the enum for every frontend (Icarus: "This assignment requires an explicit cast")."""
+    members = {re.split(r"[\s=\[]", x.strip())[0] for body in _ENUM_BODY.findall(code) for x in body.split(",") if x.strip()}
+    if not members:
+        return []
+    lines = []
+    for m in re.finditer(r"(?<![=!<>])(?:<=|=)(?!=)([^;]*\?[^;]*);", code):
+        rhs = m.group(1)
+        if re.search(r"\w'\s*\(", rhs):  # (a cast: <type>'(c ? A : B))
+            continue
+        if any({a, b} & members for a, b in _TERNARY.findall(rhs)):
+            lines.append(_line_of(code, m))
+    return lines
+
+
 def check_source(text: str, module: str, prof: Profile, is_package: bool = False) -> list[Violation]:
     """Rule violations of one RTL source (empty: none found by code)."""
     out: list[Violation] = []
@@ -263,6 +283,9 @@ def check_source(text: str, module: str, prof: Profile, is_package: bool = False
             bad("R7/P20", f"`{m.group(1)}` declaration: declare signals as logic", _line_of(code, m))
     for m in re.finditer(r"\bassert\s+property\b|\bcover\s+property\b|\bassume\s+property\b", code):
         bad("P19", "SVA in the RTL source set (assertions belong to src/sva)", _line_of(code, m))
+    for ln in enum_ternaries(code):
+        bad("ENM-06", "an enum member chosen by `? :` without a cast (Icarus rejects it: \"requires an explicit cast\"): "
+                      "use if/else or case, or cast the whole expression `<type>'(...)`", ln)
 
     if not facts.parsed:
         return out

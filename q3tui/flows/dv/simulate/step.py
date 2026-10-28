@@ -19,7 +19,7 @@ from q3tui.pipeline.base import StepContext
 class SimulateStep(VlsitStep):
     name = "simulate"
     title = "Simulation"
-    deps = ("tb",)
+    deps = ("tb",)  # (+ prepare in the dv flow: its skill.md)
     tool_roles = ("run", "run_uvm")  # run: the plain testbench's tests (+TC=<id>); run_uvm: the UVM tests (+UVM_TESTNAME)
 
     def _plain(self, engine) -> bool:
@@ -34,7 +34,8 @@ class SimulateStep(VlsitStep):
 
         tb = engine.by_name["tb"]
         if self._plain(engine):
-            return tb.outputs(engine)  # (the testbench and the plan with its compile result)
+            prep = [artifacts.path(engine.project, "sw_manifest.json")] if "prepare" in engine.by_name else []
+            return [*tb.outputs(engine), *prep]  # (the testbench and the plan with its compile result; the test programs prepare made)
         return [artifacts.path(engine.project, "verification_contract.json"), *uvm.tb_files(tb, engine)]  # (the testbench and what it was integrated with)
 
     def outputs(self, engine) -> list[Path]:

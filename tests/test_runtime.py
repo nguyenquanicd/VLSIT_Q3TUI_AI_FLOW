@@ -223,9 +223,13 @@ def test_grep_cannot_reach_into_denied_folders(tmp_path):
         (tmp_path / d).mkdir()
     stage = Stage(name="rtl_x", system_prompt="s", prompt="p", cwd=tmp_path, deny_dirs=[tmp_path / "model", tmp_path / "tb"])
     reason = check_tool_paths(stage, {"pattern": "REQ-001"}, "Grep")               # no path: the whole project
-    assert reason and "model, tb" in reason and "rtl, spec" in reason
+    assert reason and "model, tb" in reason and "rtl/, spec/" in reason
     assert check_tool_paths(stage, {"pattern": "REQ-001", "path": str(tmp_path / "rtl")}, "Grep") is None
     assert "not accessible" in check_tool_paths(stage, {"pattern": "x", "path": "model"}, "Grep")
+    # a folder holding only files besides the denied one: the files are offered (not "(none)")
+    (tmp_path / "spec" / "spec.md").write_text("x")
+    stage = Stage(name="rtl_x", system_prompt="s", prompt="p", cwd=tmp_path, deny_dirs=[tmp_path / "spec" / "ref"])
+    assert "spec.md" in check_tool_paths(stage, {"pattern": "x", "path": "spec"}, "Grep")
 
 
 def test_hitting_the_output_limit_just_continues_at_the_same_effort(monkeypatch, tmp_path):

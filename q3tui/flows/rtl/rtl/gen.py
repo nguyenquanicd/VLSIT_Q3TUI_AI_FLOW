@@ -223,7 +223,8 @@ class RtlGenStep(VlsitStep):
                        log_name=f"lint_{module}.log")
         from q3tui.eda.tools import check_broken
 
-        check_broken(res, "lint")  # a tool that fails without an error of its own is not a reason to rewrite the module
+        if res.timed_out or not res.diagnostics:  # (lint fails on warnings alone, `verilator -Wall`: findings, not a broken tool)
+            check_broken(res, "lint")  # a tool that fails without an error of its own is not a reason to rewrite the module
         mine = [d for d in res.diagnostics if d.file is None or Path(d.file).name == f"{module}.sv"]
         errors = [d for d in mine if d.severity == "error"]
         warns = [d for d in mine if d.severity == "warning"]
@@ -233,7 +234,8 @@ class RtlGenStep(VlsitStep):
             problems += [f"lint warning {d.code}{f' line {d.line}' if d.line else ''}: {d.message}" for d in warns]
         if not res.ok and not errors and not problems:  # the tool failed without a diagnostic of this file
             others = [d for d in res.diagnostics if d.severity == "error"]
-            if others or res.returncode not in (0,):
+            # (findings only in other files, e.g. a child's warnings under -Wall: theirs, checked with that module)
+            if others or (res.returncode not in (0,) and not res.diagnostics):
                 problems.append(f"lint tool failed (rc={res.returncode}): " + "; ".join(f"{d.file}: {d.message}" for d in others[:3]))
         return problems, len(warns), True
 
@@ -384,6 +386,9 @@ class RtlGenStep(VlsitStep):
             "hash": snapshot_hash(snap), "built_from": snap,
             "summary": res.summary if res else prev.get("summary", ""),
             "requirements": res.requirements if res else prev.get("requirements", [])}
+        # saved now, not at the step's end: a killed run (crash, closed terminal) keeps the modules it finished,
+        # which the next run finds up to date instead of writing them again
+        ctx.engine.save()
         return problems
 
     # -- run --------------------------------------------------------------------------------------------
@@ -512,7 +517,8 @@ class RtlGenStep(VlsitStep):
                                                  "project": run.ctx.project.root}, log_name="lint_design.log")
         from q3tui.eda.tools import check_broken
 
-        check_broken(res, "lint")
+        if res.timed_out or not res.diagnostics:  # (warnings alone fail `verilator -Wall`: findings, not a broken tool)
+            check_broken(res, "lint")
         limit = int(self.options.get("lint_max_warnings", 0))
         per: dict[str, list[str]] = {}
         warns = [d for d in res.diagnostics if d.severity == "warning"]
@@ -520,7 +526,7 @@ class RtlGenStep(VlsitStep):
             if d.severity == "error" or (d.severity == "warning" and len(warns) > limit):
                 mod = Path(d.file).stem if d.file else top
                 per.setdefault(mod, []).append(f"design lint {d.severity} {d.code}{f' line {d.line}' if d.line else ''}: {d.message}")
-        if not res.ok and not per and res.returncode not in (0, None):
+        if not res.ok and not per and res.returncode not in (0, None) and not res.diagnostics:  # (warnings within the limit: -Wall's rc only)
             per.setdefault(top, []).append(f"design lint failed (rc={res.returncode}); see {run.ctx.project.rel(Path(res.log_path))}")
         run.lint_state["__design__"] = {"status": "fail" if per else "pass", "warnings": len(warns)}
         return per

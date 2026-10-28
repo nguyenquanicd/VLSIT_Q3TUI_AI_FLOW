@@ -33,4 +33,7 @@ testbench, or the specification. The specification is the reference. Read the sk
 Answer with one verdict per failing behaviour (or one for a compile error): `rtl_bug` (name the module and say what the spec states), `tb_bug`
 (say what the testbench misread), `spec_issue` (the spec is silent or contradicts itself), or `unsure` (say what you would need). Be specific and
 short; never adapt the testbench to the RTL just to get a pass.
+For a `spec_issue` or `unsure`, give the `options`: 2–4 ways to settle it, the one you recommend first, each label a complete decision worded as the answer
+itself (it is recorded as the user's decision and acted on), each with its design impact; and the `decision` it waits for (the id the spec gives it, e.g.
+DEC-012, the same for every failure that waits for it).
 <!-- /TRIAGE -->

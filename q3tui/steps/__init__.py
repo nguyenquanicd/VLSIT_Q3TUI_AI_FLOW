@@ -13,6 +13,7 @@ KINDS: dict[str, str] = {
     # the dv flow (docs/spec/dv-flow.md)
     "dv_testplan": "q3tui.flows.dv.testplan.step:PlanStep",
     "dv_tb": "q3tui.flows.dv.tb.step:TbStep",
+    "dv_prepare": "q3tui.flows.dv.prepare.step:PrepareStep",
     "dv_simulate": "q3tui.flows.dv.simulate.step:SimulateStep",
 }
 

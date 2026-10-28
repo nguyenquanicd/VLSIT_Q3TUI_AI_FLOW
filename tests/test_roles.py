@@ -38,6 +38,27 @@ def test_tasks_belong_to_roles_and_reviewers_stay_independent():
         assert roles.role_of(fresh) is None, fresh
 
 
+def test_the_verifier_writes_the_testbench_and_a_task_needing_more_than_its_role_runs_in_its_own_session(engine, tmp_path, llm, monkeypatch):
+    """rv32iv: in team mode the dv flow's tb_top / tb_g* went to the verifier's session, which had no Write / Edit: nothing was written."""
+    from q3tui.core.events import EventBus
+    from q3tui.pipeline.base import StepContext
+
+    assert roles.role_of("tb_top") == roles.role_of("tb_g3") == roles.role_of("tb_fix_g3") == "verifier"
+    assert {"Write", "Edit"} <= set(roles.ROLE_BUILTINS["verifier"])
+    routed = []
+
+    async def to_role(self, stage, role, cfg, emit):
+        routed.append((stage.name, role))
+        return StageResult("", None, 0.0, 1, "s")
+
+    monkeypatch.setattr(roles.Team, "run", to_role)
+    ctx = StepContext(engine=engine, emit=EventBus().scoped("x"))
+    for name, tools in (("tb_g1", ["Read", "Grep", "Glob", "Write", "Edit"]), ("arch_agent", ["Read", "Write"])):
+        anyio.run(lambda: ctx.llm(Stage(name=name, system_prompt="", prompt="", cwd=tmp_path, builtin_tools=tools)))
+    assert routed == [("tb_g1", "verifier")]                                          # the architect has no Write: arch_agent ran fresh
+    assert [c.name for c in llm.calls] == ["arch_agent"] and llm.calls[0].role is None
+
+
 def test_the_pipeline_runs_in_persistent_role_sessions(tmp_path, llm):
     use_test_flow(tmp_path, "team: {enabled: true, unit_sessions: role}\n")  # (M10: every task in its role)
     engine = Engine(Project.open(tmp_path))

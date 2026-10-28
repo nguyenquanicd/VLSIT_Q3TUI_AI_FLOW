@@ -2,12 +2,12 @@
 
 Design verification on its own: a testbench built from the spec, the requirements and the configuration, never from the RTL (the RTL is a black box DUT until the
 testbench is compiled with it). Pick it with `pipeline.flow: dv`. Its front half reuses the [spec flow](spec-flow.md)'s steps (spec, parse, config: code in
-`flows/spec/`); `testplan`, `tb` and `simulate` are the flow's own (`flows/dv/<step>/`). The DV work comes from the `tb_env_dev_taidao` branch (the UVM testbench
+`flows/spec/`); `testplan`, `tb`, `prepare` and `simulate` are the flow's own (`flows/dv/<step>/`). The DV work comes from the `tb_env_dev_taidao` branch (the UVM testbench
 and the `axi4_sram_ctrl` example).
 
 ```text
-spec ─► parse ─► config ─► testplan ─► tb ─► simulate
- human   human     auto      human     auto    auto
+spec ─► parse ─► config ─► testplan ─► tb ─► prepare ─► simulate
+ human   human     auto      human     auto    auto       auto
 ```
 
 ## Two kinds of testbench
@@ -81,7 +81,47 @@ change the expected behavior.
   (`task automatic <name>()`, a `` `TC_CHECK ``, the `// TC-001 | REQ-…` first line) and compiles with the tool role `sim` against `src/rtl` (a missing RTL skips the compile, and
   `simulate` then waits). An error inside the RTL is not fixed by the testbench: it is a question. `run.sh` and `filelist.f` are generated.
 - **`simulate`**: each selected test case runs with `+TC=<id>`; `TC_RESULT <id> PASS|FAIL` (and `TC_DETAIL <id> FAIL: <msg>` for each failed check) is read from the log. No result line is a
-  FAIL, never a guess. A failure is a finding about the DUT or the testbench, never a reason to change the expected behavior.
+  FAIL, never a guess. A failure is a finding about the DUT or the testbench, never a reason to change the expected behavior. A failed test whose log names an input file
+  that exists nowhere in the project (a program list, a hex image, a golden-model export; `plain/simulate.missing_inputs`, by code) is **BLOCKED**: it is not triaged, nothing is
+  handed back (the testbench cannot make those files), the step warns with the files and `reports/dv_test_results.md` lists it. Blocked tests alone do not fail the step; their
+  other checks are judged once the inputs exist. Only the testbench's own failure lines (`TC_DETAIL`) name a missing file when the log has them: a file the
+  testbench probes and goes on without (an optional `.xskip`, the simulator's "Cannot open file" warning) is not one. A test killed at the time limit of the
+  `run` tool (`timeout_s` in config/tools.json) is **TIMEOUT**: not judged, not triaged, a warning to raise the limit; the other tests still run (a `run` tool
+  that fails without a readable error still stops the step). The tests run in parallel, `tb.sim_parallel` at once (Settings → TB "Simulations at
+  once"; empty = 80 % of the CPU cores; each run holds a simulator license); the results, the evidence and the report keep the plan's order.
+  `schemas/dv_test_results.json` has every selected test while they run (PENDING, RUNNING, then its result; `last`: its result in the run before; `est_s`: its
+  time then, the evidence's when there is no run before; `jobs`, `order`: the slots and the start order, for the time left), rewritten as each
+  test starts and ends: the **Tests** tab is live. The evidence of the run before stays until the tests are over (the TUI shows it meanwhile). A run that is
+  stopped marks its unfinished tests NOT_RUN (a killed one: the TUI does, once its process is gone).
+  **After a fix, the tests that did not pass in the run before run first** (FAIL and BLOCKED in its `dv_test_results.json`; a test that run did not finish counts with its result before: `plain/simulate.bad_before`); the others take the
+  slots that are left. When one of them that was FAIL fails again (its fix did not work), the tests that did not fail before stop (the running simulators are
+  killed through `run_role(…, stop=)`, the others are not started: NOT_RUN, no evidence, in the report) while the ones that failed before finish, so the
+  same triage gets all of them; the fix loop goes on. A cancelled run (Ctrl-C, `x` in the TUI) kills its simulators the same way instead of waiting for them.
+
+## Test programs: the `prepare` step (`flows/dv/prepare/`, kind `dv_prepare`)
+
+A test that loads software or data (an instruction / data memory image, a program list, the expected results of the ISA simulator, a model's golden export) needs
+files the testbench cannot make. `prepare` makes them, after `tb` (it reads the testbench to learn what each test loads, from which folder, in which format) and
+before `simulate`; the plain kind only (a UVM testbench loads no programs).
+
+- **The LLM** (stage `prepare`, `md/skill.md` section SYSTEM) sees the spec, the requirements, the test plan and the testbench, never the RTL (`deny_dirs`: `src/rtl`,
+  `src/sva`, `build/`). It writes `src/sw/` only: sources (assembly, C, start-up code, linker scripts), scripts, and a `Makefile`. It may read and reuse a riscv-tests
+  checkout (`~/.q3tui/tools/riscv-tests`, given as an extra folder) or write anything from scratch. It builds with the in-process tool `build`: code runs the tool role
+  `sw_build` (`make -C {src} PROG_DIR={out} RISCV_PREFIX={riscv_prefix} SPIKE={spike}`) and answers `clean` or the log's end. Its answer (`PrepareResult` in
+  `flows/rtl/lib/models.py`): `prog_dir` (under `build/`, the testbench's default folder) and, per test, the files it reads; files only you can provide are `external`, with a question.
+- **Code** builds once more and checks every file exists; a missing one gets a small fix session (`prepare_fix<n>`, the build log and the missing files, up to
+  `rtl.max_fix_attempts`). `schemas/sw_manifest.json`: per test `ready` / `missing` / `external` / `not built`, the toolchain used, the problems. The TUI tab **Programs** shows it.
+- **Tools** (`prepare/toolchain.py`): a RISC-V GCC (`riscv64-unknown-elf-gcc`, `riscv32-unknown-elf-gcc` or `riscv-none-elf-gcc`), Spike and the `dtc` it runs, and `make`.
+  Configured roles win (`riscv_gcc`, `iss`, `sw_build` in `config/tools.json`); otherwise they are looked for in `$RISCV/bin`, on `PATH` and in `~/.q3tui/tools`
+  (`$Q3TUI_HOME/tools`); dtc also next to Spike. Nothing is downloaded during a run: without the tools the LLM still writes the sources, the step warns and every
+  test is `not built`. `q3tui act riscv_tools_setup` writes what it finds into `config/tools.json` (a role already there is kept); `install=yes` first puts what is
+  missing into `~/.q3tui/tools` (the xPack GCC download; Spike and dtc built from source; riscv-tests cloned).
+- **Update, not re-run**: the step records the hashes of its inputs; with sources already there it lists what changed and asks for only that. Change requests
+  scoped to a test (`[prepare:TC-004] …`) come from `simulate`.
+
+**Blocked tests** (`plain/simulate.py`): a failed test whose log names an input file that exists nowhere in the project is BLOCKED, by code, and never triaged.
+When the flow has `prepare` and its tools, `simulate` hands the missing files to it (a change request scoped to the test, the fix loop runs prepare and simulate
+again; the same test at most `pipeline.escalate_after_repeats` times, then a warning). Files prepare listed as only yours, or a prepare without tools: a warning only.
 
 ## A failing test is judged (`flows/dv/triage.py`)
 
@@ -91,8 +131,13 @@ spec, by the playbook skill `sim-triage` (`flows/dv/skills/`; yours in `config/s
 | Verdict | What happens |
 |---|---|
 | `tb_bug` | a change request for `tb`, scoped to that test (`[tb:TC-019] …`; the UVM kind: the whole step). `simulate` marks its loop: the engine updates `tb`, then runs `simulate` again |
-| `rtl_bug` | a change request for the `rtl` step of the flow that owns the RTL (`handoff_flow`, default `rtl`), scoped to the module (`[rtl:<module>] …`). `simulate` stays failed until that flow has run; the RTL is an input of `tb`, so the next run of this flow rebuilds `tb` and `simulate` on the new RTL |
+| `rtl_bug` | a change request for the `rtl` step of the flow that owns the RTL (`handoff_flow`, default `rtl`), scoped to the module (`[rtl:<module>] …`). In an unattended run (`pipeline.auto_approve` / `auto_answer`, or `--yes`) the fix loop runs that flow within the run (`engine.hand_to_flow`, same process, lock and event log), then `tb` and `simulate` on the new RTL; bounded by the fix rounds, a fix that keeps coming back (`escalate_after_repeats`, counted only once the RTL changed after it) becomes a question, and a round after which the RTL did not change or the failures did not go down stops with the hand-off for you. Otherwise `simulate` stays failed until you run that flow |
 | `spec_issue` / `unsure` | a blocking question for you (`spec_gap` / `design_choice`); nothing is changed |
+
+A module a generator made (the rtl flow's `csr` step: `src/rtl/csr/provided.json`) is named in the triage prompt ("Generated RTL"): a bug in it is an `rtl_bug`
+like any other (the `rtl` step changes it in place, and the change is kept as a patch that the `csr` step applies again when it generates the module again:
+[rtl-flow.md](rtl-flow.md) "Generated RTL: changes as patches"), unless your spec forbids editing it or the rtl option `keep_generated` is on: then it is a
+`spec_issue` whose proposal names the choices (fix the generator, allow the change in place, revise the spec to the generated behaviour).
 
 The rounds are bounded (`max_rounds`, else `pipeline.max_fix_iterations`) and counted until the tests pass, you regenerate, or you answer. A fix handed over and coming back again after
 `pipeline.escalate_after_repeats` rounds becomes a question, not another round. The testbench is never changed to agree with the RTL: the spec is the reference. Every verdict is in
@@ -105,8 +150,9 @@ The rounds are bounded (`max_rounds`, else `pipeline.max_fix_iterations`) and co
 | `spec/`, `schemas/structured_spec.json`, `schemas/final_config.json` | The inputs of `testplan`: the spec flow's results (the testbench sees only these). |
 | `src/rtl/` | The released RTL, the DUT: read by code only, by the last phase of `tb` (top, ports, parameters, files). It comes from the [rtl flow](rtl-flow.md). |
 | `src/tb/` (`project.tb_dir`) | The testbench: plain SystemVerilog files (`tb_top.sv`, `tests/`, `run.sh`), or the UVM scaffold, the integration (wrapper, `filelist_dut.f`) and the tests. |
-| `schemas/` | plain: `test_plan.json` (`testplan`), `selected_testplan.json` (`tb`). UVM: `testplan`: `golden_manifest.json`, `verification_contract.json`, `dv_review.json`, `questions/testplan.*`. `tb`: `tb_architecture.json`, `vip_integration.json`, `dv_worklist.json`, `dv_validation.json`, `dut_integration.json`, `dv_tb_evidence.json`. `simulate`: `dv_evidence.json`, `dv_triage.json`. |
+| `schemas/` | plain: `test_plan.json` (`testplan`), `selected_testplan.json` (`tb`). UVM: `testplan`: `golden_manifest.json`, `verification_contract.json`, `dv_review.json`, `questions/testplan.*`. `tb`: `tb_architecture.json`, `vip_integration.json`, `dv_worklist.json`, `dv_validation.json`, `dut_integration.json`, `dv_tb_evidence.json`. `prepare`: `sw_manifest.json`. `simulate`: `dv_evidence.json`, `dv_triage.json`, `dv_test_results.json` (plain: every test's status, live). |
 | `reports/` | Rendered by code: `dv_review_report.md` (`testplan`); `tb_architecture.md`, `dut_conformance_report.md` (`tb`); `dv_test_results.md` (`simulate`). |
+| `src/sw/` | The test programs `prepare` writes (sources, scripts, Makefile); built into its `prog_dir` under `build/` (`build/sw/sw_build.log`). |
 | `build/sim/` | Compile and simulation logs (`tb_uvm/*.log`) |
 
 ## Independence (enforced)
@@ -127,7 +173,7 @@ in the last phase of `tb`; a spec / RTL difference is reported as a conformance 
   (`rtl_dir`, `top`, `incdirs`, `defines`, `simulator`, `smoke_test`, `param_map`, `port_map`), `semantic.scope` (`smoke` | `all`). The flat options are laid over the
   group (a value set in the dialog wins).
 - `tb:` section of `q3tui.yaml`: `max_fix_attempts` (3), `max_turns` (30), `parallel` (4); the TB tab of the settings dialog. `project.tb_dir` (default `src/tb`).
-- Tool roles (`config/tools.json`, see [flows.md](flows.md) "Tools"): plain: `sim` (compile `tb_top` with the RTL; its log is read by the `parse` of the role) and `run` (run the simv with `+TC={tc}`); UVM: `sim_uvm` (compile with the VIP and the RTL) and `run_uvm` (run one UVM test): VCS. `q3tui tools init`
+- Tool roles (`config/tools.json`, see [flows.md](flows.md) "Tools"): plain: `sim` (compile `tb_top` with the RTL; its log is read by the `parse` of the role) and `run` (run the simv with `+TC={tc}`); UVM: `sim_uvm` (compile with the VIP and the RTL) and `run_uvm` (run one UVM test): VCS; `prepare`: `sw_build` (make), `riscv_gcc`, `iss` (Spike), see above. `q3tui tools init`
   writes templates. Tests that need real VCS are skipped unless it is set up (`Q3TUI_VCS_MODULE`).
 
 ## TUI (`flows/dv/panels.py`)
@@ -141,6 +187,8 @@ Read-only tables over what the steps wrote, before the usual Files / Questions t
 | `tb` | **Test cases** | plain: each test case: selected, compile ✔ / ✘, file (`selected_testplan.json`) | a selected test case does not compile |
 | `tb` | **Regions** | each region of the testbench the agent (or you) implement: kind, owner, done (`dv_worklist.json`) | regions are still open |
 | `tb` | **Conformance** | where the released RTL differs from the contract, and the validation findings (`dut_integration.json`, `dv_validation.json`) | a finding has severity error |
+| `prepare` | **Programs** | each test that loads files: ready / missing / external / not built, the files (`sw_manifest.json`) | a test's files are not ready |
+| `simulate` | **Tests** | plain: every selected test: PENDING / RUNNING (with its time so far, yellow past 1.5× its estimate) / PASS / FAIL / TIMEOUT / BLOCKED / ERROR / NOT_RUN, the estimate (**Est.**: its time in the run before), the result of the run before, the note; a line with the counts and the time left (the estimates of the running and pending tests on the run's slots, in their start order; a test without an estimate counts as their median) (`dv_test_results.json`, rewritten as each test starts and ends; the plan's tests not run yet: `–`) | a test did not pass |
 | `simulate` | **Evidence** | each run: status read from the log, UVM_ERROR / UVM_FATAL, log (`dv_evidence.json`) | a run is not PASS |
 | `simulate` | **Triage** | each judged failure: verdict, where it goes, RTL module, summary (`dv_triage.json`) | an RTL bug, a spec issue or an unsure verdict waits for someone |
 
@@ -148,7 +196,7 @@ The tables are empty (with a note on what writes them) until the step has run.
 
 ## Gates
 
-`parse` and `testplan` are human (gate 1, and the review of the contract); `config`, `tb` and `simulate` sign themselves when their checks pass (gate modes:
+`parse` and `testplan` are human (gate 1, and the review of the contract); `config`, `tb`, `prepare` and `simulate` sign themselves when their checks pass (gate modes:
 `pipeline.gate_modes`).
 
 ## Not in this flow

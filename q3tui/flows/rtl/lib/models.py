@@ -7,7 +7,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field, field_validator
 
-from q3tui.steps.common import Question
+from q3tui.steps.common import Question, QuestionOption
 
 
 # -- rules -----------------------------------------------------------------------------------------------------------
@@ -76,6 +76,21 @@ class Verdict(BaseModel):
     module: str = Field("", description="rtl_bug: the RTL module to change")
     summary: str
     request: str = Field("", description="rtl_bug / tb_bug: what to change, concretely")
+    decision: str = Field("", description="spec_issue / unsure: the open decision it waits for, the same short key for every failure that waits for it "
+                                          "(an id the spec gives it, e.g. DEC-012, else a few words): they become one question")
+    options: list[QuestionOption] = Field(default_factory=list, description=(
+        "spec_issue / unsure: 2–4 ways to settle it, the one you recommend first. Each label is a complete decision worded as the answer itself "
+        "(it is recorded as the user's decision and acted on: what changes, where), never \"the user must decide\" or a list of choices"))
+
+    def question(self, what: str, ids: list[str] | None = None) -> Question:
+        """The question for the user (`what`: "Test" / "Smoke test"; `ids`: every failure that waits for the same decision): the options as its pick
+        list, the first one as the default."""
+        ids = ids or [self.id]
+        head = f"{what}{'s' if len(ids) > 1 else ''} {', '.join(ids)}" + (f" ({self.decision})" if self.decision and len(ids) > 1 else "")
+        opts = self.options[:4]
+        return Question(id="", question=f"{head}: {self.summary}", blocking=True, kind="spec_gap" if self.verdict == "spec_issue" else "design_choice",
+                        default_assumption=opts[0].label if opts else (self.request or "Keep the spec as written and treat the failing side as the bug."),
+                        options=opts)
 
 
 class SmokeTriage(BaseModel):
@@ -131,3 +146,21 @@ class CsrMap(BaseModel):
     req_ids: list[str] = Field(default_factory=list, description="the requirement ids the register map implements")
     summary: str = ""
     questions: list[Question] = Field(default_factory=list, description="only for what the spec leaves open about the registers")
+
+
+# -- dv flow: the test programs of the `prepare` step ------------------------------------------------------------------
+
+class TestInputs(BaseModel):
+    tc_id: str = Field(description="the test case (TC-004)")
+    files: list[str] = Field(default_factory=list, description="the files this test reads, relative to prog_dir, that `make` builds (lists, images, references)")
+    external: list[str] = Field(default_factory=list, description="files it reads that only the user can provide (a trained model's export, a firmware "
+                                                                    "image from elsewhere), relative to prog_dir")
+    note: str = ""
+
+
+class PrepareResult(BaseModel):
+    summary: str = ""
+    prog_dir: str = Field(description="the folder the testbench reads the programs from, relative to the project (as the testbench's default), "
+                                      "e.g. build/tb/programs")
+    tests: list[TestInputs] = Field(default_factory=list, description="every test case that reads input files, with what it reads")
+    questions: list[Question] = Field(default_factory=list)

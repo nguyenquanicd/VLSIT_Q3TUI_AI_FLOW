@@ -68,7 +68,20 @@ The generator's folder is `project.rtl_dir` (default `src/rtl/`; `options.rtl_di
    changed (it gets the current map and the changes, and keeps your edits).
 
 Provided modules are in the `rtl` step's plan (the parent instantiates them and is updated when they change), in the filelist, the design lint and the synthesis;
-the `rtl` step never writes, rule-checks or fixes them (a lint finding in generated code is a warning: the fix is the map's), and they are not its outputs.
+the `rtl` step never writes them from the spec nor rule-checks them, and they are not its outputs, but it **fixes their lint findings in place**: a small
+session gets the findings and the file and must keep the module name, the ports, the registers and the header (waivers such as `lint_off UNUSEDSIGNAL`
+around protocol bits the design does not use are fine). The parent's snapshot follows a generated child's ports, not its text, so such a fix updates no
+other module. The csr step remembers what the tool made (`step_meta.csr.generated`): while the tool makes the same module the fixed file stays; when the
+map changes, the new module replaces it (backed up) with those changes applied again (below). A change request scoped to a generated module
+(`[rtl:m_soc_csr] …`: the dv flow's simulation triage, or yours) is applied in place the same way (a small session that changes only the behaviour it names).
+Option `keep_generated: true` (Settings → rtl): never edit them, lint findings and change requests are warnings only.
+
+**Generated RTL: changes as patches** (`flows/rtl/lib/patches.py`). Every change to a generated module — the `rtl` step's lint fixes and change requests, an
+edit by hand — is recorded: `src/rtl/csr/patches/<module>.patch` is a unified diff from what the tool made (kept in `.q3tui/csr/<module>.sv`) to the file in
+`src/rtl`, `<module>.md` says why, change by change. When the tool makes the module again (the register map changed), the `csr` step applies the patch to
+the new file by code: each hunk where its lines are now, with GNU patch's fuzz (up to 2 context lines dropped at each end) and the tool's date lines
+matching any date. A hunk that fits nowhere goes to the `rtl` step as a change request with the reasons (`[rtl:<module>] …`). Delete the patch to drop the
+changes. A module generated before patches were kept gets its base the first time it is changed (its earlier changes are then part of the base). The csr step ends the generated file with a newline (the tool does not: `EOFNEWLINE`).
 `format` and `style_lint` leave them alone; `smoke` compiles the whole design but its writer cannot read them (`src/rtl/csr/` and every RTL file are denied).
 Generated code is never rewritten by an LLM.
 
@@ -81,6 +94,9 @@ your file is also one of its inputs, so editing it updates the modules), the `ru
 `rules` step warns about it. The judge is not shown the raw profile flags: `rules_check.describe` gives it what each on/off check does exactly
 (`forbid_wire_reg`: a declaration starting with `reg` / `wire` / `integer` is a violation, `wire` on a port is accepted; `forbid_two_state`: a signal
 declared `int` / `bit` … is a violation, a for-header loop index is not), so it does not call the rule text a contradiction of the code.
+Portability checks by code that no rule file states (always on, the generator's instructions say them): **ENM-06**, an enum member chosen by `? :`
+without a cast (`w_st_nxt = c ? ENUM_ST_A : ENUM_ST_B`) — Verilator accepts it, Icarus (the smoke compile) does not ("requires an explicit cast"). Kept
+out of `rtl_rule_default.md` on purpose: the rule text is part of every module's snapshot, and a new line there would re-check every module of every project.
 
 `rules`: one LLM stage, skills `verible-flags` and `rule-consistency`, tools `verible_help` / `verible_check_flags`. It answers with findings,
 the lint flags, the format flags, the rule→Verible mapping and the rules Verible cannot check. An `error` finding (a contradiction) fails the step
@@ -142,13 +158,13 @@ have in your `config/tools.json`. In-process MCP tools for the stages: `verible_
 ## User actions (assistant tools, `q3tui act NAME key=value`, `/act`)
 
 `rtl_rules_init` (skeleton of `config/rtl_rules.md`), `csr_tool_install`, `csr_show` (the register map and the generated ports), `style_show` (the rule stack, the flags, the last style and smoke results), `format_now [files]`.
-Settings (Settings dialog → step tabs): `csr.mode`, `csr.tool_dir`, `style_lint.max_rounds`, `smoke.max_rounds`.
+Settings (Settings dialog → step tabs): `rtl.keep_generated`, `csr.mode`, `csr.tool_dir`, `style_lint.max_rounds`, `smoke.max_rounds`.
 
 ## Known issues
 
 - **KI-1: the generated CSR module is an exception to the VLSIT RTL Design Rules (REF-003).** The APB-CSR-Generator's module has its own port names
   (`i_bus_clk`, `i_bus_rstn`, `i_reg_clk`, not `i_clk_<domain>` / `i_rst_n_<domain>`), untyped `input` / `output` declarations, `localparam PARA_*_OFFSET`
-  and a placeholder CDC synchronizer (`m_vlsi_synch`). It is treated as *provided*: not rule-checked, lint findings are warnings, `format` / `style_lint` skip it.
+  and a placeholder CDC synchronizer (`m_vlsi_synch`). It is treated as *provided*: not rule-checked, its lint findings fixed in place (or only reported with `keep_generated`), `format` / `style_lint` skip it.
   The spec's rule is "no project-local RTL exceptions": this one is accepted for now. Not decided yet: a thin wrapper that renames the ports, or recording
   it as a decision in section 20 of the spec.
 - **KI-2 (resolved): the RTL goes to `src/rtl/`, the folder every flow reads.** The generator writes `project.rtl_dir` (default `src/rtl/`), the same folder `fpga`, `asic` and `sanity` read; the working folders `csr/`, `style_lint/` and `smoke/` still live inside it, so they are in the RTL folder, not in `build/`.

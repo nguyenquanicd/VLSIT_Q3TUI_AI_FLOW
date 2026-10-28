@@ -77,10 +77,17 @@ def update_prompt(*, module: str, path: str, changes: list[str], answers: dict[s
 
 
 def fix_prompt(*, module: str, path: str, problems: str, code: str, reqs: list[str], req_text: dict[str, str] | None = None,
-               keep_ports: list[str] | None = None) -> str:
+               keep_ports: list[str] | None = None, generated: bool = False) -> str:
     """A fresh small session: the problems and the current content — never the old session. `req_text`: the module is
-    the user's imported RTL (conform it to the rules, keep what it does; tag the REQs where they are implemented)."""
+    the user's imported RTL (conform it to the rules, keep what it does; tag the REQs where they are implemented).
+    `generated`: the module comes from a generator (the csr step's APB-CSR-Generator): fix the findings only."""
     imported = ""
+    if generated:
+        imported = ("\nFile này do công cụ sinh ra (APB-CSR-Generator, bước csr): chỉ sửa đúng các vấn đề trên. GIỮ NGUYÊN tên module, "
+                    "tên/độ rộng/thứ tự port (module cha nối vào chúng), chức năng, offset và reset của thanh ghi, và dòng header. "
+                    "Không áp quy tắc đặt tên RTL của dự án cho file này. Bit của bus không dùng theo thiết kế (vd. `i_pprot`, các bit "
+                    "cao của `pwdata` khi thanh ghi hẹp hơn) thì tắt cảnh báo đúng chỗ bằng `/* verilator lint_off UNUSEDSIGNAL */` … "
+                    "`/* verilator lint_on UNUSEDSIGNAL */` quanh khai báo đó, kèm comment lý do.\n")
     if req_text is not None:
         imported = ("\nFile này là RTL của người dùng (import): GIỮ NGUYÊN chức năng, kiến trúc, timing (số chu kỳ) và tên module; "
                     "chỉ sửa để theo đúng quy tắc RTL (đổi tên tín hiệu/label/instance, khai báo, cấu trúc block…) và thêm tag REQ. "
@@ -91,9 +98,22 @@ def fix_prompt(*, module: str, path: str, problems: str, code: str, reqs: list[s
             imported += ("Module TOP: KHÔNG đổi tên port (" + ", ".join(keep_ports[:60]) + ") — đó là giao diện trong spec và trong "
                          "test của người dùng.\n")
     return (f"# Task: sửa `{module}` → `{path}`\nQ3TUI kiểm tra file và còn thấy các vấn đề sau (kết quả công cụ là sự thật, "
-            f"không tranh luận — sửa nguyên nhân, không che):\n{problems}\n{imported}\nREQ-ID phải còn được tag: {', '.join(reqs) or '(không có)'}\n\n"
+            f"không tranh luận — sửa nguyên nhân, không che):\n{problems}\n{imported}"
+            + ("" if generated else f"\nREQ-ID phải còn được tag: {', '.join(reqs) or '(không có)'}\n") + "\n"
             f"Nội dung hiện tại của file:\n```systemverilog\n{code}\n```\nSửa file bằng Edit/Write, chạy `check` tới khi `clean`, "
             "rồi trả về tóm tắt.")
+
+
+def change_generated_prompt(*, module: str, path: str, requests: list[str], code: str) -> str:
+    """A fresh small session: change requests for a module a generator made (the csr step's APB-CSR-Generator), applied in place: only the behaviour
+    they name changes, the interface and the registers stay as the tool made them."""
+    return (f"# Task: thay đổi `{module}` → `{path}` theo yêu cầu\n"
+            "File này do công cụ sinh ra (APB-CSR-Generator, bước csr) và được phép sửa trực tiếp. Yêu cầu thay đổi (áp dụng; yêu cầu nào file đã "
+            "đáp ứng thì bỏ qua):\n" + "\n".join(f"- {r}" for r in requests) + "\n\n"
+            "Chỉ đổi đúng hành vi mà yêu cầu nêu (vd. cạnh clock mà một lần ghi có hiệu lực, số wait state, thời điểm PREADY). GIỮ NGUYÊN tên module, "
+            "tên/độ rộng/thứ tự port (module cha nối vào chúng), offset, reset và kiểu truy cập của thanh ghi, và dòng header. Không áp quy tắc đặt "
+            "tên RTL của dự án cho file này.\n\n"
+            f"Nội dung hiện tại của file:\n```systemverilog\n{code}\n```\nSửa file bằng Edit/Write, chạy `check` tới khi `clean`, rồi trả về tóm tắt.")
 
 
 PLAN_SYSTEM = TEXT["PLAN_SYSTEM"]

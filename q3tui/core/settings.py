@@ -91,6 +91,29 @@ TABS: tuple[Tab, ...] = (
                 nullable=True, none_label="no limit"),
         Setting("llm.fallback_model", "Fallback model", "text", "Used when the model is overloaded (empty = none).", nullable=True),
     )),
+    Tab("team", "Team", (
+        Setting("team.enabled", "Team mode", "bool",
+                "Each role (architect: spec · designer: RTL · verifier: testbench) keeps one Claude session across tasks, "
+                "runs and restarts: it reads the project once (then from the prompt cache) and remembers why it wrote "
+                "what it wrote. Off = every LLM task starts a fresh session with only its own prompt. Reviewers always "
+                "run fresh. `q3tui team status` / `team reset` to see or restart the sessions."),
+        Setting("team.unit_sessions", "Unit sessions", "choice",
+                "Unit-level work (one module's RTL, one group of tests). own = its own small session, resumed for that "
+                "unit's fixes; role = all in the role's one session (grows to hundreds of k tokens on a large design).",
+                (("own", "own — a small session per unit (recommended)"), ("role", "role — the role's one session"))),
+        Setting("team.fork", "Fork for parallel tasks", "bool",
+                "Parallel tasks of a role fork its session at its last idle point; off = they queue for it (one at a time)."),
+        Setting("team.max_context", "Compact at (tokens)", "int",
+                "A role session compacts itself after the task that passes this many tokens (empty = Claude's own "
+                "auto-compaction when the context fills up).", nullable=True, none_label="auto"),
+        Setting("team.dedupe_chars", "Dedupe sections over (chars)", "int",
+                "Markdown sections at least this long are sent once per session, then referenced (0 = never)."),
+        Setting("pipeline.session", "Flow session", "choice",
+                "fresh = a session per stage (team mode applies); flow = one session for the whole flow (team mode does "
+                "not apply; reviewers still run fresh). Unset = what the flow file says.",
+                (("fresh", "fresh — per stage"), ("flow", "flow — one session for the whole flow")),
+                nullable=True, none_label="the flow's"),
+    )),
     Tab("spec", "Spec", (
         Setting("spec.self_review", "Self-review", "bool",
                 "A second pass that checks the draft for ambiguities and returns only its changes. Off = faster drafts."),
@@ -105,6 +128,8 @@ TABS: tuple[Tab, ...] = (
         Setting("tb.parallel", "Agents at once", "int", "How many test-case agents run in parallel."),
         Setting("tb.max_fix_attempts", "Fix rounds", "int", "Extra rounds when the plan or TB checks still fail."),
         Setting("tb.max_turns", "Turns per stage", "int", "Agent turns for one TB stage."),
+        Setting("tb.sim_parallel", "Simulations at once", "int", "How many test simulations run in parallel (each one holds a simulator "
+                "license). Empty = 80 % of the CPU cores.", nullable=True, none_label="80% of cores"),
     )),
     Tab("models", "Models per step", tuple(
         s for key, label in STEP_LABELS for s in step_model_settings(key, label))),
@@ -126,7 +151,12 @@ def tabs_for(steps: list[tuple[str, str]] | None = None, extra=()) -> tuple[Tab,
     have = {k for k, _ in rows}
     keep = [t for t in TABS if t.id != "models" and (t.id not in _STEP_TABS or t.id in have)]
     for step in dict.fromkeys(x.path.split(".")[2] for x in extra):  # a flow's step options: the step's own tab
-        keep.append(Tab(step, step, tuple(x for x in extra if x.path.split(".")[2] == step)))
+        opts = tuple(x for x in extra if x.path.split(".")[2] == step)
+        at = next((i for i, t in enumerate(keep) if t.id == step), None)  # a step with a config tab too (rtl, tb): one tab
+        if at is None:
+            keep.append(Tab(step, step, opts))
+        else:
+            keep[at] = Tab(step, keep[at].title, keep[at].settings + opts)
     models = Tab("models", "Models per step", tuple(x for k, l in [*rows, ("assistant", "Assistant")] for x in step_model_settings(k, l)))
     return (*keep, models)
 

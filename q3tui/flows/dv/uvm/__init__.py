@@ -160,7 +160,7 @@ TESTPLAN_SCHEMAS = ("golden_manifest.json", "verification_contract.json", "dv_re
 TESTPLAN_REPORTS = ("dv_review_report.md",)
 TB_SCHEMAS = ("tb_architecture.json", "vip_integration.json", "dv_worklist.json", "dv_validation.json", "dut_integration.json", TB_EVIDENCE)
 TB_REPORTS = ("tb_architecture.md", "dut_conformance_report.md")
-SIM_SCHEMAS = (EVIDENCE, "dv_triage.json")
+SIM_SCHEMAS = (EVIDENCE, "dv_triage.json", "dv_test_results.json")  # (dv_test_results.json: the plain testbench's tests, live while they run)
 SIM_REPORTS = ("dv_test_results.md",)
 
 

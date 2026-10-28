@@ -214,3 +214,23 @@ async def test_auto_gate_approves_itself_in_a_run(app, llm):
         await pilot.press("a")
         await pilot.pause()
         assert isinstance(app.screen, GateScreen) and app.screen.step == "rtl"
+
+
+async def test_settings_apply_keeps_an_empty_option_that_had_no_value():
+    from textual.app import App
+
+    from q3tui.core.settings import STEP_OPTIONS, Setting, Tab
+
+    opt = Setting(STEP_OPTIONS + "tb.max_rounds", "Fix rounds", "int", "")      # not nullable, no value yet: its default lives in the step
+    got = []
+
+    class Host(App):
+        def on_mount(self):
+            self.push_screen(SettingsScreen({opt.path: None}, tabs=(Tab("tb", "TB", (opt,)),)), got.append)
+
+    app = Host()
+    async with app.run_test(size=(140, 45)) as pilot:
+        await pilot.pause()
+        app.screen.action_apply()                                               # was: "Fix rounds needs a value"
+        await pilot.pause()
+    assert got and got[0]["changes"] == {}

@@ -117,3 +117,14 @@ def test_run_command_streams_a_flood_and_kills_the_tree(tmp_path, monkeypatch):
     assert len(log) < 10_000 and log.count("COVER_HIT c_x\n") <= base.LOG_REPEAT_KEEP
     assert "bytes of output left out" in log and "repeated line(s) left out" in log and "line_300" in log
     assert "killed after 2 s" in out
+
+
+def test_verilator_summary_line_is_not_a_finding():
+    """`-Wall` ends with "%Error: Exiting due to N warning(s)", in no file: it must not be charged to the module being linted."""
+    from q3tui.eda.tools import parse_verilator
+
+    log = ("%Warning-EOFNEWLINE: src/rtl/m_soc_csr.sv:328:21: Missing newline at end of file (POSIX 3.206).\n"
+           "%Error: src/rtl/m_x.sv:4:1: syntax error\n"
+           "%Error: Exiting due to 1 error(s)\n%Error: Exiting due to 3 warning(s)\n")
+    diags = parse_verilator(log)
+    assert [(d.severity, d.file) for d in diags] == [("warning", "src/rtl/m_soc_csr.sv"), ("error", "src/rtl/m_x.sv")]

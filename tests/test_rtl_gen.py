@@ -28,13 +28,19 @@ from tests.vlsit_fakes import register
 LINT = '''
 import sys
 files = [l.strip() for l in open(sys.argv[1]) if l.strip()]
+warns = 0
 for f in files:
     text = open(f).read()
     if "LINT_WARN" in text:
         print(f"%Warning-UNUSED: {f}:3:1: Signal is not used: 'x'")
+        warns += 1
     if "LINT_ERR" in text:
         print(f"%Error: {f}:4:1: syntax error")
+        print("%Error: Exiting due to 1 error(s)")
         sys.exit(1)
+if warns:  # like `verilator -Wall`: warnings alone fail the run, with a summary line in no file
+    print(f"%Error: Exiting due to {warns} warning(s)")
+    sys.exit(1)
 '''
 SIM = '''
 import glob, sys
@@ -233,6 +239,37 @@ def test_rule_checker_default_profile_and_universal():
     assert rules_check.req_tags("// REQ-001, REQ-12x REQ-0002") == {"REQ-001", "REQ-0002"}
 
 
+def test_rule_checker_enum_member_by_ternary_needs_a_cast():
+    """ENM-06: Icarus rejects an enum member chosen by `? :` ("This assignment requires an explicit cast"); Verilator does not."""
+    src = textwrap.dedent("""\
+        module m_x (input logic i_a, output logic o_b);
+          typedef enum logic [1:0] {ENUM_ST_IDLE = 2'd0, ENUM_ST_RUN = 2'd1} st_type_def;
+          st_type_def w_nxt, w_cast, w_ok;
+          always_comb begin : p_com_nxt
+            w_nxt = i_a ? ENUM_ST_RUN : ENUM_ST_IDLE;
+            w_cast = st_type_def'(i_a ? ENUM_ST_RUN : ENUM_ST_IDLE);
+            if (i_a) w_ok = ENUM_ST_RUN; else w_ok = ENUM_ST_IDLE;
+            o_b = (w_nxt == ENUM_ST_RUN) ? 1'b1 : 1'b0;
+          end
+        endmodule
+        """)
+    assert rules_check.enum_ternaries(rules_check.strip_comments(src)) == [5]
+    assert any(v.rule == "ENM-06" and v.line == 5 for v in rules_check.check_source(src, "m_x", rules_check.profile_for([])))
+
+
+def test_icarus_sorry_is_a_note_and_compile_errors_are_listed_once():
+    from q3tui.eda.base import ToolResult
+    from q3tui.eda.tools import parse_iverilog
+    from q3tui.flows.rtl.lib import smoke
+
+    log = "".join(f"src/rtl/m_lsu.sv:153: sorry: constant selects in always_* processes are not currently supported (all bits will be included).\n"
+                  for _ in range(30)) + "src/rtl/m_vpu_dec.sv:396: error: This assignment requires an explicit cast.\n" * 2
+    diags = parse_iverilog(log)
+    assert {d.severity for d in diags if "sorry" in d.code.lower()} == {"warning"}
+    res = ToolResult("sim", "iverilog", False, returncode=1, diagnostics=diags)
+    assert smoke.compile_errors(res) == ["src/rtl/m_vpu_dec.sv:396 This assignment requires an explicit cast."]
+
+
 def test_plan_from_spec_and_levels():
     plan = plan_from_spec(spec_json())
     assert plan.top == "top" and [[m.name for m in lv] for lv in levels(plan)] == [["leaf_a", "leaf_b"], ["top"]]
@@ -357,6 +394,21 @@ def test_rtl_unchanged_rerun_uses_no_llm_and_updates_are_targeted(tmp_path, tool
     artifacts.write(project, "final_config.json", config_json(PR_W=16), check=False)
     run_step(eng, "rtl")
     assert {c.name for c in llm.calls[n:]} == {"rtl_leaf_a", "rtl_leaf_b", "rtl_top"}
+
+
+def test_rtl_finished_modules_are_saved_before_the_step_ends(tmp_path, tools_dir, llm, monkeypatch):
+    """A killed run (no cancel path, nothing saved at the end) keeps the modules it finished: the next run skips them."""
+    eng = make_engine(tmp_path, tools_dir)
+    on_disk = {}
+
+    async def spy(stage, cfg, emit):
+        if stage.name == "rtl_top":  # the leaves are done: what a kill right now would leave in pipeline.json
+            on_disk.update(json.loads(eng.state_path.read_text())["step_meta"]["rtl"]["modules"])
+        return await llm(stage, cfg, emit)
+
+    monkeypatch.setattr(runtime, "run_stage", spy)
+    run_step(eng, "rtl")
+    assert {"leaf_a", "leaf_b"} <= set(on_disk)
 
 
 def test_rtl_synthesis_not_run_is_never_passed(tmp_path, tools_dir, llm):

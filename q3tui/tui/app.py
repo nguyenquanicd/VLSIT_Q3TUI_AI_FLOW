@@ -33,7 +33,7 @@ from q3tui.tui.commands import CommandSuggester, hint as command_hint
 from q3tui.tui.picker import Choice, ChoiceScreen, choices_from
 from q3tui.tui.screens import EFFORTS, MODELS, ConfirmScreen, ResetScreen, SettingsScreen, StatsScreen, GateScreen, HistoryInput, ModelScreen, TextPromptScreen
 from q3tui import addons
-from q3tui.tui.panels import StepLines, make_panel, safe_id
+from q3tui.tui.panels import PANEL_ERRORS, StepLines, make_panel, safe_id
 from q3tui.tui.views import fence_diagrams, SectionsPanel, SpecPanel, StepPanel
 
 from q3tui.core.icons import icon as I
@@ -172,7 +172,10 @@ class Q3TUIApp(App):
                     yield PaneToggle("▶ pipeline (p)", id="show-pipeline")
                     yield Label("", classes="panel-title", id="view-title")
                 with ContentSwitcher(id="views", initial=f"view-{safe_id(self.engine.pipeline_steps[0].name)}"):
-                    addons.load_panels(self.engine.flow)  # the flow's own panels (panels.py of its folder), if it has any
+                    try:
+                        addons.load_panels(self.engine.flow)  # the flow's own panels (panels.py of its folder), if it has any
+                    except Exception as exc:  # noqa: BLE001 - a broken panels.py: the default panels, said once mounted (see make_panel)
+                        PANEL_ERRORS.append(f"{self.engine.flow.name} flow panels.py: {type(exc).__name__}: {exc}")
                     for step in self.engine.steps:
                         yield make_panel(step)
                 yield Splitter(vertical=False, id="split-activity", min_size=3)
@@ -197,6 +200,9 @@ class Q3TUIApp(App):
         if self._watching:
             self._follow_run()
         self._w("#steps").focus()
+        if PANEL_ERRORS:  # (the plain panels stand in for these: a TUI restart loads the code they need)
+            self.notify("panel(s) not built, the plain ones are shown — restart the TUI:\n" + "\n".join(PANEL_ERRORS[:4]), severity="error", timeout=30)
+            PANEL_ERRORS.clear()
         if "pipeline_hidden" in self.layout_sizes:
             self.action_toggle_pipeline(show=False)
         # no review popup at startup: it opens when a run reaches a gate; a waiting review is

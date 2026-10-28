@@ -1,9 +1,31 @@
 {
-  "_comment": "Tool roles of the DV flow (docs/spec/dut-dv.md): compile the UVM testbench with the VIP and the RTL, run one UVM test. Written for Synopsys VCS (UVM from the VCS install; `{extra_args}` carries the VIP's compile options). `q3tui tools init` copies them into the project's config/tools.json, where they are yours to edit.",
+  "_comment": "Tool roles of the DV flow (docs/spec/dut-dv.md): compile the UVM testbench with the VIP and the RTL, run one UVM test. Written for Synopsys VCS (UVM from the VCS install; `{extra_args}` carries the VIP's compile options). `q3tui tools init` copies them into the project's config/tools.json, where they are yours to edit. The prepare step's roles: riscv_gcc (the RISC-V GCC), iss (Spike) and sw_build (make on src/sw); `q3tui act riscv_tools_setup` writes them with the paths it finds.",
   "roles": {
-    "sim_uvm": {"cmd": "vcs -full64 -sverilog -ntb_opts uvm-ieee-2020-2.0 -timescale=1ns/1ps {extra_args} -debug_access+all -top {top} -f {filelist} -Mdir={workdir}/csrc -o {workdir}/simv",
-                "parse": "vcs", "description": "compile the UVM DUT testbench, the VIP and the RTL with VCS (UVM from the VCS install)"},
-    "run_uvm": {"cmd": "{workdir}/simv +UVM_TESTNAME={test} +ntb_random_seed={seed} +UVM_NO_RELNOTES",
-                "parse": "vcs", "description": "run one UVM test; the UVM report summary gives UVM_ERROR / UVM_FATAL counts"}
+    "sim_uvm": {
+      "cmd": "vcs -full64 -sverilog -ntb_opts uvm-ieee-2020-2.0 -timescale=1ns/1ps {extra_args} -debug_access+all -top {top} -f {filelist} -Mdir={workdir}/csrc -o {workdir}/simv",
+      "parse": "vcs",
+      "description": "compile the UVM DUT testbench, the VIP and the RTL with VCS (UVM from the VCS install)"
+    },
+    "run_uvm": {
+      "cmd": "{workdir}/simv +UVM_TESTNAME={test} +ntb_random_seed={seed} +UVM_NO_RELNOTES",
+      "parse": "vcs",
+      "description": "run one UVM test; the UVM report summary gives UVM_ERROR / UVM_FATAL counts"
+    },
+    "riscv_gcc": {
+      "cmd": "riscv64-unknown-elf-gcc {args}",
+      "parse": "generic",
+      "description": "the RISC-V GCC the prepare step builds the test programs with"
+    },
+    "iss": {
+      "cmd": "spike {args}",
+      "parse": "generic",
+      "description": "Spike, the reference ISA simulator (expected results); it runs dtc"
+    },
+    "sw_build": {
+      "cmd": "make -C {src} -j8 PROG_DIR={out} RISCV_PREFIX={riscv_prefix} SPIKE={spike}",
+      "parse": "generic",
+      "timeout_s": 3600,
+      "description": "build the test programs of src/sw (the Makefile the prepare step writes): GCC images and Spike reference results into PROG_DIR"
+    }
   }
 }

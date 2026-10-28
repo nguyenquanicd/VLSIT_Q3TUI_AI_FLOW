@@ -113,12 +113,23 @@ def _spec_panel(step: "StepDef") -> StepPanel:
 register_panel("spec", _spec_panel)
 
 
+PANEL_ERRORS: list[str] = []  # panels that could not be built (the app shows them once mounted)
+
+
 def make_panel(step: "StepDef") -> StepPanel:
-    """The panel of a step: its kind's registered one, else the default."""
+    """The panel of a step: its kind's registered one, else the default. A panel that cannot be built gets the default one and its error goes
+    to `PANEL_ERRORS`: it never takes the TUI down, nor the run it started (a flow's panels.py is read from its file on every flow switch, the rest
+    of q3tui stays what the session imported: a panels.py newer than that code fails until the TUI restarts)."""
     if step.kind not in PANELS:
         try:  # the VLSIT panels register themselves on import (lightweight: no pyslang / SDK)
             from q3tui.tui import vlsit_panels  # noqa: F401
         except ImportError:
             pass
     builder = PANELS.get(step.kind or step.name)
-    return builder(step) if builder else DefaultPanel(step)
+    if builder is None:
+        return DefaultPanel(step)
+    try:
+        return builder(step)
+    except Exception as exc:  # noqa: BLE001
+        PANEL_ERRORS.append(f"{step.name}: {type(exc).__name__}: {exc}")
+        return DefaultPanel(step)

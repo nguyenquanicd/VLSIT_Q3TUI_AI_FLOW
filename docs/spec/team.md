@@ -7,6 +7,9 @@ cache at ~1/10 of the price), remembers why it wrote what it wrote, and fixes a 
 in a turn. With `session: flow` (set it in a flow file; no built-in flow does now) the whole flow is already one session
 (role `flow`, [flows.md](flows.md) "Sessions") and team routing does not apply.
 
+Switch it on in `q3tui.yaml` (`team: {enabled: true}`) or in the TUI's Settings → **Team** tab (also
+`unit_sessions`, `fork`, `max_context`, `dedupe_chars`, and the flow's session mode `pipeline.session`).
+
 ## The roles
 
 `llm/roles.py` routes a task by its stage name (`role_of`):
@@ -33,7 +36,7 @@ Deterministic work stays code, offered as tools and run again as the gate after 
 |---|---|
 | **Init once** | a role's first task is preceded by one init turn: the role charter (system prompt, fixed for the role) and a project brief (what the project is, where things are, what the role may read and write, its notes file). Every later task is a new message in the same session |
 | **Tasks are messages** | a task's instructions (what would be its stage system prompt) and its brief are sent as the message. Instructions already sent in this session are replaced by a reference; so is every large block the session has already seen unchanged |
-| **Stable prefix** | the system prompt is the role charter; the tool list is the union of the role's tools, in a fixed order, starting with `notes` and `submit` (a tool outside the current task answers "not available in this task"). Every task returns its result through the one `submit` tool — the task's schema is in its message and code validates it at once — instead of a per-task structured-output schema, which would change the tool list. Only roles whose tasks write files (modeler, designer, flow) are offered Write / Edit; reading (Read, Grep, Glob) is always allowed inside the role's area. The prompt cache keeps working across tasks |
+| **Stable prefix** | the system prompt is the role charter; the tool list is the union of the role's tools, in a fixed order, starting with `notes` and `submit` (a tool outside the current task answers "not available in this task"). Every task returns its result through the one `submit` tool — the task's schema is in its message and code validates it at once — instead of a per-task structured-output schema, which would change the tool list. Only roles whose tasks write files (modeler, designer, verifier — the dv flow's testbench writers —, flow) are offered Write / Edit (a task that needs a tool its role's session is not offered runs in a session of its own, `StepContext.llm`); reading (Read, Grep, Glob) is always allowed inside the role's area. The prompt cache keeps working across tasks |
 | **One task at a time; forks** | a role's tasks queue for its session. With `team.fork: true` (default) a task that starts while the session is busy forks it at its last idle point (`resume_session_at` = the last message of its last finished task), so it knows everything the role knew then and never an unfinished task; without a known idle point (after a compaction, before the first task) tasks queue |
 | **Safety net** | a task that fails in the role's session (e.g. its result never validates) is done once more in a fresh session with its original prompt; the role's session is told so with its next task |
 | **Unit-level work in its own sessions** | `team.unit_sessions: own` (default): a module's RTL or a group of tests (`roles.UNIT_LEVEL`) runs in its own small session, resumed for that unit's fixes; the role session keeps the rest. `role` = everything in the role's one session (it grows large) |

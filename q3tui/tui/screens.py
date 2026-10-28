@@ -239,7 +239,9 @@ class SettingsScreen(ModalScreen[dict | None]):
         raw = self._read()
         try:
             by_path = self._by_path()
-            values = {p: coerce(by_path[p], v) for p, v in raw.items()}
+            # a field left empty that had no value is unchanged (an option whose default lives elsewhere), not a missing value
+            values = {p: None if self.values.get(p) is None and (v is None or (isinstance(v, str) and not v.strip()))
+                      else coerce(by_path[p], v) for p, v in raw.items()}
         except ValueError as exc:
             self.query_one("#settings-error", Static).update(str(exc))
             return
