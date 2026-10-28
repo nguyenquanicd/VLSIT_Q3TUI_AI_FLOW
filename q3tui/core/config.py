@@ -196,6 +196,12 @@ class TBConfig(_Strict):
     max_turns: int = Field(30, ge=5, le=400)  # agent turns per TB stage
     tests_per_agent: int = Field(6, ge=1, le=100)  # test cases per agent (agents run in parallel)
     parallel: int = Field(4, ge=1, le=32)  # test-case agents at once
+    sim_parallel: int | None = Field(None, ge=1, le=256)  # simulations at once (`simulate`); None = 80 % of the CPU cores (`sim_jobs`)
+
+    def sim_jobs(self) -> int:
+        import os
+
+        return self.sim_parallel or max(1, int((os.cpu_count() or 1) * 0.8))
 
 
 class TeamConfig(_Strict):

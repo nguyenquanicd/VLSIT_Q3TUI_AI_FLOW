@@ -183,19 +183,21 @@ def available(tools: ToolSet, name: str) -> bool:
     return env.which(binary) is not None or Path(binary).is_file()
 
 
-def run_role(tools: ToolSet, name: str, workdir: Path, variables: dict[str, object], log_name: str | None = None) -> ToolResult:
-    """Run the tool of a role: command from the tools file, log kept in `workdir`, diagnostics parsed by code."""
+def run_role(tools: ToolSet, name: str, workdir: Path, variables: dict[str, object], log_name: str | None = None, stop=None) -> ToolResult:
+    """Run the tool of a role: command from the tools file, log kept in `workdir`, diagnostics parsed by code. `stop` (a threading.Event):
+    set, it kills the tool (`stopped` in the result)."""
     role = tools.role(name)
     argv = render(role, variables)
     cwd = Path(role.cwd.format(**{k: v for k, v in variables.items() if isinstance(v, (str, Path))})) if role.cwd else workdir
     env = ToolEnv(tools.env.setup_script, tuple(dict.fromkeys([*tools.env.modules, *role.modules])), tools.env.modules_init)
     log = workdir / (log_name or f"{name}.log")
-    rc, out, secs, timed_out = run_command(argv, cwd, log, role.timeout_s or tools.timeout_s, env, role.env)
+    rc, out, secs, timed_out = run_command(argv, cwd, log, role.timeout_s or tools.timeout_s, env, role.env, stop=stop)
+    stopped = rc is None and not timed_out and stop is not None and stop.is_set()
     diags = parse_log(role.parse, out)
     ok = (rc in role.ok_returncodes) and not timed_out and not any(d.severity == "error" for d in diags)
     n_err, n_warn = sum(d.severity == "error" for d in diags), sum(d.severity == "warning" for d in diags)
     return ToolResult(name, binary_of(role), ok, argv, rc, secs, str(log), diags, timed_out,
-                      f"{name}: rc={rc}, {n_err} error(s), {n_warn} warning(s)")
+                      f"{name}: rc={rc}, {n_err} error(s), {n_warn} warning(s)", stopped)
 
 
 class ToolBroken(StepFailed):
@@ -276,14 +278,18 @@ _SIM_FAIL = re.compile(r"(?:^|\s)(?P<sev>ERROR|FATAL|FAIL(?:ED)?)\b[:\s]*(?P<msg
 
 
 def _sev(word: str) -> str:
-    return "error" if word.lower() in ("error", "fatal", "sorry", "fail", "failed") else "warning"
+    # (Icarus' "sorry: … not currently supported (…)" is a note: it goes on, and counts its real errors on their own lines)
+    return "error" if word.lower() in ("error", "fatal", "fail", "failed") else "warning"
+
+
+_VERILATOR_SUMMARY = re.compile(r"^%Error: Exiting due to \d+ (?:warning|error)\(s\)")
 
 
 def parse_verilator(text: str) -> list[ToolDiagnostic]:
     out = []
     for line in text.splitlines():
         m = _VERILATOR.match(line)
-        if m:
+        if m and not _VERILATOR_SUMMARY.match(line):  # (the count of the findings above, in no file: not a finding of its own)
             out.append(ToolDiagnostic(_sev(m["sev"]), m["code"] or m["sev"].upper(), m["msg"][:500], m["file"], int(m["line"]) if m["line"] else None))
     return out
 

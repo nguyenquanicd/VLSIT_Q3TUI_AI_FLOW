@@ -235,12 +235,81 @@ def test_the_csr_check_tool_validates_and_lists_the_ports(csr_proj):
     assert "not in the expected structure" in call({"registers": "nope"})
 
 
+def test_a_changed_generated_module_is_kept_and_its_patch_is_applied_to_the_next_one(csr_proj):
+    """The rtl step changes the generated module (lint fixes, change requests): the csr step keeps that file while the tool makes the same module,
+    and when the map changes the new module gets the changes again from their patch (src/rtl/csr/patches/), by code."""
+    from q3tui.flows.rtl.lib import patches
+
+    root, eng, fake = csr_proj
+    run_csr(eng)
+    rtl = root / "src" / "rtl"
+    sv = rtl / "m_blk_csr.sv"
+    assert sv.read_text().endswith("endmodule\n")                                   # (a newline at the end: no EOFNEWLINE)
+    assert patches.base(eng.project, "m_blk_csr") == sv.read_text()                  # what the tool made: the base of the patch
+    fixed = sv.read_text().replace("  input i_bus_rstn,\n", "  /* verilator lint_off UNUSEDSIGNAL */\n  input i_bus_rstn,\n")
+    sv.write_text(fixed)
+    patches.record(eng.project, rtl, "m_blk_csr", ["lint fix: i_bus_rstn is unused"])  # (as the rtl step does after a change)
+    assert "+  /* verilator lint_off UNUSEDSIGNAL */" in patches.patch_path(rtl, "m_blk_csr").read_text()
+    assert "lint fix: i_bus_rstn is unused" in patches.notes_path(rtl, "m_blk_csr").read_text()
+    run_csr(eng)                                                                     # same map: the tool makes the same module
+    assert sv.read_text() == fixed
+    seen = []
+    eng.bus.subscribe(lambda ev: seen.append(ev))
+    mp = rtl / "csr" / "csr_map.json"
+    data = json.loads(mp.read_text())
+    data["registers"].append({"name": "cfg", "offset": "0x8", "fields": [{"name": "k", "msb": 0, "lsb": 0, "type": "rw"}]})
+    mp.write_text(json.dumps(data))
+    run_csr(eng)                                                                     # your new map: a new module, with the change applied again
+    assert "lint_off UNUSEDSIGNAL" in sv.read_text() and "o_cfg_k" in sv.read_text()
+    assert any("applied to it" in str(getattr(ev, "data", ev)) for ev in seen) and not eng.state.feedback.get("rtl")
+    assert "o_cfg_k" in patches.base(eng.project, "m_blk_csr") and "lint_off" not in patches.base(eng.project, "m_blk_csr")
+    assert "+  /* verilator lint_off UNUSEDSIGNAL */" in patches.patch_path(rtl, "m_blk_csr").read_text()   # (the patch, now against the new module)
+    assert "generated again" in patches.notes_path(rtl, "m_blk_csr").read_text()
+
+
+def test_a_change_that_no_longer_fits_the_new_module_goes_to_the_rtl_step(csr_proj):
+    from q3tui.flows.rtl.lib import patches
+
+    root, eng, fake = csr_proj
+    run_csr(eng)
+    rtl = root / "src" / "rtl"
+    sv = rtl / "m_blk_csr.sv"
+    gen = sv.read_text()
+    patches.save_base(eng.project, "m_blk_csr", gen.replace("endmodule\n", "  // OLD LINE A\n  // OLD LINE B\n  // OLD LINE C\nendmodule\n"))
+    sv.write_text(gen.replace("endmodule\n", "  // OLD LINE A\n  // NEW LINE\n  // OLD LINE C\nendmodule\n"))  # (a change to lines the next module has no more)
+    mp = rtl / "csr" / "csr_map.json"
+    data = json.loads(mp.read_text())
+    data["registers"].append({"name": "cfg", "offset": "0x8", "fields": [{"name": "k", "msb": 0, "lsb": 0, "type": "rw"}]})
+    mp.write_text(json.dumps(data))
+    run_csr(eng)
+    assert "NEW LINE" not in sv.read_text() and "o_cfg_k" in sv.read_text()
+    (req,) = eng.state.feedback["rtl"]
+    assert req.startswith("[rtl:m_blk_csr]") and "no longer fit" in req and "+  // NEW LINE" in req and "m_blk_csr.md" in req
+
+
+def test_a_patch_applies_where_its_lines_moved_to_and_the_tool_s_date_is_no_change():
+    from q3tui.flows.rtl.lib import patches
+
+    base = "// Date and time: 2026-01-01 10:00\nmodule m (\n  input a,\n  input b\n);\n  assign x = a;\nendmodule\n"
+    fixed = base.replace("  assign x = a;\n", "  assign x = a & b;\n")
+    p = patches.diff(base, fixed, "m")
+    assert patches.diff(base, base.replace("2026-01-01 10:00", "2026-02-02 11:00"), "m") == ""   # the date alone is no change
+    new = "// header line\n" + base.replace("2026-01-01 10:00", "2026-10-28 21:00").replace("  input b\n", "  input b,\n  input c\n")
+    out, failed = patches.apply(new, p)                                             # (a line more above it, a port more next to it, another date)
+    assert not failed and "  assign x = a & b;\n" in out and "2026-10-28 21:00" in out and "input c" in out and out.startswith("// header line\n")
+    out, failed = patches.apply(new.replace("  assign x = a;\n", "  assign x = 0;\n"), p)
+    assert len(failed) == 1 and "+  assign x = a & b;" in failed[0] and "assign x = 0;" in out
+
+
 # -- the rtl step with a provided module ---------------------------------------------------------------------------------
 
-def test_the_rtl_step_instantiates_the_provided_module_and_never_writes_it(tmp_path, tools_dir, llm):
+GEN = "module m_blk_csr (input i_bus_clk);\n  m_vlsi_synch u_s ();\n  // LINT_WARN\nendmodule\n"
+
+
+def _provided_project(tmp_path, tools_dir, opts: str = "") -> Engine:
     from q3tui.flows.spec.lib import artifacts
 
-    (tmp_path / "q3tui.yaml").write_text("pipeline: {flow: rtl, step_options: {rtl: {rules: [rtl_rule.md]}}}\n" + tools_yaml(tools_dir))
+    (tmp_path / "q3tui.yaml").write_text(f"pipeline: {{flow: rtl, step_options: {{rtl: {{rules: [rtl_rule.md]{opts}}}}}}}\n" + tools_yaml(tools_dir))
     (tmp_path / "spec").mkdir()
     (tmp_path / "spec" / "spec.md").write_text("# demo spec\n")
     project = Project.open(tmp_path)
@@ -248,13 +317,86 @@ def test_the_rtl_step_instantiates_the_provided_module_and_never_writes_it(tmp_p
     artifacts.write(project, "final_config.json", config_json(), check=False)
     rtl = tmp_path / "src" / "rtl"
     rtl.mkdir(parents=True)
-    gen = "module m_blk_csr (input i_bus_clk);\n  m_vlsi_synch u_s ();\n  // LINT_WARN\nendmodule\n"
-    (rtl / "m_blk_csr.sv").write_text(gen)
+    (rtl / "m_blk_csr.sv").write_text(GEN)
     (rtl / "m_vlsi_synch.sv").write_text("module m_vlsi_synch; endmodule\n")
     (rtl / "csr").mkdir()
     (rtl / "csr" / "provided.json").write_text(json.dumps({"m_blk_csr": {"kind": "csr", "parent": "top", "req_ids": ["REQ-001"], "instances": ["m_vlsi_synch"]},
                                                           "m_vlsi_synch": {"kind": "model", "parent": "m_blk_csr", "req_ids": [], "instances": []}}))
-    eng = Engine(project)
+    return Engine(project)
+
+
+def test_the_rtl_step_fixes_the_lint_of_the_provided_module_in_place(tmp_path, tools_dir, llm, monkeypatch):
+    """Generated code is never written from the spec nor rule-checked, but its lint findings are fixed in place (name and ports kept)."""
+    eng = _provided_project(tmp_path, tools_dir)
+    rtl = tmp_path / "src" / "rtl"
+    eng.state.step("csr").outputs["src/rtl/m_blk_csr.sv"] = "old"  # (as the csr step recorded it)
+
+    async def spy(stage, cfg, emit):
+        if stage.name == "rtl_m_blk_csr":
+            stage.write_files[0].write_text(stage.write_files[0].read_text().replace("  // LINT_WARN\n", ""))
+            from q3tui.flows.rtl.rtl.gen import VModuleResult
+            from q3tui.llm.runtime import StageResult
+            return StageResult("", VModuleResult(summary="fixed"), 0.01, 2, "s")
+        return await llm(stage, cfg, emit)
+
+    monkeypatch.setattr(runtime, "run_stage", spy)
+    anyio.run(lambda: eng.run_step(eng.by_name["rtl"]))
+    text = (rtl / "m_blk_csr.sv").read_text()
+    assert "LINT_WARN" not in text and text.startswith("module m_blk_csr (input i_bus_clk);")
+    assert not [c for c in llm.calls if c.name == "rtl_m_vlsi_synch"]               # clean: nothing to fix
+    assert eng.state.step("csr").outputs["src/rtl/m_blk_csr.sv"] != "old"           # the csr step's output, fixed here: not "edited"
+    assert eng.state.steps["rtl"].status == "done"
+
+
+def test_a_change_request_for_a_generated_module_is_applied_in_place_and_kept_as_a_patch(tmp_path, tools_dir, llm, monkeypatch):
+    """A simulation's RTL fix for the generated module ([rtl:m_blk_csr] …): a small session changes it in place; the patch and its why are recorded."""
+    from q3tui.flows.rtl.lib import patches
+
+    eng = _provided_project(tmp_path, tools_dir)
+    rtl = tmp_path / "src" / "rtl"
+    patches.save_base(eng.project, "m_blk_csr", GEN)
+    eng.request_change("rtl", "[rtl:m_blk_csr] commit a write at the edge ending the ACCESS cycle with PREADY = 1")
+    prompts = []
+
+    async def spy(stage, cfg, emit):
+        if stage.name == "rtl_m_blk_csr":
+            prompts.append(stage.prompt)
+            f = stage.write_files[0]
+            f.write_text(f.read_text().replace("  // LINT_WARN\n", "") .replace("endmodule", "  // commit at PREADY\nendmodule"))
+            from q3tui.flows.rtl.rtl.gen import VModuleResult
+            from q3tui.llm.runtime import StageResult
+            return StageResult("", VModuleResult(summary="changed"), 0.01, 2, "s")
+        return await llm(stage, cfg, emit)
+
+    monkeypatch.setattr(runtime, "run_stage", spy)
+    anyio.run(lambda: eng.run_step(eng.by_name["rtl"]))
+    assert "commit a write at the edge ending the ACCESS cycle" in prompts[0] and "GIỮ NGUYÊN tên module" in prompts[0]
+    assert "// commit at PREADY" in (rtl / "m_blk_csr.sv").read_text()
+    assert "+  // commit at PREADY" in patches.patch_path(rtl, "m_blk_csr").read_text()
+    assert "change request: commit a write at the edge ending the ACCESS cycle" in patches.notes_path(rtl, "m_blk_csr").read_text()
+
+
+def test_with_keep_generated_a_change_request_for_a_generated_module_is_only_reported(tmp_path, tools_dir, llm):
+    eng = _provided_project(tmp_path, tools_dir, ", keep_generated: true")
+    eng.request_change("rtl", "[rtl:m_blk_csr] commit a write at the edge ending the ACCESS cycle with PREADY = 1")
+    seen = []
+    eng.bus.subscribe(lambda ev: seen.append(ev))
+    anyio.run(lambda: eng.run_step(eng.by_name["rtl"]))
+    assert (tmp_path / "src" / "rtl" / "m_blk_csr.sv").read_text() == GEN and not [c for c in llm.calls if "m_blk_csr" in c.name]
+    assert any("not applied" in str(getattr(ev, "data", ev)) for ev in seen)
+
+
+def test_the_fix_prompt_of_a_generated_module_keeps_its_interface():
+    from q3tui.flows.rtl.rtl import task
+
+    p = task.fix_prompt(module="m_blk_csr", path="src/rtl/m_blk_csr.sv", problems="- lint warning", code="module m;", reqs=[], generated=True)
+    assert "GIỮ NGUYÊN tên module" in p and "lint_off UNUSEDSIGNAL" in p and "REQ-ID" not in p
+
+
+def test_the_rtl_step_instantiates_the_provided_module_and_never_writes_it(tmp_path, tools_dir, llm):
+    """Option keep_generated: the module stays as the generator made it (its lint findings are reported only)."""
+    eng = _provided_project(tmp_path, tools_dir, ", keep_generated: true")
+    rtl, gen = tmp_path / "src" / "rtl", GEN
     anyio.run(lambda: eng.run_step(eng.by_name["rtl"]))
     assert not [c for c in llm.calls if "m_blk_csr" in c.name or "m_vlsi_synch" in c.name]  # no stage writes or fixes them
     assert (rtl / "m_blk_csr.sv").read_text() == gen

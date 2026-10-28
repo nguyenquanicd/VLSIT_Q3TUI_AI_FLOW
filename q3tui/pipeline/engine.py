@@ -991,6 +991,69 @@ class Engine:
         stopping at every gate for a human to press Approve."""
         return bool(self.project.cfg.pipeline.auto_confirm_reviews or self.auto_reviews())
 
+    def unattended_run(self) -> bool:
+        """This run goes on without you (`pipeline.auto_approve` / `auto_answer`, or --yes): a step may then have the flow that owns a fix run
+        within this run (`hand_to_flow`) instead of stopping for you to run it."""
+        return self.auto_reviews()
+
+    def hand_to_flow(self, step: str, flow: str) -> None:
+        """`step` handed fixes to another flow (already in that flow's change requests) and wants to look again once it has run: the fix loop of
+        this run runs that flow, then this flow again (its steps that read the other flow's outputs are stale by then). Mark the step's loop too."""
+        meta = self.state.step_meta.setdefault(step, {})
+        meta["run_flows"] = list(dict.fromkeys([*meta.get("run_flows", []), flow]))
+        meta["loop"] = True
+
+    async def _run_flow(self, name: str, origin: str, yes: bool) -> Outcome:
+        """Run the flow `name` within this run (same process, lock and event log), from the fix loop (`hand_to_flow`)."""
+        from q3tui import flows
+
+        self.save()  # (the other engine reads and writes the same pipeline.json)
+        other = Engine(self.project, self.bus, flow=flows.load_flow(name, self.project.root))
+        other._yes, other._run_id = self._yes, getattr(self, "_run_id", None)
+        self.bus.emit("log", origin, message=f"fix loop: running the {name} flow for the fixes handed to it, then this flow again")
+        try:
+            outcome = await other._drive(other._range(None, None, None), yes, set())
+        except StepFailed as exc:
+            self.bus.emit("error", message=f"the {name} flow (run for {origin}'s fixes): {exc}")
+            outcome = "failed"
+        except Exception as exc:  # noqa: BLE001 - reported, the state is saved
+            self.bus.emit("error", message=f"the {name} flow (run for {origin}'s fixes): {describe_error(exc)}")
+            outcome = "failed"
+        self.reload()
+        self.bus.emit("log", origin, message=f"fix loop: the {name} flow ended '{outcome}'")
+        return outcome
+
+    async def _drive(self, selected: list[str], yes: bool, regenerate: set[str]) -> Outcome:
+        """Run the selected steps, the decisions they send upstream and the fix loop, until done, a gate or an error."""
+        outcome = await self._run(selected, yes, regenerate)
+        for _ in range(len(self.steps)):  # a gate sent decisions to an earlier step: update it, then go on
+            if outcome != "restart":
+                break
+            outcome = await self._run(selected, yes, set())
+        if outcome == "restart":
+            outcome = "complete"
+        # the fix loop: a step dispatched fixes (verify) -> the owning steps update, then it looks again
+        # (bounded by pipeline.max_fix_iterations; a review gate or a failure stops it); fixes handed to another flow: that flow runs first
+        while outcome in ("complete", "unavailable", "blocked") and (
+                looping := [n for n, m in self.state.step_meta.items() if isinstance(m, dict) and m.get("loop")]):
+            other_flows: dict[str, str] = {}
+            for name in looping:
+                meta = self.state.step_meta[name]
+                meta["loop"] = False
+                for f in meta.pop("run_flows", []):
+                    other_flows.setdefault(f, name)
+            self.save()
+            for name in looping:
+                self.bus.emit("log", name.split(":")[0], message="fix loop: updating the steps that got fixes, then running again")
+            for f, origin in other_flows.items():
+                ended = await self._run_flow(f, origin, yes)
+                if ended not in ("complete",):
+                    return "failed" if ended == "failed" else ended  # (it stopped at a gate / a missing input / an error: yours to look at)
+            outcome = await self._run(selected, yes, set())
+            while outcome == "restart":
+                outcome = await self._run(selected, yes, set())
+        return outcome
+
     async def _run_locked(self, start, stop, only, yes, regenerate) -> Outcome:
         self._yes = bool(yes)
         regenerate = regenerate or set()
@@ -1002,25 +1065,7 @@ class Engine:
         outcome: Outcome = "complete"
         self._apply_old_deferred()
         try:
-            outcome = await self._run(selected, yes, regenerate)
-            for _ in range(len(self.steps)):  # a gate sent decisions to an earlier step: update it, then go on
-                if outcome != "restart":
-                    break
-                outcome = await self._run(selected, yes, set())
-            if outcome == "restart":
-                outcome = "complete"
-            # the fix loop: a step dispatched fixes (verify) -> the owning steps update, then it looks again
-            # (bounded by pipeline.max_fix_iterations; a review gate or a failure stops it)
-            while outcome in ("complete", "unavailable", "blocked") and (
-                    looping := [n for n, m in self.state.step_meta.items() if isinstance(m, dict) and m.get("loop")]):
-                for name in looping:
-                    self.state.step_meta[name]["loop"] = False
-                self.save()
-                for name in looping:
-                    self.bus.emit("log", name.split(":")[0], message="fix loop: updating the steps that got fixes, then running again")
-                outcome = await self._run(selected, yes, set())
-                while outcome == "restart":
-                    outcome = await self._run(selected, yes, set())
+            outcome = await self._drive(selected, yes, regenerate)
         except StepFailed as exc:
             self.bus.emit("error", message=str(exc))
             outcome = "failed"
@@ -1102,8 +1147,8 @@ class Engine:
                 self._accept_defaults(step, open_q)
                 self.save()
                 self.bus.emit("log", step.name, message=f"no review gate: accepted the default for {', '.join(q['id'] for q in open_q)}")
-        if view.gate != "open":
-            return True
+        if view.gate != "open" or view.status not in ("done", "user"):
+            return True  # (a step whose fixes went back upstream is pending again: the fix loop updates those steps and runs it again; nothing to approve now)
         mode = self.gate_mode(step.name)  # this gate's own policy, on top of the project-wide switches
         auto_answer = self.project.cfg.pipeline.auto_answer or mode == "auto_answer"
         if auto_answer and getattr(step, "proposes_only", False):

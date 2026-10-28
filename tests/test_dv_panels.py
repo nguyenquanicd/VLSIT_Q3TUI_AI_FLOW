@@ -83,7 +83,7 @@ async def test_the_simulate_step_has_the_evidence(proj):
         await pilot.pause()
         tabs = _tabs(app, "simulate")
         await pilot.pause()
-        assert set(tabs) == {"evidence", "triage"}
+        assert set(tabs) == {"tests", "evidence", "triage"}
         ev = _rows(tabs["evidence"])
         assert ev["run-001"][3] == "PASS" and ev["run-002"][3] == "FAIL" and ev["run-002"][4] == "2/0"
         assert panels._evidence_urgent(app) == 1  # a run that failed
@@ -141,6 +141,61 @@ async def test_the_plain_testbench_has_its_plan_its_coverage_and_its_compile_res
         assert panels._case_hint(app) == 1
 
 
+async def test_the_simulate_step_lists_every_test_with_its_status_while_the_tests_run(plain):
+    import os
+    import time
+
+    from q3tui.flows.dv import panels
+
+    (plain.root / "schemas" / "selected_testplan.json").write_text(json.dumps({"test_cases": [
+        {"tc_id": f"TC-00{i}", "name": f"t{i}", "req_ids": [], "selected": True} for i in range(1, 5)]}))
+    live = {"pid": os.getpid(), "ended": None, "jobs": 1, "order": ["TC-001", "TC-002", "TC-003"], "tests": [
+        {"tc_id": "TC-001", "name": "t1", "status": "PASS", "duration_s": 75.0, "last": "FAIL", "log": "build/sim/tb/run_TC-001.log", "est_s": 70.0},
+        {"tc_id": "TC-002", "name": "t2", "status": "RUNNING", "t0": time.time() - 30, "last": "PASS", "est_s": 90.0},
+        {"tc_id": "TC-003", "name": "t3", "status": "PENDING", "last": None, "est_s": 120.0}]}
+    (plain.root / "schemas" / "dv_test_results.json").write_text(json.dumps(live))
+    app = Q3TUIApp(plain)
+    async with app.run_test(size=(170, 50)) as pilot:
+        await pilot.pause()
+        tabs = _tabs(app, "simulate")
+        await pilot.pause()
+        assert list(tabs)[0] == "tests"
+        rows = _rows(tabs["tests"])
+        assert rows["TC-001"][2:6] == ["PASS", "1:15", "1:10", "FAIL"] and rows["TC-002"][2] == "RUNNING" and rows["TC-002"][3].startswith("0:3")
+        assert rows["TC-002"][4] == "1:30" and rows["TC-003"][2] == "PENDING" and rows["TC-004"][2] == "–"     # (TC-004: in the plan, not in this run)
+        # time left: TC-002 has 1 min to go, then TC-003 2 min, on the one slot
+        assert panels._run_summary(app) == "4 tests: 1 PASS · 1 RUNNING · 1 PENDING · 1 not run yet · ≈ 3 min left" and panels._run_urgent(app) == 0
+        assert "run_TC-001.log" in panels._run_detail(app, "TC-001") and "estimate: 1:30" in panels._run_detail(app, "TC-002")
+    (plain.root / "schemas" / "dv_test_results.json").write_text(json.dumps({**live, "pid": 2 ** 22 + 12345}))  # (the run's process is gone: killed)
+    app = Q3TUIApp(plain)
+    async with app.run_test(size=(170, 50)) as pilot:
+        await pilot.pause()
+        rows = _rows(_tabs(app, "simulate")["tests"])
+        await pilot.pause()
+        assert rows["TC-002"][2] == "NOT_RUN" and rows["TC-003"][2] == "NOT_RUN" and panels._run_urgent(app) == 2
+
+
+async def test_a_panel_that_cannot_be_built_gets_the_plain_one_and_the_tui_stays_up(plain, monkeypatch):
+    from q3tui.tui import vlsit_panels
+    from q3tui.tui.panels import DefaultPanel
+
+    real = vlsit_panels.TabSpec
+
+    def old_tabspec(*a, summary=None, **kw):  # (a TUI session that imported vlsit_panels before TabSpec had `summary`, reading a newer panels.py)
+        if summary is not None:
+            raise TypeError("TabSpec.__init__() got an unexpected keyword argument 'summary'")
+        return real(*a, **kw)
+
+    monkeypatch.setattr(vlsit_panels, "TabSpec", old_tabspec)
+    app = Q3TUIApp(plain)
+    said = []
+    monkeypatch.setattr(app, "notify", lambda msg, **kw: said.append(msg))
+    async with app.run_test(size=(170, 50)) as pilot:
+        await pilot.pause()
+        assert type(app._panel("simulate")) is DefaultPanel and type(app._panel("tb")) is not DefaultPanel
+        assert len(said) == 1 and "simulate: TypeError" in said[0] and "restart the TUI" in said[0]
+
+
 async def test_the_simulate_step_shows_the_verdicts(plain):
     from q3tui.flows.dv import panels
 
@@ -152,7 +207,7 @@ async def test_the_simulate_step_shows_the_verdicts(plain):
         await pilot.pause()
         tabs = _tabs(app, "simulate")
         await pilot.pause()
-        assert set(tabs) == {"evidence", "triage"}
+        assert set(tabs) == {"tests", "evidence", "triage"}
         rows = _rows(tabs["triage"])
         assert rows["TC-019"][1:3] == ["tb_bug", "→ tb"] and rows["TC-020"][1:4] == ["rtl_bug", "→ rtl flow", "m_core"]
         assert panels._verdict_urgent(app) == 1  # the RTL bug waits for the rtl flow

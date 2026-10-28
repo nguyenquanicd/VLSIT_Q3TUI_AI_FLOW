@@ -167,6 +167,11 @@ def stable(text: str) -> str:
     return _VOLATILE.sub("", text)
 
 
+def volatile(line: str) -> bool:
+    """A line of the tool's header that changes on every run (user name, date)."""
+    return bool(_VOLATILE.match(line))
+
+
 _PORT = re.compile(r"^\s*(input|output|inout)\s*(\[[^\]]+\])?\s*(\w+)\s*,?\s*$", re.M)
 
 

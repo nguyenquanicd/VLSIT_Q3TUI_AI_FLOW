@@ -77,7 +77,8 @@ def run_tb(ts, project_root: Path, work: Path) -> Outcome:
 
 def compile_errors(res) -> list[str]:
     errs = [d for d in res.diagnostics if d.severity == "error"]
-    return [f"{d.file}:{d.line} {d.message}" if d.file else d.message for d in errs] or ([] if res.ok else [res.summary])
+    # each once (a tool repeats one per elaborated instance): the list is cut for the report and the triage
+    return list(dict.fromkeys(f"{d.file}:{d.line} {d.message}" if d.file else d.message for d in errs)) or ([] if res.ok else [res.summary])
 
 
 def show_outcome(out: Outcome) -> str:

@@ -24,8 +24,9 @@ def test_the_dv_flow_is_testplan_testbench_simulate_and_needs_the_option_group()
     from q3tui import flows
 
     flow = flows.load_flow("dv")
-    assert [s.id for s in flow.steps] == ["spec", "parse", "config", "testplan", "tb", "simulate"] and flows.validate(flow) == []
-    assert [(s.kind, s.deps, s.gate) for s in flow.steps[3:]] == [("dv_testplan", ["config"], "human"), ("dv_tb", ["testplan"], "auto"), ("dv_simulate", ["tb"], "auto")]
+    assert [s.id for s in flow.steps] == ["spec", "parse", "config", "testplan", "tb", "prepare", "simulate"] and flows.validate(flow) == []
+    assert [(s.kind, s.deps, s.gate) for s in flow.steps[3:]] == [("dv_testplan", ["config"], "human"), ("dv_tb", ["testplan"], "auto"),
+                                                                    ("dv_prepare", ["tb"], "auto"), ("dv_simulate", ["tb", "prepare"], "auto")]
     assert uvm.input_problem({}, Path("/nonexistent")) is None  # no VIP is not a problem: only a VIP that is set must exist, and only an interface that needs one waits for it
     assert not hasattr(uvm, "backend_of")
 

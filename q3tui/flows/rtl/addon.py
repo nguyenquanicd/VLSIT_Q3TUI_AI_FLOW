@@ -27,6 +27,9 @@ def register(api) -> None:
                 "Rounds of smoke failure → triage → fix → format → style_lint → smoke before the step fails. Empty: pipeline.max_fix_iterations.",
                 nullable=True)
 
+    api.setting("rtl", "keep_generated", "Never edit generated RTL", "bool",
+                "Off (default): lint findings in the generated CSR module are fixed in place (name and ports kept); the fix stays "
+                "until the register map changes. On: they are only reported (the module stays as the APB-CSR-Generator made it).")
     api.setting("csr", "mode", "CSR generation", "choice", "auto: generate the registers with the APB-CSR-Generator when the spec has software-visible registers; on: always; off: never.",
                 (("auto", "auto — when the spec has registers"), ("on", "on — always"), ("off", "off — never")))
     api.setting("csr", "tool_dir", "APB-CSR-Generator folder", "text", "Empty: $CSR_GEN_HOME, ~/.q3tui/tools/APB-CSR-Generator, <project>/tools/APB-CSR-Generator "

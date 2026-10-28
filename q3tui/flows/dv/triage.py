@@ -6,8 +6,15 @@ verdict per failure and code dispatches it, the way the rtl flow's smoke test do
 - `tb_bug`: a change request for the `tb` step, scoped to that test (`[tb:TC-019] …`; the UVM kind: the whole step). `simulate` goes on normally and marks its loop: the engine updates `tb`,
   then `simulate` runs again. Bounded by `options.max_rounds` or `pipeline.max_fix_iterations`.
 - `rtl_bug`: a change request for the `rtl` step of the flow that owns the RTL (`handoff_flow` of the tb options, default `rtl`), scoped to the module (`[rtl:<module>] …`). That flow has to run
-  to apply it; the RTL is an input of `tb`, so the next run of this flow rebuilds `tb` and `simulate` on the new RTL. `simulate` stays failed until then.
+  to apply it; the RTL is an input of `tb`, so `tb` and `simulate` then run again on the new RTL. In an unattended run (`engine.unattended_run`) the fix loop runs that flow itself
+  (`engine.hand_to_flow`), bounded like the tb fixes; a round after which the RTL did not change, or the failures did not go down, stops it. Otherwise `simulate` stays failed until you run it.
 - `spec_issue` / `unsure`, or a failure that keeps coming back after its fix was handed over: a blocking question for you (spec_gap / design_choice); nothing is changed.
+  The triage gives the ways to settle it (`options`, the recommended one first: the pick list, and the default), and the decision it waits for (`decision`):
+  the failures that wait for the same decision are one question.
+
+A module a generator made (the rtl flow's csr step: `src/rtl/csr/provided.json`) is named in the prompt: a bug in it is an `rtl_bug` (the rtl step changes it in
+place and keeps the change as a patch that outlives the next generation), unless your spec forbids editing it or the rtl option `keep_generated` is on: then it
+is a `spec_issue` with the choices.
 
 Every verdict is in `schemas/dv_triage.json`. Models of the LLM's answer: `flows/rtl/lib/models.Verdict` (the same as the smoke triage's)."""
 
@@ -57,6 +64,16 @@ def reset(engine, step) -> None:
     meta = engine.state.step_meta.setdefault(step.name, {})
     meta.update({"rounds": 0, "loop": False})
     meta.pop("history", None)
+    meta.pop("flow_round", None)
+
+
+def rtl_hash(files: list[Path]) -> str:
+    import hashlib
+
+    h = hashlib.sha256()
+    for p in files:
+        h.update(p.name.encode() + b"\0" + p.read_bytes())
+    return h.hexdigest()[:16]
 
 
 def failure_summary(failures: list[dict]) -> str:
@@ -86,12 +103,17 @@ async def handle_failures(step, ctx: StepContext, failures: list[dict], rtl_dir:
     history: list[dict] = meta.setdefault("history", [])
     reqs = _requirements(project)
     rtl = _rtl_files(project, rtl_dir)
+    now_rtl = rtl_hash(rtl)
+    last = meta.pop("flow_round", None)  # the RTL fixes the last round had the owner flow apply in this run
+    stalled = ("the RTL did not change" if last and last.get("rtl") == now_rtl
+               else f"the failures did not go down ({last.get('failed')} → {len(failures)})" if last and len(failures) >= int(last.get("failed") or 0) else "")
     tb_files = sorted(p for p in lay.tb.rglob("*") if p.is_file() and p.suffix in (".sv", ".svh", ".f")) if lay.tb.is_dir() else []
     skills = skillmod.discover(project.config_dir, DV_FLOW_FILE, ["sim-triage"])  # (the method is a playbook skill: yours in config/skills/ wins, as for the rtl flow's smoke-triage)
     block, _ = spec_block(project)
     parts = ["# Task: triage the failing simulation tests", "", "## Specification", block, "",
              "## Requirements", "\n".join(f"- {k}: {v}" for k, v in reqs.items()) or "(none)", "",
              f"## Files (read them): testbench ({kind}) {', '.join(project.rel(p) for p in tb_files[:40])}; RTL {', '.join(project.rel(p) for p in rtl[:40])}", "",
+             *_generated_block(rtl_dir, cfg),
              "## Already handed over in earlier rounds (do not ask for the same again: say if it did not work, and why)",
              "\n".join(f"- {h['key']}" for h in history[-10:]) or "(nothing yet)", "", "## The failing tests (ground truth)"]
     for f in failures:
@@ -112,9 +134,11 @@ async def handle_failures(step, ctx: StepContext, failures: list[dict], rtl_dir:
     asks: list[Question] = []
     to_tb = 0
     by_module: dict[str, list[Verdict]] = {}
+    by_decision: dict[str, list[Verdict]] = {}  # (failures that wait for the same decision: one question)
     seen: dict[str, int] = {}
-    for h in history:
-        seen[h["key"]] = seen.get(h["key"], 0) + 1
+    for h in history:  # (an RTL fix counts once the RTL changed after it: one handed over and never applied was not tried)
+        if not h["key"].startswith("rtl_bug|") or h.get("rtl") not in (None, now_rtl):
+            seen[h["key"]] = seen.get(h["key"], 0) + 1
     report = {"round": rounds + 1, "failures": failures, "verdicts": []}
     for v in verdicts:
         report["verdicts"].append(v.model_dump())
@@ -126,7 +150,7 @@ async def handle_failures(step, ctx: StepContext, failures: list[dict], rtl_dir:
                 default_assumption="Keep the spec as the reference and change the implementation once more, starting from the evidence."))
         elif v.verdict == "rtl_bug" and v.request.strip():
             by_module.setdefault(unit, []).append(v)
-            history.append({"key": key, "round": rounds + 1})
+            history.append({"key": key, "round": rounds + 1, "rtl": now_rtl})
         elif v.verdict == "tb_bug" and v.request.strip():
             history.append({"key": key, "round": rounds + 1})
             text = f"From the simulation triage ({v.id}): {v.summary} {v.request}"
@@ -134,8 +158,8 @@ async def handle_failures(step, ctx: StepContext, failures: list[dict], rtl_dir:
             ctx.emit("log", message=f"simulate {v.id}: testbench bug → tb: {v.summary[:100]}")
             to_tb += 1
         else:
-            asks.append(Question(id="", question=f"Test {v.id}: {v.summary}", blocking=True, kind="spec_gap" if v.verdict == "spec_issue" else "design_choice",
-                                 default_assumption=v.request or "Keep the spec as written and treat the failing side as the bug."))
+            by_decision.setdefault(v.decision.strip().lower() or v.id, []).append(v)
+    asks += [vs[0].question("Test", [v.id for v in vs]) for vs in by_decision.values()]
     answers = load_answers(step._q_paths(engine)[1])
     kept = [q for q in step.questions_list(engine) if q.id in answers]
     step.save_questions(engine, [*kept, *assign_question_ids(asks, kept, "SIM", taken=set(answers))])
@@ -150,17 +174,43 @@ async def handle_failures(step, ctx: StepContext, failures: list[dict], rtl_dir:
         owner = _hand_to_rtl_flow(ctx, owner, text)
         ctx.emit("log", message=f"simulate {', '.join(v.id for v in vs)}: RTL bug → {owner}:rtl ({unit}): {vs[0].summary[:100]}")
         handed.append(f"{unit} → {owner}")
-    if to_tb:
-        if handed or asks:
-            ctx.emit("warning", message=("also handed to the RTL flow: " + ", ".join(handed) if handed else "") + (f"; {len(asks)} question(s) wait for you" if asks else ""))
+    meta = engine.state.step_meta.setdefault(step.name, {})  # (the hand-over reloaded the state: this step's meta is a new object)
+    run_owner = bool(handed) and engine.unattended_run() and not stalled
+    if run_owner:  # the fix loop runs the owner flow within this run, then tb and simulate on the new RTL
+        engine.hand_to_flow(step.name, owner)
+        meta["rounds"], meta["flow_round"] = rounds + 1, {"rtl": now_rtl, "failed": len(failures)}
+        ctx.emit("log", message=f"simulate: the {owner} flow runs next for {', '.join(handed)}, then tb and simulate again")
+    if to_tb or run_owner:
+        if (handed and not run_owner) or asks:
+            said = [("also handed to the RTL flow: " + ", ".join(handed) + (f" ({stalled} after the last {owner} flow run: run it yourself)" if stalled else ""))
+                    if handed and not run_owner else "", f"{len(asks)} question(s) wait for you" if asks else ""]
+            ctx.emit("warning", message="; ".join(x for x in said if x))
         return
     if handed:
-        raise StepFailed(f"simulate: RTL bug(s) handed to the {owner} flow ({'; '.join(handed)}): run it (q3tui --flow {owner} run), then this flow again: the RTL is an input of tb, "
+        why = f"{stalled} after the {owner} flow ran for the last fixes; " if stalled else ""
+        raise StepFailed(f"simulate: RTL bug(s) handed to the {owner} flow ({'; '.join(handed)}): {why}run it (q3tui --flow {owner} run), then this flow again: the RTL is an input of tb, "
                          f"so tb and simulate run on the new RTL.\n{summary}")
     if not asks:
         raise StepFailed(f"simulate: the triage gave no verdict to act on:\n{summary}")
     ids = ", ".join(q["id"] for q in engine.questions() if q["step"] == step.name and q["status"] == "open")
     raise StepFailed(f"simulate: the tests are failing and need your decision on {ids or 'the open questions'} (answer them, then run again):\n{summary}")
+
+
+def _generated_block(rtl_dir: Path, cfg) -> list[str]:
+    """The prompt's part on the RTL modules a generator made (the rtl flow's csr step): whether a bug in one can be an rtl_bug."""
+    from q3tui.flows.rtl.lib import csr
+
+    made = sorted(csr.read_provided(rtl_dir))
+    if not made:
+        return []
+    if (cfg.pipeline.step_options.get("rtl") or {}).get("keep_generated"):
+        how = ("Settings → rtl \"Never edit generated RTL\" is on: they are never changed, so a bug in one is a spec_issue whose proposal names the choices "
+               "(fix the generator, revise the spec to the generated behaviour, or turn the setting off).")
+    else:
+        how = ("The rtl flow changes them in place on an RTL change request (name, ports and registers kept) and keeps the change as a patch "
+               "(src/rtl/csr/patches/) applied again when the module is generated again: a bug in one is an rtl_bug for it, unless the specification "
+               "forbids editing it; then it is a spec_issue whose proposal names the choices (fix the generator, allow the change in place, or revise the spec).")
+    return ["## Generated RTL", f"Made by the APB-CSR-Generator (the rtl flow's csr step), not by hand: {', '.join(made)}. {how}", ""]
 
 
 def _hand_to_rtl_flow(ctx: StepContext, flow_name: str, text: str) -> str:

@@ -174,6 +174,15 @@ again — until it passes, a review gate stops it, a blocking question waits for
 `options.max_fix_rounds`), or the same finding came back `pipeline.escalate_after_repeats`
 times — then it becomes a question for you.
 
+**Fixes owned by another flow** (`Engine.hand_to_flow(step, flow)`): a step that handed fixes to
+another flow's step (the dv flow's `simulate`: an RTL bug → the rtl flow's `rtl`) and runs
+unattended (`Engine.unattended_run`: `pipeline.auto_approve` / `auto_answer` or `--yes`) marks its
+loop with that flow: the fix loop runs it within the same run (same process, lock and event log),
+then this flow again, whose steps that read its outputs are stale by then. A flow that does not
+finish stops the run with its outcome. The step itself decides when not to ask again (the dv
+triage: the RTL did not change, or the failures did not go down); otherwise it fails with the
+hand-off for you to run.
+
 **Scoped change requests** (`[step:unit] text`, `steps.common.scoped` / `split_feedback`):
 a step with units (modules, test cases) re-runs only the units named (`[rtl:<module>]`,
 `[rtl:<module>]`); an unscoped change request still goes to every unit of the

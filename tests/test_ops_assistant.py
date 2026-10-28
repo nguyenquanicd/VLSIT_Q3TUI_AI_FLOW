@@ -200,6 +200,37 @@ def test_settings_are_validated_applied_and_saved(engine):
     assert "claude-haiku-4-5" in saved and "thinking_budget: null" in saved
 
 
+def test_team_mode_is_a_setting(engine):
+    from q3tui.core.settings import tabs_for
+
+    ops = Ops(engine)
+    cfg = engine.project.cfg
+    assert "team" in [t.id for t in tabs_for([("rtl", "RTL")])]           # every flow shows the Team tab
+    assert ops.settings()["team.enabled"] is False and engine.session_mode() == "fresh"
+    ops.apply_settings({"team.enabled": "on", "team.unit_sessions": "role", "team.max_context": ""}, save=True)
+    assert cfg.team.enabled is True and cfg.team.unit_sessions == "role" and cfg.team.max_context is None
+    assert "enabled: true" in (engine.project.root / "q3tui.yaml").read_text()
+    with pytest.raises(EngineError, match="unit_sessions"):
+        ops.apply_settings({"team.unit_sessions": "shared"})
+    ops.apply_settings({"pipeline.session": "flow"})
+    assert engine.session_mode() == "flow"
+    ops.apply_settings({"pipeline.session": ""})                           # unset: the flow file's again
+    assert engine.session_mode() == "fresh"
+
+
+def test_step_options_join_the_steps_config_tab():
+    from q3tui.core.settings import STEP_OPTIONS, Setting, tabs_for
+
+    extra = (Setting(STEP_OPTIONS + "tb.testbench", "Testbench kind", "text", ""),
+             Setting(STEP_OPTIONS + "lint.waive", "Waive", "text", ""))
+    tabs = tabs_for([("rtl", "RTL"), ("tb", "TB"), ("lint", "Lint")], extra)
+    ids = [t.id for t in tabs]
+    assert len(ids) == len(set(ids)) and "lint" in ids                     # one tab per id: Textual refuses duplicates
+    tb = next(t for t in tabs if t.id == "tb")
+    assert tb.title == "TB" and [s.path for s in tb.settings][-1] == STEP_OPTIONS + "tb.testbench"
+    assert "tb.max_turns" in [s.path for s in tb.settings]
+
+
 def test_assistant_settings_tools(engine):
     host = Host(engine)
     tools = assistant_tools(host)

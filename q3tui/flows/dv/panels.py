@@ -2,7 +2,7 @@
 
 Read-only tables over what the steps wrote. `testplan`: the tests with the requirements each checks, which test covers each requirement (an open one waits for an
 answer on the Questions tab). `tb`: the plain testbench's test cases with the compile result; the UVM testbench's open regions and where the released RTL differs
-from the contract. `simulate`: the evidence of the runs. The files, the questions and the log are the usual tabs."""
+from the contract. `simulate`: every test with its status, live while the tests run (plain), the evidence of the runs, the triage. The files, the questions and the log are the usual tabs."""
 
 from __future__ import annotations
 
@@ -213,6 +213,160 @@ def _evidence_urgent(app: "Q3TUIApp") -> int:
     return sum(e.get("status") not in ("PASS",) for e in _evidence(app))
 
 
+# -- the tests of a run (plain testbench): live while simulate runs --------------------------------------------------------------------------
+
+
+LIVE = "dv_test_results.json"
+_RUN_STYLE = {"PASS": "green", "FAIL": "red", "ERROR": "red", "NOT_RUN": "red", "TIMEOUT": "yellow", "BLOCKED": "yellow", "RUNNING": "cyan", "PENDING": "grey50"}
+_RUN_ORDER = ("PASS", "FAIL", "TIMEOUT", "BLOCKED", "ERROR", "NOT_RUN", "RUNNING", "PENDING", "–")
+_BAD = ("FAIL", "TIMEOUT", "BLOCKED", "ERROR", "NOT_RUN")
+
+
+def _alive(pid) -> bool:
+    import os
+
+    try:
+        os.kill(int(pid), 0)
+    except PermissionError:
+        return True
+    except (OSError, TypeError, ValueError):
+        return False
+    return True
+
+
+def _runs(app: "Q3TUIApp") -> list[dict]:
+    """Every selected test of the plain testbench with its status in the current or the last run of `simulate` (dv_test_results.json, rewritten as each test
+    starts and ends); a test of the plan not in that run: `–`. A run whose process is gone before it ended (killed) left its tests PENDING / RUNNING: not run."""
+    data = artifact(app, LIVE, {}) or {}
+    stopped = not data.get("ended") and not _alive(data.get("pid"))
+    tests = []
+    for t in data.get("tests") or []:
+        if isinstance(t, dict):
+            tests.append({**t, "status": "NOT_RUN", "note": "the run was stopped before this test finished"} if stopped and t.get("status") in ("PENDING", "RUNNING") else t)
+    have = {t.get("tc_id") for t in tests}
+    plan = [c for c in (artifact(app, RESULT, {}) or {}).get("test_cases") or [] if isinstance(c, dict) and c.get("selected") and c.get("tc_id") not in have]
+    return [*tests, *({"tc_id": c.get("tc_id", ""), "name": c.get("name", ""), "req_ids": c.get("req_ids") or [], "status": "–"} for c in plan)]
+
+
+def _run_status(v) -> Text:
+    return Text(str(v or "–"), _RUN_STYLE.get(str(v), "grey50"))
+
+
+def _mmss(s) -> str:
+    return "" if s is None else f"{int(s) // 60}:{int(s) % 60:02d}"
+
+
+def _elapsed(t: dict) -> float | None:
+    import time
+
+    if t.get("status") == "RUNNING" and t.get("t0"):
+        return time.time() - float(t["t0"])
+    return float(t["duration_s"]) if t.get("duration_s") is not None else None
+
+
+def _run_time(t: dict) -> str:
+    return _mmss(_elapsed(t))
+
+
+def _time_cell(t: dict) -> Text:
+    late = t.get("status") == "RUNNING" and t.get("est_s") and (_elapsed(t) or 0) > 1.5 * float(t["est_s"]) + 30  # (past its estimate: a hang?)
+    return Text(_run_time(t), "yellow" if late else "")
+
+
+def _run_rows(app: "Q3TUIApp") -> list[tuple]:
+    return [(t.get("tc_id", ""), t.get("tc_id", ""), str(t.get("name", "")), _run_status(t.get("status")), _time_cell(t), _mmss(t.get("est_s")),
+             _run_status(t.get("last")), short(t.get("note") or "", 80)) for t in _runs(app)]
+
+
+def _time_left(app: "Q3TUIApp", tests: list[dict]) -> float | None:
+    """Seconds until the run ends, from the estimates (the run before's times; a test without one: their median): the running tests' rest and the
+    pending ones in their start order on the run's slots, each on the first slot free. None: nothing runs, or no estimate at all."""
+    import time
+
+    active = [t for t in tests if t.get("status") in ("RUNNING", "PENDING")]
+    known = sorted(float(t["est_s"]) for t in tests if t.get("est_s"))
+    if not active or not known:
+        return None
+    typical = known[len(known) // 2]
+
+    def est(t: dict) -> float:
+        return float(t.get("est_s") or typical)
+
+    now = time.time()
+    slots = [max(0.0, est(t) - (now - float(t["t0"]))) for t in active if t["status"] == "RUNNING" and t.get("t0")]
+    data = artifact(app, LIVE, {}) or {}
+    slots += [0.0] * max(0, int(data.get("jobs") or 1) - len(slots))
+    order = {tc: i for i, tc in enumerate(data.get("order") or [])}
+    for t in sorted((t for t in active if t["status"] == "PENDING"), key=lambda t: order.get(t.get("tc_id"), len(order))):
+        i = min(range(len(slots)), key=slots.__getitem__)
+        slots[i] += est(t)
+    return max(slots)
+
+
+def _run_detail(app: "Q3TUIApp", key: str) -> str:
+    t = next((t for t in _runs(app) if t.get("tc_id") == key), None)
+    if t is None:
+        return ""
+    lines = [f"**{key} — {t.get('name', '')}**: {t.get('status') if t.get('status') != '–' else 'not run yet'}", "", t.get("note") or "",
+             f"- requirements: {', '.join(t.get('req_ids') or []) or '–'}"]
+    if _run_time(t):
+        lines.append(f"- time: {_run_time(t)}{' (running)' if t.get('status') == 'RUNNING' else ''}")
+    if t.get("est_s"):
+        lines.append(f"- estimate: {_mmss(t['est_s'])} (its time in the run before)")
+    if t.get("last"):
+        lines.append(f"- the run before: {t['last']}")
+    if t.get("log"):
+        lines.append(f"- log: `{t['log']}`")
+    v = next((v for v in _verdicts(app) if v.get("id") == key), None)
+    if v is not None and t.get("status") in _BAD:
+        lines.append(f"- last triage: {v.get('verdict')} {_WHERE.get(v.get('verdict', ''), '')}{' (' + v['module'] + ')' if v.get('module') else ''}: {v.get('summary', '')}")
+    return "\n".join(lines)
+
+
+def _run_urgent(app: "Q3TUIApp") -> int:
+    return sum(t.get("status") in _BAD for t in _runs(app))
+
+
+def _run_summary(app: "Q3TUIApp") -> str:
+    from collections import Counter
+
+    tests = _runs(app)
+    if not tests:
+        return ""
+    n = Counter(t.get("status") for t in tests)
+    left = _time_left(app, tests)
+    return (f"{len(tests)} tests: " + " · ".join(f"{n[s]} {'not run yet' if s == '–' else s}" for s in _RUN_ORDER if n[s])
+            + ("" if left is None else " · " + ("< 1 min left" if left < 60 else f"≈ {round(left / 60)} min left")))
+
+
+# -- the test programs (prepare) ------------------------------------------------------------------------------------------------------
+
+
+def _programs(app: "Q3TUIApp") -> list[dict]:
+    return [t for t in ((artifact(app, "sw_manifest.json", {}) or {}).get("tests") or []) if isinstance(t, dict)]
+
+
+def _program_rows(app: "Q3TUIApp") -> list[tuple]:
+    return [(t.get("tc_id", ""), t.get("tc_id", ""), str(t.get("status", "")), str(len(t.get("files") or [])),
+             ", ".join((t.get("missing") or []) + (t.get("external") or []))[:80], str(t.get("note", ""))[:80]) for t in _programs(app)]
+
+
+def _program_detail(app: "Q3TUIApp", key: str) -> str:
+    t = next((t for t in _programs(app) if t.get("tc_id") == key), None)
+    man = artifact(app, "sw_manifest.json", {}) or {}
+    if t is None:
+        return ""
+    lines = [f"**{key}**: {t.get('status', '')} (in `{man.get('prog_dir', '')}`)", "", t.get("note") or ""]
+    for title, k in (("Files the build makes", "files"), ("Missing after the build", "missing"), ("Only you can provide", "external")):
+        if t.get(k):
+            lines += ["", f"{title}:", *(f"- `{f}`" for f in t[k])]
+    return "\n".join(lines)
+
+
+def _program_urgent(app: "Q3TUIApp") -> int:
+    return sum(t.get("status") != "ready" for t in _programs(app))
+
+
 # -- the triage of the failing tests ---------------------------------------------------------------------------------------------
 
 
@@ -257,8 +411,17 @@ def _tabs_for(kind: str) -> tuple[TabSpec, ...]:
                 TabSpec("conformance", "Conformance", ("ID", "Severity", "Code", "Finding"), _finding_rows, _finding_detail,
                         "UVM testbench: where the released RTL differs from the frozen contract — reported, never adapted to",
                         urgent=_finding_urgent, empty="no findings — or no dut_integration.json (the UVM testbench's last phase writes it)"))
+    if kind == "dv_prepare":
+        return (TabSpec("programs", "Programs", ("TC", "Status", "Files", "Missing / yours", "Note"), _program_rows, _program_detail,
+                        "the files each test loads: ready (built), missing (the build did not make them), external (only you can provide them, in the folder shown), "
+                        "not built (the tools are missing: `q3tui act riscv_tools_setup`)",
+                        urgent=_program_urgent, empty="no sw_manifest.json yet — run (r)"),)
     if kind == "dv_simulate":
-        return (TabSpec("evidence", "Evidence", ("ID", "Kind", "Name", "Status", "UVM err/fatal", "Log"), _evidence_rows, _evidence_detail,
+        return (TabSpec("tests", "Tests", ("TC", "Name", "Status", "Time", "Est.", "Run before", "Note"), _run_rows, _run_detail,
+                        "plain testbench: every selected test — PENDING / RUNNING while simulate runs (live), then PASS / FAIL / TIMEOUT / BLOCKED (ERROR: the tool broke; "
+                        "NOT_RUN: the run stopped first) · Est.: its time in the run before (a running test past it: yellow) · Run before: its result then",
+                        urgent=_run_urgent, summary=_run_summary, empty="no test plan yet — the plain testbench's tb step writes it (the UVM testbench's runs: the Evidence tab)"),
+                TabSpec("evidence", "Evidence", ("ID", "Kind", "Name", "Status", "UVM err/fatal", "Log"), _evidence_rows, _evidence_detail,
                         "what was really run with the released RTL — a status comes from the simulator log only",
                         urgent=_evidence_urgent, empty="no dv_evidence.json yet — run (r)"),
                 TabSpec("triage", "Triage", ("Test", "Verdict", "Goes to", "RTL module", "Summary"), _verdict_rows, _verdict_detail,
@@ -274,5 +437,5 @@ def _builder(kind: str):
     return build
 
 
-for _kind in ("dv_testplan", "dv_tb", "dv_simulate"):
+for _kind in ("dv_testplan", "dv_tb", "dv_prepare", "dv_simulate"):
     register_panel(_kind, _builder(_kind))

@@ -164,11 +164,12 @@ def check_tool_paths(stage: Stage, tool_input: dict[str, Any], tool_name: str | 
         root = (root if root.is_absolute() else stage.cwd / root).resolve()
         inside = [d for d in denied if d != root and d.is_relative_to(root)]
         if inside:
-            ok = sorted(p.name for p in root.iterdir() if p.is_dir() and not p.name.startswith(".")
+            # folders and files (a folder like spec/ may hold only files besides the denied one)
+            ok = sorted(p.name + ("/" if p.is_dir() else "") for p in root.iterdir() if not p.name.startswith(".")
                         and not _within(p.resolve(), denied)) if root.is_dir() else []
             return (f"searching {tool_input.get('path') or 'the project'} would include "
                     f"{', '.join(d.name for d in inside)}, which this task may not see; search one of these instead: "
-                    f"{', '.join(ok) or '(none)'} (path=\"<folder>\")")
+                    f"{', '.join(ok) or '(none)'} (path=\"<folder or file>\")")
     pattern = tool_input.get("pattern")
     if isinstance(pattern, str) and pattern.startswith(("/", "~")):
         candidates.append(pattern.split("*", 1)[0] or "/")

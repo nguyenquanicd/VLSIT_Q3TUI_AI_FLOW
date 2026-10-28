@@ -38,6 +38,7 @@ class ToolResult:
     diagnostics: list[ToolDiagnostic] = field(default_factory=list)
     timed_out: bool = False
     summary: str = ""
+    stopped: bool = False  # killed on the caller's request (`stop`), not judged
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -126,9 +127,11 @@ def run_command(
     timeout_s: int,
     tool_env: ToolEnv | None = None,
     env: dict[str, str] | None = None,
+    stop=None,
 ) -> tuple[int | None, str, float, bool]:
     """Run a tool, combined output streamed to log_path (repeated lines and the middle of a huge output left out,
-    with a note saying so). Returns (rc, output = the log, seconds, timed_out); a timeout kills the whole process tree."""
+    with a note saying so). Returns (rc, output = the log, seconds, timed_out); a timeout kills the whole process tree, and so
+    does `stop` (a threading.Event) once it is set: rc None, not timed out."""
     import collections
     import signal
     import threading
@@ -170,10 +173,11 @@ def run_command(
 
             reader = threading.Thread(target=pump, daemon=True)
             reader.start()
+            stopped = False
             try:
-                rc, timed_out = proc.wait(timeout=timeout_s), False
-            except subprocess.TimeoutExpired:
-                rc, timed_out = None, True
+                rc, timed_out = _wait(proc, timeout_s, stop), False
+            except (subprocess.TimeoutExpired, _Stopped) as why:
+                rc, timed_out, stopped = None, isinstance(why, subprocess.TimeoutExpired), isinstance(why, _Stopped)
                 try:
                     os.killpg(proc.pid, signal.SIGKILL)
                 except ProcessLookupError:
@@ -189,9 +193,30 @@ def run_command(
                           + b"; ".join(k.rstrip(b"\n")[:120] + f" x{v}".encode() for k, v in top) + b"]\n")
             if timed_out:
                 log.write(f"\n[q3tui: killed after {timeout_s} s (timeout)]\n".encode())
+            if stopped:
+                log.write(b"\n[q3tui: stopped (the run no longer needed it)]\n")
     elapsed = time.monotonic() - start
     text = log_path.read_text(errors="replace")
     return rc, text.split("\n", 1)[1] if "\n" in text else "", elapsed, timed_out
+
+
+class _Stopped(Exception):
+    pass
+
+
+def _wait(proc, timeout_s: int, stop) -> int:
+    """proc.wait(timeout_s), and _Stopped as soon as `stop` is set."""
+    if stop is None:
+        return proc.wait(timeout=timeout_s)
+    end = time.monotonic() + timeout_s
+    while True:
+        try:
+            return proc.wait(timeout=max(0.0, min(0.5, end - time.monotonic())))
+        except subprocess.TimeoutExpired:
+            if time.monotonic() >= end:
+                raise
+            if stop.is_set():
+                raise _Stopped from None
 
 
 def compile_settled(tool, request, workdir: Path):

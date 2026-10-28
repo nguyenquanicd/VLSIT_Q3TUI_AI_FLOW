@@ -197,6 +197,7 @@ class Step(RtlFlowStep):
         asks: list[Question] = []
         dispatched = 0
         by_module: dict[str, list[Verdict]] = {}  # (one change request per module: behaviours with one cause arrive together)
+        by_decision: dict[str, list[Verdict]] = {}  # (failures that wait for the same decision: one question)
         history: list[dict] = meta.setdefault("history", [])
         seen: dict[str, int] = {}
         for h in history:
@@ -220,8 +221,8 @@ class Step(RtlFlowStep):
                 ctx.emit("log", message=f"smoke {v.id}: testbench bug → smoke: {v.summary[:100]}")
                 dispatched += 1
             else:
-                asks.append(Question(id="", question=f"Smoke test {v.id}: {v.summary}", blocking=True, kind="spec_gap" if v.verdict == "spec_issue" else "design_choice",
-                                     default_assumption=v.request or "Keep the spec as written and treat the failing side as the bug."))
+                by_decision.setdefault(v.decision.strip().lower() or v.id, []).append(v)
+        asks += [vs[0].question("Smoke test", [v.id for v in vs]) for vs in by_decision.values()]
         for unit, vs in by_module.items():
             engine.request_change("rtl", scoped("rtl", unit, f"From the smoke test ({', '.join(v.id for v in vs)}): " + " | ".join(f"{v.summary} {v.request}" for v in vs)))
             ctx.emit("log", message=f"smoke {', '.join(v.id for v in vs)}: RTL bug → rtl ({unit}): {vs[0].summary[:100]}")

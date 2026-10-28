@@ -5,7 +5,9 @@ is yours (edit it: the step generates from it again) and the LLM is asked only t
 that never says "register" needs no LLM), the checks the tool does not do (overlaps, duplicate / misaligned offsets, field widths, resets), `reserved`
 filler for uncovered bits, the Excel workbook in the layout the tool reads, running the tool through the role `csr_gen`, installing its result
 (`<rtl>/<module>.sv`, the CDC synchronizer when asynchronous) and declaring those files as *provided* (`src/rtl/csr/provided.json`): the `rtl` step
-instantiates them but never writes, rule-checks or fixes them; `format` and `style_lint` leave them alone."""
+instantiates them, never writes or rule-checks them, but fixes their lint findings in place; a file changed so is kept while the tool makes the same
+module (`step_meta.csr.generated`), and the changes are a patch (`src/rtl/csr/patches/<module>.patch`, why: `.md`; flows/rtl/lib/patches.py) applied
+again by code when the tool makes the module again; `format` and `style_lint` leave them alone."""
 
 from __future__ import annotations
 
@@ -17,7 +19,7 @@ import anyio
 
 from q3tui.core.project import read_json, sha256_file, sha256_json, write_json
 from q3tui.flows import skill_sections
-from q3tui.flows.rtl.lib import csr
+from q3tui.flows.rtl.lib import csr, patches
 from q3tui.flows.rtl.lib import skills as skillmod
 from q3tui.flows.rtl.lib.base import RtlFlowStep
 from q3tui.flows.rtl.lib.models import CsrMap
@@ -214,13 +216,42 @@ class Step(RtlFlowStep):
             files[csr.SYNC_MODEL] = (work / "RTL" / "models" / f"{csr.SYNC_MODEL}.sv").read_text()
             provided[csr.SYNC_MODEL] = {"kind": "model", "parent": m.module_name, "req_ids": [], "instances": []}
         rtl.mkdir(parents=True, exist_ok=True)
-        written, dropped = [], []
+        written, dropped, refixed, reapplied = [], [], [], []
+        # what the tool made last time, per module: the file may have been changed since (the rtl step's lint fixes and change requests, edits by
+        # hand: src/rtl/csr/patches/<module>.patch); while the tool makes the same module the changed file stays, a new module (the map changed)
+        # replaces it with the patch applied again (flows/rtl/lib/patches.py), a hunk that no longer fits goes to the rtl step
+        made = engine.state.step_meta.setdefault(self.name, {}).setdefault("generated", {})
         for name, text in files.items():
             dest = rtl / f"{name}.sv"
-            if not dest.is_file() or csr.stable(dest.read_text()) != csr.stable(text):  # (the tool's header has the user and the time: not a change)
-                project.backup([dest])
-                dest.write_text(text)
+            h = sha256_json(csr.stable(text))  # (the tool's header has the user and the time: not a change)
+            if dest.is_file() and made.get(name) == h:
+                if patches.base(project, name) is None and csr.stable(dest.read_text()) == csr.stable(text):
+                    patches.save_base(project, name, dest.read_text())  # (made before the bases were kept, and unchanged: the base of later changes)
+                continue
+            if not dest.is_file() or csr.stable(dest.read_text()) != csr.stable(text):
+                out, change = text, ""
+                if dest.is_file():
+                    old = patches.base(project, name)
+                    pp = patches.patch_path(rtl, name)
+                    change = patches.diff(old, dest.read_text(), name) if old is not None else (pp.read_text() if pp.is_file() else "")
+                    if not change and name in made and sha256_json(csr.stable(dest.read_text())) != made[name]:
+                        refixed.append(dest.name)  # (changed, but with no base and no patch to say how: the change is lost)
+                if change:
+                    out, failed = patches.apply(text, change)
+                    reapplied.append((name, len(patches.hunks(change)) - len(failed), failed))
+                if dest.is_file():
+                    project.backup([dest])
+                dest.write_text(out)
+                patches.save_base(project, name, text)
+                if change:
+                    patches.record(project, rtl, name, [f"generated again (the register map changed): the patch applied again"
+                                                        + (f", {len(failed)} hunk(s) did not fit: handed to the rtl step" if failed else "")])
                 written.append(dest.name)
+            elif patches.base(project, name) is None:
+                patches.save_base(project, name, text)
+            made[name] = h
+        for gone in set(made) - set(files):
+            made.pop(gone)
         for gone in set(csr.read_provided(rtl)) - set(provided):  # a module an earlier map made (another name, or no more synchronizer)
             x = rtl / f"{gone}.sv"
             if x.is_file():
@@ -236,9 +267,21 @@ class Step(RtlFlowStep):
                                  "ports": csr.port_summary(files[m.module_name], m.module_name), "req_ids": m.req_ids})
         ctx.emit("log", message=f"csr: {m.module_name} generated from {len(m.registers)} register(s)" + (f" ({', '.join(written)} written)" if written else " (unchanged)")
                                 + (f"; removed {', '.join(dropped)}" if dropped else ""))
+        if refixed:
+            ctx.emit("warning", message=f"csr: {', '.join(refixed)} had changes since it was generated and no patch of them (made before patches were kept); "
+                                        "the new module replaces it (the old one is backed up): the rtl step fixes its lint again, other changes are lost")
+        for name, ok, failed in reapplied:
+            ctx.emit("log", message=f"csr: {name} generated again; {ok} change(s) of {project.rel(patches.patch_path(rtl, name))} applied to it")
+            if failed:
+                from q3tui.steps.common import scoped
+
+                engine.request_change("rtl", scoped("rtl", name, (
+                    f"The APB-CSR-Generator made {name} again (the register map changed) and these changes made to it before no longer fit; make them again "
+                    f"in the new file ({project.rel(patches.notes_path(rtl, name))} says why each was made):\n" + "\n".join(failed))))
+                ctx.emit("warning", message=f"csr: {len(failed)} change(s) of {name} no longer fit the new module: handed to the rtl step")
         ctx.unchanged = not written and not dropped
 
     def _with_header(self, text: str, m: CsrMap) -> str:
         lines = ["// Generated by the APB-CSR-Generator from src/rtl/csr/csr_map.json (Q3TUI step csr): do not edit; change the map or the spec.",
                  *([f"// REQ-IDs: {', '.join(m.req_ids)}"] if m.req_ids else [])]
-        return "\n".join(lines) + "\n" + text
+        return "\n".join(lines) + "\n" + text + ("" if text.endswith("\n") else "\n")  # (the tool ends without a newline: EOFNEWLINE)

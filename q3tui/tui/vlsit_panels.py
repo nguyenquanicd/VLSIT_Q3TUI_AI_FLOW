@@ -92,6 +92,7 @@ class TabSpec:
     urgent: Callable[["Q3TUIApp"], int] | None = None
     widget: type | None = None  # a DataTab subclass (key bindings)
     empty: str = "nothing here yet"
+    summary: Callable[["Q3TUIApp"], str] | None = None  # a line in front of the hint that changes with the rows (counts: "60 tests: 55 PASS · 2 FAIL")
 
 
 class DataTab(Vertical):
@@ -121,19 +122,21 @@ class DataTab(Vertical):
         self._refresh_hint()
 
     def _refresh_hint(self) -> None:
-        if self.tab.urgent is None or not self.tab.hint:
+        if (self.tab.urgent is None and self.tab.summary is None) or not self.tab.hint:
             return
         try:
-            n = self.tab.urgent(self.capp)
+            n = self.tab.urgent(self.capp) if self.tab.urgent else 0
+            lead = self.tab.summary(self.capp) if self.tab.summary else ""
         except Exception:  # noqa: BLE001 - the hint never breaks the refresh
-            n = 0
+            n, lead = 0, ""
         hint = self.query_one("#dt-hint", Static)
-        if n:
+        if lead:
+            hint.update(Text(f"{'⚠ ' if n else ''}{lead} — {self.tab.hint}"))
+        elif n:
             hint.update(f"⚠ {n} waiting — {self.tab.hint}")
-            hint.set_classes("hint dt-hint urgent")
         else:
             hint.update(self.tab.hint)
-            hint.set_classes("hint dt-hint")
+        hint.set_classes("hint dt-hint urgent" if n else "hint dt-hint")
 
     @property
     def capp(self) -> "Q3TUIApp":

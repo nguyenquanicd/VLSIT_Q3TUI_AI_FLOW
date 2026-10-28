@@ -84,6 +84,10 @@ class StepContext:
             role = roles.role_of(stage.name) if self.cfg.team.enabled else None
             if role and self.cfg.team.unit_sessions == "own" and roles.unit_level(stage.name):
                 role = None  # its own small session (see roles.UNIT_LEVEL)
+            lacks = [t for t in stage.builtin_tools if role and t not in roles.ROLE_BUILTINS[role]]
+            if lacks:  # a task that needs a tool its role's session is not offered (its list is fixed: the cache) runs in its own session
+                self.emit("log", message=f"{stage.name}: runs in a session of its own (it needs {', '.join(lacks)}, the {role}'s session has not)")
+                role = None
         try:
             if role:  # M10: the task goes to its role's persistent session
                 result = await roles.team(self.project).run(stage, role, self.cfg, self.emit)

@@ -6,13 +6,19 @@ turns into Verible flags. The user's file is an input: editing it updates the mo
 
 Modules the `csr` step provides (the APB-CSR-Generator's slave and its CDC synchronizer: `src/rtl/csr/provided.json`) are part of the design: they
 are in the plan (the parent instantiates them, reads their ports, is updated when they change), in the filelist, the design lint and the synthesis,
-but this step never writes, rule-checks or fixes them: a lint finding in generated code is reported, the fix is the register map's."""
+but this step never writes or rule-checks them (KI-1 of docs/spec/rtl-flow.md). Their lint findings are fixed in place by a small session that keeps the
+module's name and ports (option `keep_generated: true`: reported only, never edited); the csr step keeps the fixed file while the generator makes the same
+module. A change request scoped to a generated module (`[rtl:m_soc_csr] …`: the dv flow's simulation triage, or yours) is applied in place the same way.
+Every change to a generated module (these, an edit by hand) is recorded as a patch with its why (`src/rtl/csr/patches/<module>.patch` / `.md`,
+flows/rtl/lib/patches.py): when the register map changes, the csr step makes the module again and applies the patch to it."""
 
 from __future__ import annotations
 
 from pathlib import Path
 
-from q3tui.flows.rtl.lib import csr, rules
+from q3tui.core.project import sha256_file, sha256_json
+
+from q3tui.flows.rtl.lib import csr, patches, rules
 from q3tui.flows.rtl.rtl.plan import PlanModule, RtlPlan
 from q3tui.flows.rtl.rtl.gen import RtlGenStep
 from q3tui.pipeline.base import StepContext, StepFailed
@@ -64,21 +70,106 @@ class Step(RtlGenStep):
                 mods[parent].instances = list(dict.fromkeys([*mods[parent].instances, name]))
         return RtlPlan(top=plan.top, modules=list(mods.values()))
 
+    def _keep_generated(self) -> bool:
+        return bool(self.options.get("keep_generated"))
+
+    def _snapshot(self, run, pm: PlanModule) -> dict:
+        snap = super()._snapshot(run, pm)
+        for c in set(snap["children"]) & getattr(self, "_provided_now", set()):  # a generated child: its ports, not its text
+            f = run.file(c)  # (a lint fix inside the CSR module is no change for the parent that instantiates it)
+            snap["children"][c] = sha256_json(csr.ports(f.read_text())) if f.is_file() else ""
+        return snap
+
+    def _check_module(self, run, pm: PlanModule) -> list[str]:
+        if pm.name not in getattr(self, "_provided_now", set()):
+            return super()._check_module(run, pm)
+        # generated: lint only (the RTL rules and REQ tags are not the generator's, KI-1 of docs/spec/rtl-flow.md)
+        problems, warnings, ran = self._lint(run, pm.name)
+        run.lint_state[pm.name] = {"status": "not run" if not ran else ("fail" if problems else "pass"), "warnings": warnings}
+        return problems
+
     async def _work(self, run, pm: PlanModule, todo: bool) -> list[str]:
-        if pm.name in getattr(self, "_provided_now", set()):
-            if not run.file(pm.name).is_file():
-                raise StepFailed(f"{pm.name} is provided by the csr step but {run.ctx.project.rel(run.file(pm.name))} does not exist: run the csr step")
-            run.ctx.emit("log", message=f"{pm.name}: provided by the csr step (generated: not written or checked here)")
+        if pm.name not in getattr(self, "_provided_now", set()):
+            return await super()._work(run, pm, todo)
+        ctx, path = run.ctx, run.file(pm.name)
+        if not path.is_file():
+            raise StepFailed(f"{pm.name} is provided by the csr step but {ctx.project.rel(path)} does not exist: run the csr step")
+        asked = run.feedback_unit.get(pm.name, [])
+        if self._keep_generated():
+            if asked:
+                ctx.emit("warning", message=f"{pm.name} (generated): {len(asked)} change request(s) not applied — Settings → rtl \"Never edit generated RTL\" "
+                                            f"is on: fix the generator or the spec, or turn it off: " + "; ".join(a[:120] for a in asked))
+            ctx.emit("log", message=f"{pm.name}: provided by the csr step (generated: not written or checked here)")
             return []
-        return await super()._work(run, pm, todo)
+        if patches.unrecorded(ctx.project, run.lay.rtl, pm.name):
+            patches.record(ctx.project, run.lay.rtl, pm.name, ["changed outside the steps (by hand)"])
+        await self._change_generated(run, pm, asked)
+        return await self._lint_generated(run, pm)
+
+    async def _change_generated(self, run, pm: PlanModule, asked: list[str]) -> None:
+        """The change requests for a generated module, applied in place (name, ports and registers kept) and recorded in its patch."""
+        from q3tui.flows.rtl.rtl import task as rtl_prompts
+
+        if not asked:
+            return
+        ctx, path = run.ctx, run.file(pm.name)
+        ctx.emit("log", message=f"{pm.name} (generated): applying {len(asked)} change request(s) in place")
+        patches.record(ctx.project, run.lay.rtl, pm.name, [])  # (the base, for a module generated before patches were kept)
+        await ctx.llm(self._stage(run, pm, rtl_prompts.change_generated_prompt(module=pm.name, path=ctx.project.rel(path), requests=asked,
+                                                                               code=path.read_text())))
+        run.wrote.add(pm.name)
+        self._own_edit(ctx, path)
+        patches.record(ctx.project, run.lay.rtl, pm.name, [f"change request: {a}" for a in asked])
+
+    async def _lint_generated(self, run, pm: PlanModule) -> list[str]:
+        import anyio
+
+        ctx = run.ctx
+        problems = await anyio.to_thread.run_sync(lambda: self._check_module(run, pm))
+        if not problems:
+            ctx.emit("log", message=f"{pm.name}: provided by the csr step, lint clean")
+            return []
+        # never written from the spec here (the csr step makes it); its lint findings are fixed in place, like any module's
+        for attempt in range(ctx.cfg.rtl.max_fix_attempts):
+            ctx.emit("warning", message=f"{pm.name} (generated): {len(problems)} lint problem(s); fixing …")
+            await self._fix(run, pm, problems)
+            problems = await anyio.to_thread.run_sync(lambda: self._check_module(run, pm))
+            if not problems:
+                ctx.emit("log", message=f"{pm.name}: clean")
+                break
+        else:
+            ctx.emit("warning", message=f"{pm.name} (generated): still {len(problems)} problem(s) after {ctx.cfg.rtl.max_fix_attempts} fix round(s)")
+        return problems
 
     async def _fix(self, run, pm: PlanModule, problems: list[str]) -> None:
-        if pm.name in getattr(self, "_provided_now", set()):  # (generated code is never rewritten by an LLM: the fix is the map's)
+        if pm.name not in getattr(self, "_provided_now", set()):
+            await super()._fix(run, pm, problems)
             return
-        await super()._fix(run, pm, problems)
+        if self._keep_generated():
+            return
+        from q3tui.flows.rtl.rtl import task as rtl_prompts
+
+        ctx, path = run.ctx, run.file(pm.name)
+        patches.record(ctx.project, run.lay.rtl, pm.name, [])  # (the base, for a module generated before patches were kept)
+        await ctx.llm(self._stage(run, pm, rtl_prompts.fix_prompt(
+            module=pm.name, path=ctx.project.rel(path), problems=rtl_prompts.diagnostics_text(problems),
+            code=path.read_text() if path.is_file() else "", reqs=[], generated=True)))
+        run.wrote.add(pm.name)
+        self._own_edit(ctx, path)
+        patches.record(ctx.project, run.lay.rtl, pm.name, ["lint fix: " + "; ".join(str(p)[:160] for p in problems[:4]) + (f" (+{len(problems) - 4} more)" if len(problems) > 4 else "")])
+
+    @staticmethod
+    def _own_edit(ctx, path: Path) -> None:
+        """The csr step's output, changed here: not your edit (the csr step keeps it while the tool makes the same module)."""
+        rel = ctx.project.rel(path)
+        for rec in ctx.engine.state.steps.values():
+            if rel in rec.outputs and path.is_file():
+                rec.outputs[rel] = sha256_file(path)
 
     def _full_lint(self, run) -> dict[str, list[str]]:
         per = super()._full_lint(run)
+        if not self._keep_generated():
+            return per  # (findings in the generated modules go to their fix like any module's)
         for name in getattr(self, "_provided_now", set()) & set(per):
             run.ctx.emit("warning", message=f"{name} (generated by the APB-CSR-Generator): {len(per[name])} lint finding(s), not fixed here — "
                                             + "; ".join(per.pop(name)[:2]))
