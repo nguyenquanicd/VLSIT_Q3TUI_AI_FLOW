@@ -143,6 +143,7 @@ class ProjectConfig(_Strict):
     src_dir: str = "src"
     rtl_dir: str = "src/rtl"
     tb_dir: str = "src/tb"
+    fpga_src_dir: str = "src/fpga"  # the FPGA flow's own sources: memory initialization files (fpga_synth's fix agent writes them)
     build_dir: str = "build"  # disposable tool output
     syn_dir: str = "build/syn"  # build/syn/{fpga,asic}
     sim_dir: str = "build/sim"

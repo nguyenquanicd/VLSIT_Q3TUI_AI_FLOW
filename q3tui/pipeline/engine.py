@@ -16,6 +16,8 @@ from q3tui.core.project import Project, sha256_file, sha256_json
 DECISION_PREFIX = "[decision]"  # change requests that come from the user's own answers to a later step's question
 
 Status = Literal["pending", "stale", "done", "user", "failed", "running", "missing_input", "unavailable"]
+PACKAGE = Path(__file__).resolve().parents[1]  # the q3tui package: its files are named relative to it in the hashes
+
 Outcome = Literal["complete", "gate", "failed", "unavailable", "blocked", "cancelled", "restart"]
 
 
@@ -199,8 +201,17 @@ class Engine:
             raise EngineError(f"unknown step '{name}' (steps: {', '.join(self.by_name)})")
         return self.by_name[name]
 
+    def _key(self, f: Path) -> str:
+        """A file's name in the hashes: relative to the project; a built-in one (a template, the default rules) relative to the q3tui package,
+        so another checkout or install of Q3TUI with the same files leaves every step as it is (by its absolute path, running the TUI from a
+        second checkout made each step with a built-in input stale)."""
+        r = f.resolve()
+        if not r.is_relative_to(self.project.root) and r.is_relative_to(PACKAGE):
+            return "q3tui/" + str(r.relative_to(PACKAGE))
+        return self.project.rel(f)
+
     def _hash_files(self, files: list[Path]) -> dict[str, str]:
-        return {self.project.rel(f): sha256_file(f) for f in files if f.is_file()}
+        return {self._key(f): sha256_file(f) for f in files if f.is_file()}
 
     def _inputs_hash_without_feedback(self, step: StepDef, feedback: list[str]) -> str:
         """The inputs hash as it was before `feedback` was queued (to tell if anything else changed)."""
@@ -214,7 +225,7 @@ class Engine:
     def inputs_hash(self, step: StepDef) -> str:
         data = {
             "files": self._hash_files(step.inputs(self)),
-            "missing": sorted(self.project.rel(f) for f in step.inputs(self) if not f.is_file()),
+            "missing": sorted(self._key(f) for f in step.inputs(self) if not f.is_file()),
             "feedback": self.state.feedback.get(step.name, []),
         }
         opts = {k: step.options[k] for k in step.hashed_options if step.options.get(k) not in (None, "", [], {})}
@@ -1147,7 +1158,7 @@ class Engine:
                 self._accept_defaults(step, open_q)
                 self.save()
                 self.bus.emit("log", step.name, message=f"no review gate: accepted the default for {', '.join(q['id'] for q in open_q)}")
-        if view.gate != "open" or view.status not in ("done", "user"):
+        if view.gate != "open" or view.status not in ("done", "user") or (self.state.step_meta.get(step.name) or {}).get("loop"):
             return True  # (a step whose fixes went back upstream is pending again: the fix loop updates those steps and runs it again; nothing to approve now)
         mode = self.gate_mode(step.name)  # this gate's own policy, on top of the project-wide switches
         auto_answer = self.project.cfg.pipeline.auto_answer or mode == "auto_answer"

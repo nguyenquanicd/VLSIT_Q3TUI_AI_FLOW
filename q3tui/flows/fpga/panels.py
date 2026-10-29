@@ -18,7 +18,7 @@ from q3tui.flows.fpga.lib import sdc as sdcmod
 from q3tui.tui.panels import register_panel
 from q3tui.tui.screens import EditScreen
 from q3tui.tui.splitter import Splitter
-from q3tui.tui.views import IdTable, Markdown, fill_table, set_markdown
+from q3tui.tui.views import short, IdTable, Markdown, fill_table, set_markdown
 from q3tui.tui.vlsit_panels import DataTab, TabSpec, VlsitPanel, artifact
 
 if TYPE_CHECKING:
@@ -398,10 +398,15 @@ def _ppa_rows(app: "Q3TUIApp") -> list[tuple]:
              Text(v.get("hold", ""), style="grey50") if v.get("hold", "").startswith(("not", "n/a")) else (ok if v.get("hold") == "pass" else bad)),
             ("fmax", "Fmax estimate (MHz)", f"{t.get('fmax_mhz')}", ", ".join(f"{c['name']} {c['freq_mhz']:g}" for c in d.get("clocks", [])), "")]
     for k, u in d.get("utilization", {}).items():
-        if k in ("lut", "ff", "bram_tile", "dsp", "lut_ram", "io", "uram"):
+        if k in ("lut", "ff", "bram_tile", "dsp", "lut_ram", "io", "uram", "mem_bits"):
             budget = tg.get(k)
-            rows.append((f"u_{k}", f"{k.upper()} used", f"{u['used']} / {u['available']} ({u['pct']}%)", f"≤ {budget}%" if budget else "",
+            value = f"{u['used']} / {u['available']} ({u['pct']}%)" if u.get("available") is not None else f"{u['used']}"  # (Quartus: no total for some)
+            rows.append((f"u_{k}", f"{u.get('label') or k.upper()} used", value, f"≤ {budget}%" if budget else "",
                          (bad if k in v.get("over_budget", {}) else ok) if budget else ""))
+    pl, j = v.get("plausibility"), v.get("judgment") or {}
+    if pl:
+        rows.append(("plaus", "Is it the design?", short(j.get("summary") or "", 70), short(j.get("expected") or "", 40),
+                     ok if pl == "pass" else bad if pl == "fail" else Text(pl, style="grey50" if pl == "n/a" else "yellow")))
     cp = d.get("critical_path") or {}
     if cp:
         rows.append(("cp", "Worst path", f"{cp.get('source', '')} → {cp.get('destination', '')}",
@@ -413,6 +418,18 @@ def _ppa_rows(app: "Q3TUIApp") -> list[tuple]:
 
 def _ppa_detail(app: "Q3TUIApp", key: str) -> str:
     d = _ppa(app)
+    if key == "plaus":
+        j = (d.get("verdict") or {}).get("judgment") or {}
+        lines = [f"**Is it the design?** {(d.get('verdict') or {}).get('plausibility')} ({'judged by the LLM' if j.get('by') == 'llm' else 'by code'})", "",
+                 j.get("summary") or ""]
+        if j.get("expected"):
+            lines += ["", f"Expected: {j['expected']}"]
+        if j.get("why"):
+            lines += ["", "Why it was judged:", *(f"- {w}" for w in j["why"])]
+        for c in j.get("causes") or []:
+            lines += ["", f"- **{c.get('owner')}{':' + c['module'] if c.get('module') else ''}**: {c.get('what')}",
+                      f"  - evidence: {c.get('evidence')}", f"  - fix: {c.get('request') or '–'}"]
+        return "\n".join(lines)
     if key == "cp":
         f = app.project.fpga_dir / "reports" / "paths.rpt"
         return f"```\n{f.read_text(errors='replace')[:6000]}\n```" if f.is_file() else "_no paths.rpt_"
@@ -424,6 +441,46 @@ def _ppa_detail(app: "Q3TUIApp", key: str) -> str:
 
 def _plan(app: "Q3TUIApp") -> dict:
     return artifact(app, "ppa_plan.json", {}) or {}
+
+
+def _port(app: "Q3TUIApp") -> dict:
+    from q3tui.core.project import read_json
+    from q3tui.flows.fpga.lib.port import PORT_JSON
+
+    return read_json(app.project.schemas_dir / PORT_JSON, {}) or {}
+
+
+def _port_rows(app: "Q3TUIApp") -> list[tuple]:
+    """What the scan found, the problems handed back, what the porter did, the RTL work orders (the newest round)."""
+    p = _port(app)
+    rows = [(f"scan.{i}", Text(x["rule"], style="yellow"), f"{x['file']}:{x['line']}", short(x["note"], 110)) for i, x in enumerate(p.get("scan") or [])]
+    rows += [(f"req.{i}", Text("handed back", style="cyan"), "–", short(r, 110)) for i, r in enumerate(p.get("requests") or [])]
+    rows += [(f"done.{i}", Text("done", style="green"), "src/fpga" if "src/fpga" in d else "setup", short(d, 110)) for i, d in enumerate(p.get("done") or [])]
+    handed = p.get("handed") or []
+    rows += [(f"order.{i}", Text("RTL order", style="magenta"), o["module"], short(o["change"], 90) + (f"  → {handed[i].split(' → ')[-1]}" if i < len(handed) else ""))
+             for i, o in enumerate(p.get("orders") or [])]
+    return rows
+
+
+def _port_detail(app: "Q3TUIApp", key: str) -> str:
+    p = _port(app)
+    kind, _, i = key.partition(".")
+    head = f"**{p.get('part', '?')}** — {p.get('tool', '')}\n\n_{p.get('summary', '')}_\n\n"
+    try:
+        n = int(i)
+        if kind == "scan":
+            x = p["scan"][n]
+            return head + f"**{x['rule']}** `{x['file']}:{x['line']}` ({x['module']})\n\n```\n{x['code']}\n```\n\n{x['note']}"
+        if kind == "req":
+            return head + "**Handed back by the synthesis / the report**\n\n```\n" + p["requests"][n] + "\n```"
+        if kind == "done":
+            return head + f"**Done** {p['done'][n]}"
+        if kind == "order":
+            o = p["orders"][n]
+            return head + f"**RTL order** `{o['module']}`\n\n{o['change']}\n\n- Why: {o['why']}"
+    except (KeyError, IndexError, ValueError):
+        pass
+    return head
 
 
 def _fix_rows(app: "Q3TUIApp") -> list[tuple]:
@@ -472,10 +529,10 @@ class FixTab(DataTab):
             self._hand(key)
 
 
-# -- FPGA synthesis: the family, the device and the synthesis options of the step, picked here (the Settings dialog has them too) -----------------
+# -- FPGA synthesis: the device and the synthesis options of the step, picked here (the Settings dialog has them too) ------------------------
+# (the part decides the family and the tool: lib/templates.py `resolve`; the project flow's FPGA view lists the parts)
 
 _SYNTH = "pipeline.step_options.fpga_synth."
-_DEFAULT = "(template default)"
 
 
 def _synth_step(app: "Q3TUIApp"):
@@ -489,18 +546,20 @@ def _synth_rows(app: "Q3TUIApp") -> list[tuple]:
     if step is None:
         return []
     o = step.options
-    t = step.template()
-    dev, note = step.part()
-    rows = [("template", "FPGA family / tool", t.label, ""),
-            ("part", "Device (part)", dev, note or ("default of the family" if not o.get("part") else "")),
-            ("implement", "Place and route (Vivado)", "on" if step._fpga_cfg().get("implement") else "off", "" if t.backend == "vivado" else "n/a: nextpnr always places and routes")]
-    if t.backend == "yosys":
+    t, dev, note = templates.resolve(o)
+    rows = [("part", "Device (part)", dev, note or ""),
+            ("family", "Family and tool", t.label if t else "–", "from the part" if t else "no family here synthesizes this part")]
+    if t is None:
+        return [(k, n, v, Text(m, style="yellow")) for k, n, v, m in rows]
+    if t.backend != "yosys":
+        rows.append(("implement", "Place and route" + (" (fit)" if t.backend == "quartus" else ""), "on" if step._fpga_cfg().get("implement") else "off", ""))
+    else:
         rows += [("package", "Package", str(o.get("package") or t.devices.get(dev, "")), "" if o.get("package") else "default of the device")]
         if t.speed:
             rows.append(("speed", "Speed grade", str(o.get("speed") or t.speed), "" if o.get("speed") else "default"))
         rows.append(("frontend", "Verilog frontend", str(o.get("frontend") or "verilog"), ""))
     rows.append(("synth_args", "Extra synthesis arguments", " ".join(map(str, step._fpga_cfg().get("synth_args") or [])) or "–", ""))
-    return [(k, n, v, Text(m, style="yellow" if "not a" in m else "grey50")) for k, n, v, m in rows]
+    return [(k, n, v, Text(m, style="yellow" if ("no " in m or "chosen" in m) else "grey50")) for k, n, v, m in rows]
 
 
 def _synth_detail(app: "Q3TUIApp", key: str) -> str:
@@ -509,17 +568,16 @@ def _synth_detail(app: "Q3TUIApp", key: str) -> str:
     step = _synth_step(app)
     if step is None:
         return ""
-    t = step.template()
-    if key == "template":
-        return "\n\n".join(f"**{x.label}** — {x.help}" for x in templates.TEMPLATES.values())
-    if key == "part":
-        listing = ", ".join(f"`{d}`" for d in t.devices) if t.devices else "a Vivado part name (`xc7a100tcsg324-1`, `xc7k325tffg900-2`, …)"
-        return f"**Device** of {t.label}\n\nDefault `{t.part}`. Choices: {listing}.\n\nChanging the family or the device makes synthesis stale (Enter to change)."
-    return f"**{key}** — Enter to change. {t.help}"
+    t, dev, note = templates.resolve(step.options)
+    if key in ("part", "family"):
+        fams = "\n".join(f"- **{x.label}**: {x.help or 'part ' + x.part}" for x in templates.TEMPLATES.values())
+        return (f"**Device** `{dev}`" + (f" — {t.label}" if t else "") + (f"\n\n{note}" if note else "") + "\n\nThe part decides the family and the tool. Enter picks one from "
+                f"the device list (built in, yours, your spec's; Other… types one); the project flow's **FPGA** view adds yours (`a`).\n\nFamilies:\n{fams}")
+    return f"**{key}** — Enter to change." + (f" {t.help}" if t else "")
 
 
 class SynthTab(DataTab):
-    """Enter on a row changes it: the family, the device (a list for the open-source families), the options; saved to q3tui.yaml."""
+    """Enter on a row changes it: the part (its family follows), the options; saved to q3tui.yaml."""
 
     BINDINGS = [Binding("e", "edit", "Edit")]
 
@@ -533,41 +591,90 @@ class SynthTab(DataTab):
         key, step = self.current_key(), _synth_step(self.capp)
         if not key or step is None:
             return
-        t, o = step.template(), step.options
-        title, current = dict((k, n) for k, n, *_ in _synth_rows(self.capp))[key], ""
-        if key == "template":
-            labels = {x.label: x.id for x in templates.TEMPLATES.values()}
-            field, back = ("value", title, t.label, "choice", list(labels)), lambda v: labels[v]
-        elif key == "part" and t.devices:
-            opts = [_DEFAULT, *t.devices]
-            field, back = ("value", f"{title} — {t.family}", str(o.get("part") or _DEFAULT) if str(o.get("part") or "") in t.devices else _DEFAULT, "choice", opts), \
-                (lambda v: "" if v == _DEFAULT else v)
-        elif key in ("implement",):
+        o = step.options
+        t, dev, _note = templates.resolve(o)
+        title = dict((k, n) for k, n, *_ in _synth_rows(self.capp))[key]
+        if key == "family":
+            self.app.notify("the family follows the part: change the part (Enter on it, or the project flow's FPGA view)", severity="information")
+            return
+        if key == "part":
+            self.capp.push_screen(*_part_picker(self.capp, lambda part: self._apply("part", part)))
+            return
+        if key == "implement":
             field, back = ("value", title, "on" if step._fpga_cfg().get("implement") else "off", "choice", ["off", "on"]), lambda v: v
         elif key == "frontend":
             field, back = ("value", title, str(o.get("frontend") or "verilog"), "choice", ["verilog", "slang"]), lambda v: v
         elif key == "synth_args":
             field, back = ("value", f"{title} — one per line", "\n".join(map(str, step._fpga_cfg().get("synth_args") or [])), "text"), lambda v: v
-        else:  # part of Vivado, package, speed
-            current = str(o.get("part") or "") if key == "part" else str(o.get(key) or "")
-            field, back = ("value", f"{title} — empty: the default", current, "line"), lambda v: v
+        else:  # package, speed
+            field, back = ("value", f"{title} — empty: the default", str(o.get(key) or ""), "line"), lambda v: v
 
         def done(values: dict | None) -> None:
-            if values is None:
-                return
-            try:
-                self.capp.log_info(self.capp.ops.apply_settings({_SYNTH + key: back(str(values["value"]).strip() if field[3] != "text" else values["value"])}, save=True))
-            except Exception as exc:  # noqa: BLE001 - friendly message, never a traceback
-                self.app.notify(str(exc), severity="error")
-            self.capp.refresh_all()
+            if values is not None:
+                self._apply(key, back(str(values["value"]).strip() if field[3] != "text" else values["value"]))
 
         self.capp.push_screen(EditScreen(f"FPGA synthesis — {title}", [field], "ctrl+s to apply · Esc to cancel · run (r) to synthesize again"), done)
+
+    def _apply(self, key: str, value) -> None:
+        try:
+            self.capp.log_info(self.capp.ops.apply_settings({_SYNTH + key: value}, save=True))
+        except Exception as exc:  # noqa: BLE001 - friendly message, never a traceback
+            self.app.notify(str(exc), severity="error")
+        self.capp.refresh_all()
+        self.call_after_refresh(self._cursor_to, key)
+
+    def _cursor_to(self, key: str) -> None:
+        """Back on the row changed (another family's part adds its options' rows, and a new row takes the cursor)."""
+        table = self.query_one(DataTable)
+        try:
+            table.move_cursor(row=table.get_row_index(key))
+        except Exception:  # noqa: BLE001 - (the row went: the cursor stays where it is)
+            pass
+
+
+def _part_picker(app: "Q3TUIApp", use_part: Callable[[str], None]) -> tuple:
+    """The device list to pick the part from (lib/devices.py, the project flow's FPGA view's list): the one in use first, then your spec's,
+    yours, the built-in ones, each with its family's tool; Other… types a part. Parts no family here synthesizes are said, not offered."""
+    from q3tui.flows.fpga.lib import devices, templates
+    from q3tui.tui.picker import Choice, ChoiceScreen
+
+    use = devices.in_use(app.project)
+    order = {"spec": 0, "yours": 1, "built-in": 2}
+
+    def in_use(e: dict) -> bool:
+        return e["template"] == use["template"] and e["device"].lower() == use["device"].lower()
+
+    choices, left_out = [], []
+    for e in sorted(devices.entries(app.project), key=lambda e: (not in_use(e), min(order.get(s, 3) for s in e["sources"]), e["vendor"], e["part"])):
+        t = templates.TEMPLATES.get(e["template"] or "")
+        if t is None:
+            left_out += [] if "spec" in e["sources"] else [f"{e['part']} ({e['note']})"]  # (the spec's are among the problems below)
+            continue
+        tags = [x for x, s in (("your spec", "spec"), ("yours", "yours")) if s in e["sources"]]
+        choices.append(Choice(e["part"], f"{e['part']:<18} {e['title']} · {t.tool}" + (f" · {', '.join(tags)}" if tags else "") + (" — in use" if in_use(e) else ""),
+                              style="green" if in_use(e) else ""))
+    fam = templates.TEMPLATES[use["template"]].label if use["template"] else "no family here"
+    body = "\n".join([f"In use: {use['device']} ({fam})" + ("" if use["set"] else " — not chosen: the default") + ". The family and the tool follow the "
+                      "part; saved to q3tui.yaml. Add your own parts in the project flow's FPGA view (a).",
+                      *(f"! {p}" for p in devices.problems(app.project) if use["set"] or p != use["note"]), *([f"Not offered (no family here synthesizes them): {', '.join(left_out)}"] if left_out else [])])
+
+    def done(result) -> None:
+        part = (result.text if result is not None and result.text is not None else (result.value if result is not None else None)) or ""
+        if part.strip():
+            use_part(part.strip())
+
+    return ChoiceScreen("FPGA synthesis — Device (part)", choices, body=body, other="Other… (type a part)",
+                        other_title="Device (part): xc7a100tcsg324-1, LFE5U-85F, up5k, 10AX115N2F40E2LG, …", other_value=str(use["part"] or "")), done
 
 
 def _tabs_for(kind: str) -> tuple[TabSpec, ...]:
     if kind == "fpga.fpga_synth":
         return (TabSpec("fpga", "FPGA", ("Setting", "Name", "Value", "Note"), _synth_rows, _synth_detail,
-                        "Enter: choose the FPGA family, the device and the synthesis options (saved to q3tui.yaml) — then run (r)", widget=SynthTab),)
+                        "Enter: choose the device (its family and tool follow) and the synthesis options (saved to q3tui.yaml) — then run (r)", widget=SynthTab),)
+    if kind == "fpga.fpga_port":
+        return (TabSpec("port", "Port", ("Kind", "Where", "What"), _port_rows, _port_detail,
+                        "the scan, the problems the synthesis handed back, what the porter did (src/fpga/, the setup), the RTL orders — questions: o",
+                        empty="nothing ported yet — run (r)"),)
     if kind == "fpga.sdc":
         return (TabSpec("sdc", "SDC", (), lambda app: [], widget=SdcEditor),)
     if kind == "fpga.timing_util_report":
@@ -587,5 +694,5 @@ def _builder(kind: str):
     return build
 
 
-for _kind in ("fpga.sdc", "fpga.fpga_synth", "fpga.timing_util_report", "fpga.ppa_optimize"):
+for _kind in ("fpga.fpga_port", "fpga.sdc", "fpga.fpga_synth", "fpga.timing_util_report", "fpga.ppa_optimize"):
     register_panel(_kind, _builder(_kind))

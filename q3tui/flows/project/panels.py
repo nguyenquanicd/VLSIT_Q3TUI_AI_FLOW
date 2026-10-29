@@ -1,5 +1,5 @@
 """TUI panels of the project settings flow's steps (the flow's `panels.py`, imported by the TUI when it opens the flow; docs/spec/project-flow.md):
-`project` (settings you edit in place), `tools` (roles, modules, found or not), `libraries` (technologies and corners; add one by scanning a folder).
+`project` (settings you edit in place), `tools` (roles, modules, found or not), `libraries` (technologies and corners; add one by scanning a folder), `fpga` (the FPGA devices and the one in use).
 Every change is one of the flow's actions (`addon.py`) or `Ops.apply_settings`: the same ones the assistant and `q3tui act` use."""
 
 from __future__ import annotations
@@ -381,6 +381,91 @@ class LibTab(_Tab):
                   lambda v: self._act("lib_use", id=tech.id, corner=v["corner"]), hint="ctrl+s uses it (saved to q3tui.yaml) · Esc cancels")
 
 
+# -- fpga: the devices the FPGA flow can synthesize for, and the one in use ----------------------------------------------------------------
+
+
+def _fpga_entries(app: "Q3TUIApp") -> list[dict]:
+    from q3tui.flows.fpga.lib import devices
+
+    return devices.entries(app.project)
+
+
+def _fpga_in_use(app: "Q3TUIApp", e: dict) -> bool:
+    from q3tui.flows.fpga.lib import devices
+
+    use = devices.in_use(app.project)
+    return e["supported"] and e["template"] == use["template"] and e["device"].lower() == use["device"].lower()
+
+
+def _fpga_rows(app: "Q3TUIApp") -> list[tuple]:
+    from q3tui.flows.fpga.lib import templates
+
+    order = {"spec": 0, "yours": 1, "built-in": 2}
+    rows = []
+    for e in sorted(_fpga_entries(app), key=lambda e: (min(order.get(s, 3) for s in e["sources"]), e["vendor"], e["part"])):
+        tpl = templates.TEMPLATES.get(e["template"] or "")
+        rows.append((e["part"], e["part"], e["title"], tpl.title if tpl else Text(e["note"] or "no family here", style="red"),
+                     ", ".join(e["sources"]), Text("●", style="green") if _fpga_in_use(app, e) else ""))
+    return rows
+
+
+def _fpga_detail(app: "Q3TUIApp", key: str) -> str:
+    from q3tui.flows.fpga.lib import devices, templates
+
+    e = next((e for e in _fpga_entries(app) if e["part"] == key), None)
+    if e is None:
+        return ""
+    use = devices.in_use(app.project)
+    tpl = templates.TEMPLATES.get(e["template"] or "")
+    lines = [f"**{e['part']}** — {e['title']}", "",
+             f"- {e['vendor']} {e['family']}" + (f", synthesized by {tpl.label} as `{e['device']}`" if tpl else f": {e['note']}"),
+             f"- from: {', '.join(e['sources'])}" + (" (your spec names it)" if "spec" in e["sources"] else ""), "",
+             f"In use: **{use['device']}** ({templates.TEMPLATES[use['template']].label if use['template'] else 'no family here'})" + ("" if use["set"] else " — not chosen: the default")]
+    lines += ["", *(f"! {p}" for p in devices.problems(app.project))]
+    return "\n".join(lines + ["", "`u` use this part for the FPGA flow · `a` add a part · Enter / `e` edit yours · `d` remove yours"])
+
+
+def _fpga_urgent(app: "Q3TUIApp") -> int:
+    from q3tui.flows.fpga.lib import devices
+
+    return len(devices.problems(app.project))
+
+
+class FpgaTab(_Tab):
+    BINDINGS = [Binding("a", "add", "Add"), Binding("e", "edit", "Edit"), Binding("d", "remove", "Remove"), Binding("u", "use", "Use")]
+
+    def _form(self, e: dict | None) -> None:
+        fields = [("part", "Part (xc7a100tcsg324-1, LFE5U-85F, up5k, 10AX115N2F40E2LG, …: its family and tool follow)", (e or {}).get("part", ""), "line"),
+                  ("title", "Name shown (optional)", e["title"] if e and "yours" in e["sources"] else "", "line"),
+                  ("use", "Use it for the FPGA flow", "yes" if e and _fpga_in_use(self.capp, e) else "no", "choice", ["yes", "no"])]
+
+        def apply(v: dict) -> None:
+            if self._act("fpga_add", part=v["part"].strip(), title=v["title"].strip()) and v["use"] == "yes":
+                self._act("fpga_use", part=v["part"].strip())
+
+        self._ask(f"FPGA part {e['part']}" if e else "Add an FPGA part", fields, apply, hint="ctrl+s saves to this project's config/fpgas.json · Esc cancels")
+
+    def action_add(self) -> None:
+        self._form(None)
+
+    def action_edit(self) -> None:
+        key = self.current_key()
+        e = next((e for e in _fpga_entries(self.capp) if e["part"] == key), None)
+        if e is not None:
+            self._form(e)
+
+    def action_remove(self) -> None:
+        key = self.current_key()
+        if key:
+            self._act("fpga_remove", part=key)
+
+    def action_use(self) -> None:
+        key = self.current_key()
+        e = next((e for e in _fpga_entries(self.capp) if e["part"] == key), None)
+        if e is not None:
+            self._act("fpga_use", part=e["part"])
+
+
 # -- registry ---------------------------------------------------------------------------------------------------------------------------------
 
 
@@ -395,6 +480,10 @@ def _tabs_for(kind: str) -> tuple[TabSpec, ...]:
     if kind == "project.libraries":
         return (TabSpec("libraries", "Libraries", ("Technology", "Node", "Corners", "From", "In use"), _lib_rows, _lib_detail,
                         "a add (give the folder: the rest is filled in) · Enter / e edit · d remove · u pick the corner used as the ASIC library", widget=LibTab, empty="no technology"),)
+    if kind == "project.fpga":
+        return (TabSpec("fpga", "FPGA", ("Part", "Name", "Family (tool)", "From", "In use"), _fpga_rows, _fpga_detail,
+                        "u use the highlighted part for the FPGA flow (saved to q3tui.yaml) · a add a part · Enter / e edit yours · d remove yours",
+                        urgent=_fpga_urgent, widget=FpgaTab, empty="no device"),)
     return ()
 
 
@@ -405,5 +494,5 @@ def _builder(kind: str):
     return build
 
 
-for _kind in ("project.project", "project.tools", "project.libraries"):
+for _kind in ("project.project", "project.tools", "project.libraries", "project.fpga"):
     register_panel(_kind, _builder(_kind))

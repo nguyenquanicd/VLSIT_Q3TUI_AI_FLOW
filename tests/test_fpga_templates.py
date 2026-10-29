@@ -60,7 +60,8 @@ def proj(tmp_path):
 
 
 def test_templates():
-    assert [t for t, _ in templates.choices()] == ["xilinx7", "ecp5", "ice40"] and templates.get(None).id == "xilinx7"
+    assert [t for t, _ in templates.choices()][:3] == ["xilinx7", "ecp5", "ice40"] and templates.get(None).id == "xilinx7"
+    assert {t.id for t in templates.TEMPLATES.values() if t.backend == "quartus"} >= {"arria10", "cyclonev", "max10"}
     assert templates.get("ecp5").label == "Lattice ECP5 — Yosys + nextpnr (40 nm)" and templates.get("xilinx7").label.endswith("(28 nm)")
     with pytest.raises(ValueError, match="unknown FPGA template 'asic'"):
         templates.get("asic")
@@ -155,25 +156,29 @@ async def test_an_unknown_template_is_a_failed_step(proj):
     (proj.root / "q3tui.yaml").write_text("pipeline:\n  flow: fpga\n  step_options:\n    fpga_synth:\n      template: asic\n" + _roles(proj.root))
     eng = Engine(Project.open(proj.root))
     await eng.run(yes=True, stop="fpga_synth")
-    assert "unknown FPGA template 'asic'" in {v.name: v for v in eng.status()}["fpga_synth"].detail
+    st = {v.name: v for v in eng.status()}
+    assert st["fpga_port"].status == "failed" and "unknown FPGA template 'asic'" in st["fpga_port"].detail  # (the first step that reads the part says it)
 
 
 # -- Settings --------------------------------------------------------------------------------------------------------------------------
 
 
-def test_the_template_is_a_setting(proj):
+def test_the_part_is_the_setting_and_its_family_follows(proj):
+    from q3tui.pipeline.base import StepFailed
+
     ops = Ops(Engine(proj))
-    tabs = {t.id: t for t in ops.settings_tabs()}
-    paths = {s.path: s for s in tabs["fpga_synth"].settings}
-    tpl = paths["pipeline.step_options.fpga_synth.template"]
-    assert tpl.kind == "choice" and [c[0] for c in tpl.choices] == ["xilinx7", "ecp5", "ice40"]
-    assert {"pipeline.step_options.fpga_synth.part", "pipeline.step_options.fpga_synth.package", "pipeline.step_options.fpga_synth.speed"} <= set(paths)
-    assert ops.settings()["pipeline.step_options.fpga_synth.template"] == "ecp5"
-    ops.apply_settings({"pipeline.step_options.fpga_synth.template": "ice40"}, save=True)
-    assert ops.engine.by_name["fpga_synth"].options["template"] == "ice40"
-    assert Ops(Engine(Project.open(proj.root))).settings()["pipeline.step_options.fpga_synth.template"] == "ice40"
-    with pytest.raises(EngineError):
-        ops.apply_settings({"pipeline.step_options.fpga_synth.template": "nope"})
+    paths = {s.path for s in {t.id: t for t in ops.settings_tabs()}["fpga_synth"].settings}
+    base = "pipeline.step_options.fpga_synth."
+    assert base + "template" not in paths and {base + "part", base + "package", base + "speed"} <= paths
+    step = ops.engine.by_name["fpga_synth"]
+    assert step.template().id == "ecp5" and step.part() == ("85k", "")      # (an older project's template: honoured while no part is set)
+    ops.apply_settings({base + "part": "up5k"}, save=True)
+    assert step.template().id == "ice40" and step.part() == ("up5k", "")     # the part wins over that template
+    ops.apply_settings({base + "part": "10AX115N2F40E2LG"}, save=True)
+    assert step.template().roles == ["fpga_quartus_pro"] and Engine(Project.open(proj.root)).by_name["fpga_synth"].template().family == "Arria 10"
+    ops.apply_settings({base + "part": "xczu9eg-ffvb1156-2-e"})
+    with pytest.raises(StepFailed, match="no FPGA family here synthesizes it"):
+        step.template()
 
 
 async def test_the_template_and_the_part_are_inputs_of_the_synthesis(proj):

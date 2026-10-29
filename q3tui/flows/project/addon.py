@@ -13,6 +13,57 @@ def register(api) -> None:
     api.setting("asic_synth", "library", "ASIC library (.db)", "text", "The standard-cell library the ASIC flow and the quick Fmax estimate use (a .db). The Libraries step picks it from "
                 "the catalog (u).", default=hints.asic_default_library())
 
+    # the FPGA in use is the FPGA flow's choice (fpga_synth's part: its family and tool follow): made here too, from the device list
+    api.setting("fpga_synth", "part", "FPGA device (part)", "text", "Empty: the default part. The FPGA step picks it from the device list (u); its family and tool follow.",
+                nullable=True)
+
+    @api.action("fpga_list", "List the FPGA devices the FPGA flow can synthesize for (built in, yours in config/fpgas.json, the parts the spec names), "
+                "the family of each, and the one in use.")
+    def fpga_list(ops) -> str:
+        from q3tui.flows.fpga.lib import devices
+
+        use = devices.in_use(ops.project)
+        lines = [f"{e['part']} | {e['title']} | {e['vendor']} {e['family']}{'' if e['template'] else ' (no family here)'} | {', '.join(e['sources'])}"
+                 + (" | IN USE" if e["supported"] and e["device"].lower() == use["device"].lower() and e["template"] == use["template"] else "")
+                 + (f" | {e['note']}" if e["note"] else "") for e in devices.entries(ops.project)]
+        return "\n".join(lines + [f"in use: {use['device']} ({use['template'] or 'no family here'}){'' if use['set'] else ' — not chosen: the default'}",
+                                  *(f"! {p}" for p in devices.problems(ops.project))])
+
+    @api.action("fpga_use", "Use an FPGA part for the FPGA flow: its family (and so the tool: Vivado, Yosys + nextpnr, Quartus) follows from the part's name; "
+                "saved to q3tui.yaml (fpga_synth part).", {"part": "the part (xc7a100tcsg324-1, 85k, LFE5U-85F, up5k, 10AX115N2F40E2LG, …)"})
+    def fpga_use(ops, part: str) -> str:
+        from q3tui.flows.fpga.lib import devices, templates
+
+        info = devices.identify(part)
+        if not info["template"]:
+            raise ValueError(f"{part}: {info['note']}")
+        device, note = templates.device(templates.TEMPLATES[info["template"]], part.strip())
+        if note:
+            raise ValueError(note)
+        return ops._log("fpga", ops.apply_settings({devices.PART_OPT: device}, save=True))
+
+    @api.action("fpga_add", "Add (or replace) an FPGA part in this project's config/fpgas.json (its family follows from its name).",
+                {"part": "the part name", "title": "a name shown (optional)"}, optional=("title",))
+    def fpga_add(ops, part: str, title: str = "") -> str:
+        from q3tui.flows.fpga.lib import devices
+
+        info = devices.identify(part)
+        parts = [p for p in devices.load(ops.project) if str(p["part"]).lower() != part.strip().lower()]
+        parts.append({"part": part.strip(), **({"title": title.strip()} if title.strip() else {})})
+        devices.save(ops.project, parts)
+        return ops._log("fpga", f"added {part.strip()} to config/fpgas.json" + (f" ({info['vendor']} {info['family']})" if info["template"] else f" — {info['note']}"))
+
+    @api.action("fpga_remove", "Remove a part from this project's config/fpgas.json (the built-in devices are not in it).", {"part": "the part name"})
+    def fpga_remove(ops, part: str) -> str:
+        from q3tui.flows.fpga.lib import devices
+
+        parts = devices.load(ops.project)
+        left = [p for p in parts if str(p["part"]).lower() != part.strip().lower()]
+        if len(left) == len(parts):
+            raise ValueError(f"{part} is not in config/fpgas.json")
+        devices.save(ops.project, left)
+        return ops._log("fpga", f"removed {part.strip()} from config/fpgas.json")
+
     @api.action("lib_scan", "Look for standard-cell libraries (.db files for Design Compiler) in a folder (searched below it) or a glob, and list "
                 "the folders that hold them with their corners — to find what to add with lib_add.", {"folder": "a folder, or a glob like /pdk/*/lib/*.db"})
     def lib_scan(ops, folder: str) -> str:

@@ -65,20 +65,23 @@ def _handoff(ops, ids: str) -> str:
 
 
 def register(api) -> None:
-    from q3tui.flows.fpga.lib import templates
-
-    # the synthesis template and device (Settings → fpga_synth), then the PPA step's options
-    api.setting("fpga_synth", "template", "FPGA template", "choice", "The family and tool: Vivado for Xilinx 7-series, Yosys + nextpnr (open source) for Lattice ECP5 / iCE40.",
-                templates.choices())
-    api.setting("fpga_synth", "part", "Device (part)", "text", "Empty: the template's default. Vivado: a part name (xc7a100tcsg324-1); ECP5: 25k, 45k, 85k, um-85k; iCE40: hx8k, up5k, lp8k.",
-                nullable=True)
-    api.setting("fpga_synth", "package", "Package (open-source templates)", "text", "Empty: the device's default (ECP5 CABGA381, iCE40 hx8k ct256). More IOs than the package has stops nextpnr.",
+    # the synthesis device (Settings → fpga_synth: its family and tool follow), then the PPA step's options
+    api.setting("fpga_synth", "part", "Device (part)", "text", "The part decides the family and the tool: Xilinx 7-series (xc7a100tcsg324-1, …) with Vivado, "
+                "Lattice ECP5 (25k / 45k / 85k, LFE5U-85F) / iCE40 (hx8k, up5k) with Yosys + nextpnr, Intel (10AX115N2F40E2LG, 5CEBA4F23C7, …) with "
+                "Quartus. Empty: the default part. The project flow's FPGA view lists them.", nullable=True)
+    api.setting("fpga_synth", "package", "Package (open-source families)", "text", "Empty: the device's default (ECP5 CABGA381, iCE40 hx8k ct256). More IOs than the package has stops nextpnr.",
                 nullable=True)
     api.setting("fpga_synth", "speed", "Speed grade (ECP5)", "text", "6, 7 or 8; empty: 6.", nullable=True)
     api.setting("fpga_synth", "implement", "Place and route (Vivado)", "bool",
                 "Add opt / place / route after synthesis: numbers closer to the board, and hold slack is judged. Slower.")
     api.setting("fpga_synth", "frontend", "Verilog frontend (open source)", "choice", "verilog: Yosys read_verilog -sv; slang: the yosys-slang plugin (fuller SystemVerilog).",
                 (("verilog", "verilog — read_verilog -sv"), ("slang", "slang — yosys-slang plugin")), nullable=True)
+    api.setting("fpga_synth", "max_rounds", "Rounds with fpga_port", "int", "How often a failed synthesis is handed to fpga_port (the tool's error "
+                "lines) and run again in one run; empty: pipeline.max_fix_iterations.", nullable=True)
+    api.setting("fpga_port", "handoff_flow", "Hand RTL changes to flow", "text", "The flow that owns the RTL: what the RTL has to change for "
+                "this part goes to its rtl step (default rtl).")
+    api.setting("timing_util_report", "max_rounds", "Rounds with fpga_port", "int", "How often a result that is not the design is handed to "
+                "fpga_port in one run before it is asked here; empty: pipeline.max_fix_iterations.", nullable=True)
     api.setting("fpga_synth", "synth_args", "Extra synthesis arguments", "lines",
                 "One per line, added to the synthesis command (Vivado synth_design: -flatten_hierarchy full; Yosys synth_ecp5 / synth_ice40: -abc9).")
     # the ASIC library: the ASIC flow's own option, here too (the estimate and the SDC tab use it; one choice for both flows)

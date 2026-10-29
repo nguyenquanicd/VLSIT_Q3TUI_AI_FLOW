@@ -37,6 +37,8 @@ class Step(FpgaStep):
     def missing_input(self, engine) -> str | None:
         if not self.artifact(engine, PPA_JSON).is_file():
             return "the report is needed first (step timing_util_report)"
+        if ((self.read(engine, PPA_JSON, {}) or {}).get("verdict", {}).get("judgment") or {}).get("handed_to") == "fpga_port" and engine.state.feedback.get("fpga_port"):
+            return "the result is not the design: handed to fpga_port; the synthesis and the report run again first"
         return None
 
     def missed(self, ppa: dict) -> list[str]:
@@ -49,12 +51,27 @@ class Step(FpgaStep):
             out.append(f"hold slack WHS {t.get('whs_ns')} ns is negative")
         for k, o in (v.get("over_budget") or {}).items():
             out.append(f"{k.upper()} uses {o['used_pct']}% of the part, the budget is {o['max_pct']}%")
+        if v.get("plausibility") == "fail":  # (the result is not the design: the numbers above measure what was left)
+            j = v.get("judgment") or {}
+            out.append(f"the synthesis result is not the design: {j.get('summary', '')}"
+                       + "".join(f" Cause ({c.get('owner')}{':' + c['module'] if c.get('module') else ''}): {c.get('what')} Evidence: "
+                                 f"{c.get('evidence')} Fix: {c.get('request')}" for c in j.get("causes") or []))
         return out
+
+    def _decisions(self, engine) -> list[str]:
+        """Your answers to the report's questions (is the result the design?): settled, the fixes follow them."""
+        rep = engine.by_name.get("timing_util_report")
+        if rep is None or not hasattr(rep, "question_list"):
+            return []
+        return [f"{q['question']} → {q['answer']}" for q in rep.question_list(engine) if q.get("answer")]
 
     def _prompt(self, engine, ppa: dict, missed: list[str], history: list[dict], modules: list[str]) -> str:
         goal = str(self.options.get("goal") or "")
+        decided = self._decisions(engine)
         lines = ["## Targets missed" if missed else "## Goal (nothing missed: improve the result)",
                  *(f"- {m}" for m in missed or [goal or "improve PPA"]),
+                 *(["\n## Your decisions (settled: the fixes follow them; a decision about the part or the tool is a setting, not a fix)",
+                    *(f"- {d}" for d in decided)] if decided else []),
                  *([f"\nUser goal: {goal}"] if goal and missed else []),
                  "\n## Report (ground truth)", f"Part {ppa.get('part')} ({ppa.get('stage')}), top {ppa.get('top')}, clocks "
                  + ", ".join(f"{c['name']} {c['freq_mhz']:g} MHz" for c in ppa.get("clocks", [])),

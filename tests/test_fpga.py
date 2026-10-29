@@ -202,7 +202,7 @@ def test_the_fpga_role_comes_only_from_the_projects_tools_file(tmp_path):
 
 def test_flow_loads():
     flow = flows.load_flow("fpga", Path.cwd())
-    assert [s.id for s in flow.steps] == ["sdc", "fpga_synth", "timing_util_report", "ppa_optimize"]
+    assert [s.id for s in flow.steps] == ["fpga_port", "sdc", "fpga_synth", "timing_util_report", "ppa_optimize"]
     assert flow.gates == {"timing_util_report": "human", "ppa_optimize": "human"}
 
 
@@ -221,6 +221,9 @@ async def test_the_steps_run(proj):
     assert ppa["timing"]["fmax_mhz"] == round(1000 / (5.0 - 3.639), 1) and ppa["verdict"]["overall"] == "pass"
     assert ppa["verdict"]["hold"] == "not judged (post-synthesis)" and ppa["timing"]["whs_ns"] == -0.181
     assert ppa["unconstrained"] == {"no_input_delay": 1}
+    assert ppa["verdict"]["plausibility"] == "pass" and ppa["verdict"]["judgment"]["by"] == "code"   # nothing removed: no judgment needed
+    assert "report_utilization -hierarchical" in (proj.root / "build" / "syn" / "fpga" / "synth.tcl").read_text()
+    assert "Synth 8-3331" in (proj.root / "build" / "syn" / "fpga" / "reports" / "synth.log").read_text()   # the log beside the reports
 
 
 async def test_a_slow_tool_does_not_freeze_the_event_loop(proj):
@@ -299,7 +302,7 @@ async def test_targets_are_judged(proj):  # (the report only: the gate stops the
     (proj.root / "flows").mkdir()
     shutil.copytree(flows.BUILTIN_DIR / "fpga", proj.root / "flows" / "fpga", ignore=shutil.ignore_patterns("__pycache__"))
     skill = proj.root / "flows" / "fpga" / "timing_util_report" / "md" / "skill.md"
-    skill.write_text(skill.read_text().replace("options: {}", "options:\n  targets: {max_util_pct: {ff: 0.1}, min_slack_ns: 5}"))
+    skill.write_text(skill.read_text().replace("options:\n", "options:\n  targets: {max_util_pct: {ff: 0.1}, min_slack_ns: 5}\n", 1))
     eng = Engine(proj)
     await eng.run()
     v = json.loads((proj.schemas_dir / "ppa_report.json").read_text())["verdict"]
@@ -349,6 +352,8 @@ async def test_sdc_view_has_three_columns(proj):
     await eng.run(yes=True)
     app = Q3TUIApp(proj)
     async with app.run_test(size=(150, 45)) as pilot:
+        await pilot.pause()
+        app._select_step("sdc")  # (the visible panel is the one refreshed)
         await pilot.pause()
         # (the flow's panels.py is loaded by path, so its classes are found by name)
         (ed,) = [w for w in app.query("SdcEditor")]
@@ -510,7 +515,7 @@ async def test_nothing_to_optimize_when_the_targets_are_met(proj, monkeypatch):
 async def test_a_missed_target_gets_proposals_from_a_read_only_stage(proj, monkeypatch):
     from q3tui.llm import runtime
 
-    _fork(proj, timing_util_report=("options: {}", "options:\n  targets: {min_slack_ns: 5}"))
+    _fork(proj, timing_util_report=("options:\n", "options:\n  targets: {min_slack_ns: 5}\n"))
     fake = PlanLLM(_plan())
     monkeypatch.setattr(runtime, "run_stage", fake)
     eng = Engine(proj)
@@ -529,7 +534,7 @@ async def test_handoff_sends_change_requests_to_the_owning_flow(proj, monkeypatc
 
     (proj.root / "flows").mkdir(exist_ok=True)
     (proj.root / "flows" / "owner.yaml").write_text("name: owner\nsteps:\n  - {id: spec, kind: spec}\n  - {id: rtl, kind: reads, deps: [spec]}\n")
-    _fork(proj, timing_util_report=("options: {}", "options:\n  targets: {min_slack_ns: 5}"),
+    _fork(proj, timing_util_report=("options:\n", "options:\n  targets: {min_slack_ns: 5}\n"),
           ppa_optimize=("handoff_flow: rtl", "handoff_flow: owner"))
     monkeypatch.setattr(runtime, "run_stage", PlanLLM(_plan()))
     eng = Engine(proj)
@@ -556,7 +561,7 @@ async def test_handoff_sends_change_requests_to_the_owning_flow(proj, monkeypatc
 async def test_the_rounds_are_bounded_and_remembered(proj, monkeypatch):
     from q3tui.llm import runtime
 
-    _fork(proj, timing_util_report=("options: {}", "options:\n  targets: {min_slack_ns: 5}"),
+    _fork(proj, timing_util_report=("options:\n", "options:\n  targets: {min_slack_ns: 5}\n"),
           ppa_optimize=("max_iterations: 3", "max_iterations: 1"))
     fake = PlanLLM(_plan())
     monkeypatch.setattr(runtime, "run_stage", fake)
@@ -586,7 +591,7 @@ def test_settings_follow_the_flows_steps(proj):
     tabs = {t.id: t for t in ops.settings_tabs()}
     assert not {"spec", "rtl", "tb"} & set(tabs)  # the spec tabs are not this flow's
     assert [s.path for s in tabs["models"].settings][::2] == [
-        f"llm.steps.{k}.model" for k in ("sdc", "fpga_synth", "timing_util_report", "ppa_optimize", "assistant")]
+        f"llm.steps.{k}.model" for k in ("fpga_port", "sdc", "fpga_synth", "timing_util_report", "ppa_optimize", "assistant")]
     assert "pipeline.parallel_rtl_tb" not in {s.path for t in tabs.values() for s in t.settings}
     assert "llm.steps.ppa_optimize.model" in ops.settings()
     ops.apply_settings({"llm.steps.ppa_optimize.model": "claude-sonnet-5-5"})
@@ -664,7 +669,7 @@ async def test_a_human_gate_offers_the_handoff_and_the_switch(proj, monkeypatch)
     from q3tui.tui.screens import ConfirmScreen
 
     _owner_flow(proj)
-    _fork(proj, timing_util_report=("options: {}", "options:\n  targets: {min_slack_ns: 5}"),
+    _fork(proj, timing_util_report=("options:\n", "options:\n  targets: {min_slack_ns: 5}\n"),
           ppa_optimize=("handoff_flow: rtl", "handoff_flow: owner"))
     monkeypatch.setattr(runtime, "run_stage", PlanLLM(_plan()))
     eng = Engine(proj)
@@ -690,7 +695,7 @@ async def test_a_gate_in_mode_auto_hands_off_the_rtl_fixes_only(proj, monkeypatc
     from q3tui.llm import runtime
 
     _owner_flow(proj)
-    _fork(proj, timing_util_report=("options: {}", "options:\n  targets: {min_slack_ns: 5}"),
+    _fork(proj, timing_util_report=("options:\n", "options:\n  targets: {min_slack_ns: 5}\n"),
           ppa_optimize=("handoff_flow: rtl", "handoff_flow: owner"))
     skill = proj.root / "flows" / "fpga" / "ppa_optimize" / "md" / "skill.md"
     skill.write_text(skill.read_text().replace("gate: human", "gate: auto"))
@@ -708,7 +713,7 @@ async def test_auto_answer_runs_the_owner_flow_and_goes_round_again(proj, monkey
     from q3tui.llm import runtime
 
     _owner_flow(proj)
-    _fork(proj, timing_util_report=("options: {}", "options:\n  targets: {min_slack_ns: 5}"),
+    _fork(proj, timing_util_report=("options:\n", "options:\n  targets: {min_slack_ns: 5}\n"),
           ppa_optimize=("handoff_flow: rtl", "handoff_flow: owner"))
     skill = proj.root / "flows" / "fpga" / "ppa_optimize" / "md" / "skill.md"
     skill.write_text(skill.read_text().replace("gate: human", "gate: auto_answer"))
@@ -743,7 +748,7 @@ async def test_h_in_the_fixes_tab_moves_to_the_owner_flow(proj, monkeypatch):
     from q3tui.tui.app import Q3TUIApp
 
     _owner_flow(proj)
-    _fork(proj, timing_util_report=("options: {}", "options:\n  targets: {min_slack_ns: 5}"),
+    _fork(proj, timing_util_report=("options:\n", "options:\n  targets: {min_slack_ns: 5}\n"),
           ppa_optimize=("handoff_flow: rtl", "handoff_flow: owner"))
     monkeypatch.setattr(runtime, "run_stage", PlanLLM(_plan()))
     await Engine(proj).run(yes=True)
@@ -793,7 +798,7 @@ async def test_targets_met_on_changed_rtl_run_the_owners_functional_check(proj, 
     (proj.root / "flows" / "owner.yaml").write_text(
         "name: owner\nsteps:\n  - {id: spec, kind: spec}\n  - {id: rtl, kind: reads, deps: [spec]}\n"
         "  - {id: format, kind: reads, deps: [rtl]}\n  - {id: smoke, kind: reads, deps: [format]}\n")
-    _fork(proj, timing_util_report=("options: {}", "options:\n  targets: {min_slack_ns: 5}"),
+    _fork(proj, timing_util_report=("options:\n", "options:\n  targets: {min_slack_ns: 5}\n"),
           ppa_optimize=("handoff_flow: rtl", "handoff_flow: owner"))
     fake = PlanLLM(_plan())
     monkeypatch.setattr(runtime, "run_stage", fake)
@@ -960,7 +965,7 @@ def test_the_synthesis_options_are_settings_of_fpga_synth(proj):
     ops = Ops(Engine(proj))
     base = "pipeline.step_options.fpga_synth."
     paths = {s.path for t in ops.settings_tabs() for s in t.settings}
-    assert {base + k for k in ("template", "part", "package", "speed", "implement", "frontend", "synth_args")} <= paths
+    assert {base + k for k in ("part", "package", "speed", "implement", "frontend", "synth_args")} <= paths and base + "template" not in paths  # (the part decides)
     ops.apply_settings({base + "implement": "on", base + "synth_args": "-flatten_hierarchy full\n-retiming"})
     step = ops.engine.by_name["fpga_synth"]
     assert step._fpga_cfg()["implement"] is True and step._fpga_cfg()["synth_args"] == ["-flatten_hierarchy full", "-retiming"]
@@ -980,15 +985,42 @@ async def test_the_fpga_is_picked_in_the_synthesis_step_view(proj):
         app._select_step("fpga_synth")
         await pilot.pause()
         rows = {r[0]: r for r in panels._synth_rows(app)}
-        assert "Xilinx 7-series" in str(rows["template"][2]) and "implement" in rows and "package" not in rows  # (Vivado: no package / speed)
-        app.ops.apply_settings({"pipeline.step_options.fpga_synth.template": "ecp5", "pipeline.step_options.fpga_synth.part": "45k"}, save=True)
+        assert "Xilinx 7-series" in str(rows["family"][2]) and "implement" in rows and "package" not in rows  # (Vivado: no package / speed)
+        app.ops.apply_settings({"pipeline.step_options.fpga_synth.part": "45k"}, save=True)                     # the part alone: its family follows
         rows = {r[0]: r for r in panels._synth_rows(app)}
-        assert rows["part"][2] == "45k" and rows["package"][2] == "CABGA381" and "speed" in rows and "frontend" in rows
+        assert rows["part"][2] == "45k" and "ECP5" in str(rows["family"][2]) and rows["package"][2] == "CABGA381" and "speed" in rows and "frontend" in rows
         app.refresh_all()
         await pilot.pause(0.5)
         tab = app.screen.query_one(panels.SynthTab)
         assert tab.query_one(DataTable).row_count == len(rows)
-        assert "45k" in panels._synth_detail(app, "part") or "`25k`" in panels._synth_detail(app, "part")
+        assert "`45k`" in panels._synth_detail(app, "part") and "Intel Arria 10" in panels._synth_detail(app, "part")
+
+
+async def test_the_part_is_picked_from_the_device_list(proj):
+    from q3tui.flows.fpga import panels
+    from q3tui.tui.app import Q3TUIApp
+    from q3tui.tui.picker import ChoiceScreen
+
+    app = Q3TUIApp(proj)
+    async with app.run_test(size=(150, 45)) as pilot:
+        await pilot.pause()
+        app._select_step("fpga_synth")
+        await pilot.pause(0.5)
+        app.screen.query_one(panels.SynthTab).action_edit()  # (Enter on the first row: the part)
+        await pilot.pause()
+        picker = app.screen
+        assert isinstance(picker, ChoiceScreen) and "not chosen: the default" in picker.body
+        assert picker.choices[0].value == "xc7k325tffg900-2" and picker.choices[0].label.endswith("— in use")  # (the one in use first)
+        assert any(c.value == "10AX115N2F40E2LG" and "Quartus Prime Pro" in c.label for c in picker.choices)
+        picker._pick(next(i for i, c in enumerate(picker.choices) if c.value == "45k"))
+        await pilot.pause()
+        assert app.ops.settings()["pipeline.step_options.fpga_synth.part"] == "45k" and "45k" in (proj.root / "q3tui.yaml").read_text()
+        app.screen.query_one(panels.SynthTab).action_edit()
+        await pilot.pause()
+        assert app.screen.choices[0].value == "45k"
+        app.screen._finish([], "5CEBA4F23C7")  # (Other…: a part typed)
+        await pilot.pause()
+        assert app.ops.settings()["pipeline.step_options.fpga_synth.part"] == "5CEBA4F23C7"
 
 
 async def test_an_asic_frequency_leaves_the_fpga_results_alone(proj):
@@ -1036,3 +1068,126 @@ def test_a_reset_gets_the_input_delay_of_its_own_clock_and_extra_tcl_is_sourced_
     cfg.extra_tcl = ["set_false_path -from [get_ports i_d]"]
     assert sdc.add_extra(cfg, ["set_false_path -from [get_ports i_d]", "set_max_delay 3 -to [get_ports i_d]"]) == ["set_max_delay 3 -to [get_ports i_d]"]
     assert sdc.render(cfg, ports)["extra.tcl"].endswith("set_max_delay 3 -to [get_ports i_d]\n")
+
+
+# -- is the result the design? (lib/judge.py) ------------------------------------------------------------------------------
+
+TRIMMED_LOG = """INFO: [Synth 8-6157] synthesizing module 'm_imem'
+WARNING: [Synth 8-6014] Unused sequential element u_imem/reg_mem_reg was removed. 
+""" + "".join(f"WARNING: [Synth 8-3332] Sequential element (u_cpu/u_dec/reg_a_reg[{i}]) is unused and will be removed from module top.\n" for i in range(12)) + \
+    "WARNING: [Synth 8-7129] Port i_pprot[2] in module m_soc_csr is either unconnected or has no load\n"
+
+
+def test_the_judge_gathers_what_the_tool_removed_and_what_the_rtl_declares(tmp_path):
+    from q3tui.flows.fpga.lib import judge
+
+    imem, dmem = tmp_path / "m_imem.sv", tmp_path / "m_dmem.sv"
+    imem.write_text('module m_imem;\n  (* ram_init_file = "m_imem.mif" *)\n  logic [31:0] reg_mem [0:8191];\nendmodule\n')
+    dmem.write_text('module m_dmem;\n  (* ram_init_file = "m_dmem.mif" *)logic [63:0] reg_mem     [0:LPARA_DEPTH-1];\n  logic [3:0] w_a;\nendmodule\n')
+    ev = judge.gather(TRIMMED_LOG, [imem, dmem])
+    assert ev.removed_storage == ["u_imem/reg_mem_reg"] and ev.removed_seq_total == 12 and ev.removed_seq["u_cpu.u_dec"] == 12
+    assert ev.no_load["m_soc_csr"] == 1 and ev.rtl_files == 2
+    assert ev.memories == ["m_imem.sv: logic [31:0] reg_mem [0:8191];", 'm_dmem.sv: (* ram_init_file = "m_dmem.mif" *)logic [63:0] reg_mem [0:LPARA_DEPTH-1];']
+    why = judge.suspicious(ev, {"lut": {"used": 48}, "bram_tile": {"used": 0}, "lut_ram": {"used": 0}})
+    assert any("removed storage: u_imem/reg_mem_reg" in w for w in why) and any("no block RAM or LUTRAM" in w for w in why)
+    assert any("12 sequential elements" in w for w in why)
+    assert judge.suspicious(judge.gather("WARNING: [Synth 8-3331] design has unconnected port\n", []), {"lut": {"used": 759}}) == []
+
+
+def _trimmed(proj):
+    """blk with a memory nothing reads, and a tool that says it removed it."""
+    (proj.root / "src" / "rtl" / "blk.sv").write_text(RTL.replace("endmodule", "  logic [31:0] reg_mem [0:1023];\nendmodule"))
+    fake = proj.root / "fake_vivado.py"
+    fake.write_text(fake.read_text() + "print('WARNING: [Synth 8-6014] Unused sequential element u_mem/reg_mem_reg was removed.')\n")
+
+
+def _not_the_design():
+    from q3tui.flows.fpga.lib.judge import JudgeCause, SynthJudgment
+    from q3tui.steps.common import QuestionOption
+
+    options = [QuestionOption(label="Synthesize with the spec's tool and part, where the attribute is read", impact="no RTL change"),
+               QuestionOption(label="Bring the memory's write port out to the top for this synthesis only", impact="one more port in synthesis")]
+    return options, SynthJudgment(plausible=False, summary="the memory was removed: a ROM of zeros, so what reads it folded away",
+                                  expected="1 block RAM, a few hundred LUTs",
+                                  causes=[JudgeCause(what="the memory is initialized by an attribute Vivado ignores", evidence="Synth 8-6014 u_mem/reg_mem_reg",
+                                                     owner="spec", request="initialize it in a way this tool reads, or synthesize with the spec's tool")],
+                                  question="How should the memory get its contents for synthesis?", options=options)
+
+
+async def test_a_result_that_is_not_the_design_goes_to_the_port(proj, monkeypatch):
+    from q3tui.flows.fpga.lib.port import PortResult
+    from q3tui.llm import runtime
+    from q3tui.llm.runtime import StageResult
+    from q3tui.steps.common import Question
+
+    _trimmed(proj)
+    options, verdict = _not_the_design()
+    stages = []
+
+    async def fake(stage, cfg, emit):
+        stages.append(stage)
+        out = verdict if stage.name == "ppa_judge" else PortResult(summary="the spec forbids $readmemh and Vivado ignores ram_init_file", questions=[
+            Question(id="", question="How does the memory get its contents on this part?", blocking=True, default_assumption=options[0].label,
+                     kind="design_choice", options=options)])
+        return StageResult("ok", out, 0.01, 2, "s")
+
+    monkeypatch.setattr(runtime, "run_stage", fake)
+    eng = Engine(proj)
+    await eng.run()  # the report hands the judgment to fpga_port (the fix loop), which asks what only you decide
+    assert [s.name for s in stages] == ["ppa_judge", "fpga_port"]
+    assert "From timing_util_report: the synthesis result is not the design. the memory was removed" in stages[1].prompt
+    assert "(spec) the memory is initialized by an attribute Vivado ignores — evidence: Synth 8-6014 u_mem/reg_mem_reg" in stages[1].prompt
+    ppa = json.loads((proj.schemas_dir / "ppa_report.json").read_text())
+    assert ppa["verdict"]["plausibility"] == "fail" and ppa["verdict"]["judgment"]["handed_to"] == "fpga_port"
+    assert not [q for q in eng.questions() if q["step"] == "timing_util_report"]                                    # (not asked twice)
+    (q,) = [q for q in eng.questions() if q["step"] == "fpga_port"]
+    assert q["id"] == "FP1" and q["blocking"] and q["status"] == "open" and [o["label"] for o in q["options"]] == [o.label for o in options]
+
+
+async def test_a_result_that_is_not_the_design_fails_the_report_with_its_causes(proj, monkeypatch):
+    from q3tui.llm import runtime
+
+    _trimmed(proj)
+    options, verdict = _not_the_design()
+    fake = PlanLLM(verdict)
+    monkeypatch.setattr(runtime, "run_stage", fake)
+    eng = Engine(proj)
+    eng.by_name["timing_util_report"].options["max_rounds"] = 0  # (out of rounds with fpga_port: asked here)
+    await eng.run()  # (stops at the report's human gate)
+    (stage,) = [s for s in fake.stages if s.name == "ppa_judge"]
+    assert set(stage.builtin_tools) == {"Read", "Grep", "Glob"} and stage.write_dirs is None
+    assert "u_mem/reg_mem_reg" in stage.prompt and "reg_mem [0:1023]" in stage.prompt and "200 MHz" in stage.prompt   # (evidence, RTL, spec)
+    assert "What the spec says about the target" in stage.prompt and "SDC clocks: i_clk 5.0 ns" in stage.prompt and "tool Vivado 2025.1" in stage.prompt
+    ppa = json.loads((proj.schemas_dir / "ppa_report.json").read_text())
+    v = ppa["verdict"]
+    assert v["timing"] == "pass" and v["plausibility"] == "fail" and v["overall"] == "fail"                      # the targets alone would pass it
+    assert v["judgment"]["causes"][0]["owner"] == "spec" and v["judgment"]["by"] == "llm"
+    missed = eng.by_name["ppa_optimize"].missed(ppa)
+    assert any("not the design" in m and "an attribute Vivado ignores" in m for m in missed)                      # a missed target for the optimizer
+    (q,) = [q for q in eng.questions() if q["step"] == "timing_util_report"]                                      # a decision for you, to pick
+    assert q["id"] == "PPA1" and q["blocking"] and q["status"] == "open" and "How should the memory get its contents" in q["question"]
+    assert [o["label"] for o in q["options"]] == [o.label for o in options] and q["default_assumption"] == options[0].label
+    eng.answer("PPA1", options[1].label)
+    assert f"→ {options[1].label}" in eng.by_name["ppa_optimize"]._prompt(eng, ppa, missed, [], ["blk"])        # the optimizer follows it
+    from types import SimpleNamespace
+
+    from q3tui.flows.fpga import panels
+
+    app = SimpleNamespace(project=proj)
+    row = next(r for r in panels._ppa_rows(app) if r[0] == "plaus")
+    assert str(row[-1]) == "fail" and "ROM of zeros" in panels._ppa_detail(app, "plaus") and "owner" not in panels._ppa_detail(app, "plaus")
+
+
+async def test_a_result_that_cannot_be_judged_says_so_and_keeps_its_numbers(proj, monkeypatch):
+    from q3tui.llm import runtime
+
+    _trimmed(proj)
+
+    async def offline(stage, cfg, emit):
+        raise RuntimeError("no credentials")
+
+    monkeypatch.setattr(runtime, "run_stage", offline)
+    eng = Engine(proj)
+    await eng.run()
+    v = json.loads((proj.schemas_dir / "ppa_report.json").read_text())["verdict"]
+    assert v["plausibility"] == "not judged" and v["overall"] == "pass" and "no credentials" in v["judgment"]["summary"]

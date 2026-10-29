@@ -172,7 +172,10 @@ itself: the steps with change requests update (only the named units), and the st
 again — until it passes, a review gate stops it, a blocking question waits for you,
 `pipeline.max_fix_iterations` rounds are used (a step may set its own bound, e.g.
 `options.max_fix_rounds`), or the same finding came back `pipeline.escalate_after_repeats`
-times — then it becomes a question for you.
+times — then it becomes a question for you. A step whose loop is marked has nothing to approve
+in that pass: its own review gate does not stop the run (the FPGA flow's `timing_util_report`, a human
+gate, hands a result that is not the design to `fpga_port`; the loop reruns the port, the synthesis and
+the report, whose gate then stops for you).
 
 **Fixes owned by another flow** (`Engine.hand_to_flow(step, flow)`): a step that handed fixes to
 another flow's step (the dv flow's `simulate`: an RTL bug → the rtl flow's `rtl`) and runs
