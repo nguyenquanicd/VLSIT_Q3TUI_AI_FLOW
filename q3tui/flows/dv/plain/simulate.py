@@ -56,11 +56,21 @@ def missing_inputs(text: str, root: Path, _seen: dict | None = None) -> list[str
             if name.startswith(".") or "/" in path and path.rsplit("/", 1)[1].startswith("."):  # (".hex/.act1.hex": a list of suffixes, not a file)
                 continue
             if name not in seen:
-                seen[name] = Path(path).is_absolute() and Path(path).is_file() or any(
-                    ".q3tui" not in p.parts for p in root.rglob(name))
+                seen[name] = Path(path).is_absolute() and Path(path).is_file() or _found(root, name)
             if not seen[name]:
                 out.setdefault(name, path)
     return list(out.values())
+
+
+def _found(root: Path, name: str) -> bool:
+    """A file of that name somewhere in the project, its internal state (.q3tui/: backups) left out."""
+    import os
+
+    for _d, dirs, files in os.walk(root):
+        dirs[:] = [x for x in dirs if x != ".q3tui"]
+        if name in files:
+            return True
+    return False
 
 
 def _hand_blocked(step, ctx, blocked: list[tuple[str, list[str]]]) -> bool:

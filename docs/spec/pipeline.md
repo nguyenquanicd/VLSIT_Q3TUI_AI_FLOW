@@ -184,7 +184,8 @@ loop with that flow: the fix loop runs it within the same run (same process, loc
 then this flow again, whose steps that read its outputs are stale by then. A flow that does not
 finish stops the run with its outcome. The step itself decides when not to ask again (the dv
 triage: the RTL did not change, or the failures did not go down); otherwise it fails with the
-hand-off for you to run.
+hand-off for you to run. With lanes ([lanes.md](lanes.md)) these fixes stay in a folder per failing
+lane, so the other checking flows keep reading a frozen RTL tag.
 
 **Scoped change requests** (`[step:unit] text`, `steps.common.scoped` / `split_feedback`):
 a step with units (modules, test cases) re-runs only the units named (`[rtl:<module>]`,
@@ -263,6 +264,30 @@ The answer becomes a `[decision]` change request on the owner step, which update
   spec never gave) are raised as spec-gap questions, with the invented value as default.
 - **Every question has options** in the picker: the ones its step proposed, else derived
   (`steps/common.py: derive_options`; [flows.md](flows.md)).
+
+## Runs of several flows
+
+`r` in the dv flow, then in the fpga flow, then in the sanity flow: the three run at the same time in the project folder, each as its own
+process (the TUI's background runs, one per flow; `q3tui --flow X run` the same). What makes that safe:
+
+- **One run per flow**, not per project: a lock per flow (`.q3tui/run.<flow>.lock`: pid, flow, when). A second run of the same flow is refused;
+  a TUI on a flow another process runs only watches it (it saves nothing meanwhile), as before. `Engine.other_run()` is the run of this
+  flow, `other_runs()` every other live run; a lock left by a killed process (or one that ended and was not reaped yet) counts for nothing.
+- **One state file, merged per step.** `pipeline.json` is written under a file lock (`.q3tui/pipeline.lock`): a save reads what is on disk
+  and writes over it only what this process changed since it last synced (`merge_states`: per step for records, gates, questions, step
+  meta; item by item for change requests — one run consumes its own, another adds; the cost adds up). Between steps a run reads the
+  others' changes in (`Engine.sync`).
+- **A step runs in one process at a time.** A running step records its process (`StepRecord.pid`); a run that reaches a step another run is
+  executing (a step two flows share) waits for it, then goes on (`WAIT_S`); if that process died, the step is interrupted and runs here.
+- **What a step read is what counts.** When another run was going on while a step ran, an input that changed meanwhile and is not one of
+  the step's own outputs keeps its hash from before the step: the result is for what it read, so it stays out of date (a warning says
+  which file).
+- **The design never changes under the other runs.** A checking flow's run (`lanes.flows`: dv, fpga, sanity) that is about to run a design
+  step (`lanes.design_flows`: spec … RTL) for a change — the dv triage's RTL bug, the PPA hand-off, a decision for the spec — goes on in a
+  copy instead (lanes.md "A run that forks"): the design as it is becomes a tag, the run its lane folder over it, the change requests move
+  there; the fix is applied and the flow runs again in the copy, its fix loop included. A fork that fixed something merges back by itself
+  when the run is unattended (`lanes.auto_merge`) once no other run is going on in the project folder (forks waiting to merge go one at a
+  time); else its fixes wait for `m` on the Lanes screen. `lanes.fork: false` keeps the old behaviour (the fix changes the project folder).
 
 ## Pipeline controls
 

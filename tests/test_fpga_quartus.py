@@ -143,6 +143,8 @@ async def test_the_port_makes_the_memory_image_and_quartus_synthesizes(proj, mon
     assert ppa["timing"]["wns_ns"] == 2.666 and ppa["timing"]["fmax_mhz"] == 749.63 and ppa["critical_path"]["source"] == "pc[0]"
     assert ppa["verdict"]["timing"] == "pass" and ppa["verdict"]["hold"] == "not judged (post-synthesis)" and ppa["verdict"]["plausibility"] == "not judged"
     assert any("ALMs" in str(e.data.get("message")) for e in seen if e.kind == "log")
+    port_step = eng.by_name["fpga_port"]  # the images are its outputs (a lane copies them before it writes, a merge takes them), not reset
+    assert proj.root / "src" / "fpga" / "rom.mif" in port_step.outputs(eng) and proj.root / "src" / "fpga" / "rom.mif" not in port_step.reset_files(eng)
     eng2 = Engine(Project.open(proj.root))
     await eng2.run()  # nothing new: the porter is not asked again, nothing runs again
     assert len(fake.ported()) == 1 and {v.name: v.status for v in eng2.status()}["fpga_port"] == "done"

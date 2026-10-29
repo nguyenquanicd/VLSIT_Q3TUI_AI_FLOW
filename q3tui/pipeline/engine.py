@@ -2,21 +2,92 @@
 
 from __future__ import annotations
 
+import json
+import os
+import re
 import shutil
+from contextvars import ContextVar
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import Literal
 
+import anyio
+
 from q3tui.core.events import EventBus
 from q3tui.pipeline.base import StepContext, StepDef, StepFailed, checkpoint_dir
 from q3tui.pipeline.state import GateRecord, PipelineState
 from q3tui.core.project import Project, sha256_file, sha256_json
+from q3tui.core import lanes
 
 DECISION_PREFIX = "[decision]"  # change requests that come from the user's own answers to a later step's question
 
 Status = Literal["pending", "stale", "done", "user", "failed", "running", "missing_input", "unavailable"]
 PACKAGE = Path(__file__).resolve().parents[1]  # the q3tui package: its files are named relative to it in the hashes
+
+# the flow whose run this task is (set by the outermost `Engine.run`): a checking flow's run forks into a copy before it changes the design
+RUN_FLOW: ContextVar[str | None] = ContextVar("q3tui_run_flow", default=None)
+
+
+class ForkToLane(BaseException):
+    """A checking flow's run is about to run a design step (spec … RTL) for a change it made: it goes on in a copy (core/lanes.py `fork_run`).
+    A BaseException, like a cancellation: the steps' own `except Exception` (a hand-off that failed) must not swallow it."""
+
+    def __init__(self, step: str):
+        super().__init__(step)
+        self.step = step
+
+
+def _alive(pid: int) -> bool:
+    """A process that is running (a run that ended and was not reaped yet, a zombie, has ended)."""
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    try:
+        return Path(f"/proc/{pid}/stat").read_text().rsplit(")", 1)[1].split()[0] != "Z"
+    except (OSError, IndexError):
+        return True
+
+
+def merge_states(disk: dict, mine: dict, base: dict) -> dict:
+    """pipeline.json as another process left it (`disk`) with this process's changes since it last synced (`mine` against `base`) on top: per
+    step, what this process changed wins and the rest is the disk's; change requests are merged item by item (one run consumes, another
+    adds); the cost adds up. Runs of different flows share the file this way."""
+    out = dict(disk)
+    for field in ("steps", "gates", "accepted_defaults", "closed_questions", "step_meta", "sections"):
+        d, m, b = dict(disk.get(field) or {}), mine.get(field) or {}, base.get(field) or {}
+        for k in set(m) | set(b):
+            if m.get(k, _NONE) == b.get(k, _NONE):
+                continue
+            if k in m:
+                d[k] = m[k]
+            else:
+                d.pop(k, None)
+        out[field] = d
+    for field in ("feedback", "feedback_history"):
+        d, m, b = {k: list(v) for k, v in (disk.get(field) or {}).items()}, mine.get(field) or {}, base.get(field) or {}
+        for k in set(m) | set(b):
+            mk, bk = m.get(k, []), b.get(k, [])
+            if mk == bk:
+                continue
+            gone = [x for x in bk if x not in mk]
+            cur = [x for x in d.get(k, []) if x not in gone] + [x for x in mk if x not in bk and x not in d.get(k, [])]
+            if cur:
+                d[k] = cur
+            else:
+                d.pop(k, None)
+        out[field] = d
+    out["total_cost_usd"] = float(disk.get("total_cost_usd") or 0) + float(mine.get("total_cost_usd") or 0) - float(base.get("total_cost_usd") or 0)
+    for field in ("top", "cost_resets", "version"):
+        if mine.get(field) != base.get(field):
+            out[field] = mine.get(field)
+    return out
+
+
+_NONE = object()
 
 Outcome = Literal["complete", "gate", "failed", "unavailable", "blocked", "cancelled", "restart"]
 
@@ -69,6 +140,7 @@ class Engine:
         self.by_name = {s.name: s for s in self.steps}
         self.state_path = project.state_dir / "pipeline.json"
         self.state = PipelineState.load(self.state_path)
+        self._base = self.state.model_dump(mode="json")  # (the state as last synced with pipeline.json: what this process changed is the difference)
         self._running: set[str] = set()  # steps executing right now (0 or 1; `running_steps` lists them all)
         from q3tui.core.stats import StatsRecorder
 
@@ -138,55 +210,69 @@ class Engine:
     read_only = False  # `q3tui tui --read-only`: look, never change anything
 
     def save(self) -> None:
+        """This process's changes into pipeline.json, merged with what runs of other flows wrote meanwhile (`merge_states`)."""
         if self.read_only:
             return
         other = self.other_run()
-        if other:  # another process runs the pipeline and owns the state: this one only watches
+        if other:  # another process runs this flow and owns its state: this one only watches
             if not getattr(self, "_warned_watch", False):
                 self._warned_watch = True
-                self.bus.emit("warning", None, message=f"a run is going on in another process (pid {other['pid']}): "
+                self.bus.emit("warning", None, message=f"a run of {self.flow.name} is going on in another process (pid {other['pid']}): "
                                                        "watching only — nothing is saved here until it ends")
             return
-        self.project.ensure_state_dir()
-        self.state.save(self.state_path)
+        import fcntl
 
-    # -- one run at a time (a TUI may watch a run started elsewhere) ----------------------------
+        self.project.ensure_state_dir()
+        mine = self.state.model_dump(mode="json")
+        with open(self.project.state_dir / "pipeline.lock", "a") as fh:
+            fcntl.flock(fh, fcntl.LOCK_EX)  # (one writer at a time: read, merge, write)
+            try:
+                disk = json.loads(self.state_path.read_text()) if self.state_path.is_file() else None
+            except ValueError:
+                disk = None
+            merged = mine if disk is None else merge_states(disk, mine, self._base)
+            PipelineState.model_validate(merged).save(self.state_path)
+        self._base = mine
+
+    def sync(self) -> None:
+        """Between steps, while runs of other flows go on: this run's changes out, theirs in (a step they finished, a change they queued)."""
+        if self.read_only or self.other_run():
+            return
+        self.save()
+        self.reload()
+
+    # -- one run per flow (a TUI may watch a run started elsewhere) -----------------------------
+
+    WAIT_S = 2.0  # how often a run looks again at a step another run is executing
 
     @property
     def lock_path(self) -> Path:
-        return self.project.state_dir / "run.lock"
+        return self.project.state_dir / f"run.{re.sub(r'[^A-Za-z0-9_.-]', '_', self.flow.name)}.lock"
+
+    def other_runs(self) -> list[dict]:
+        """The runs of other, live processes in this project folder, any flow ({pid, started, flow, phase}). `run.lock`: a Q3TUI from before
+        runs were per flow (it ran whatever flow)."""
+        out = []
+        for f in sorted(self.project.state_dir.glob("run*.lock")):
+            try:
+                info = json.loads(f.read_text())
+                pid = int(info["pid"])
+            except (OSError, ValueError, KeyError, TypeError):
+                continue
+            if pid != os.getpid() and _alive(pid):  # (a run that was killed left its lock behind)
+                out.append({**info, "flow": info.get("flow") or ("?" if f.name == "run.lock" else f.name[4:-5])})
+        return out
 
     def other_run(self) -> dict | None:
-        """The run of another, live process ({pid, started}), or None."""
-        import json
-        import os
+        """The run of this flow in another, live process ({pid, started, flow}), or None: one run per flow."""
+        return next((r for r in self.other_runs() if r["flow"] in (self.flow.name, "?")), None)
 
-        try:
-            info = json.loads(self.lock_path.read_text())
-            pid = int(info["pid"])
-        except (OSError, ValueError, KeyError, TypeError):
-            return None
-        if pid == os.getpid():
-            return None
-        try:
-            os.kill(pid, 0)
-        except ProcessLookupError:
-            return None  # a run that was killed left its lock behind
-        except PermissionError:
-            pass
-        return info
-
-    def _take_lock(self) -> None:
-        import json
-        import os
-
+    def _take_lock(self, phase: str = "running") -> None:
         self.project.ensure_state_dir()
-        self.lock_path.write_text(json.dumps({"pid": os.getpid(), "started": datetime.now().isoformat(timespec="seconds")}))
+        self.lock_path.write_text(json.dumps({"pid": os.getpid(), "started": datetime.now().isoformat(timespec="seconds"), "flow": self.flow.name,
+                                              "phase": phase}))
 
     def _drop_lock(self) -> None:
-        import json
-        import os
-
         try:
             if int(json.loads(self.lock_path.read_text())["pid"]) == os.getpid():
                 self.lock_path.unlink()
@@ -195,6 +281,7 @@ class Engine:
 
     def reload(self) -> None:
         self.state = PipelineState.load(self.state_path)
+        self._base = self.state.model_dump(mode="json")
 
     def step(self, name: str) -> StepDef:
         if name not in self.by_name:
@@ -213,18 +300,18 @@ class Engine:
     def _hash_files(self, files: list[Path]) -> dict[str, str]:
         return {self._key(f): sha256_file(f) for f in files if f.is_file()}
 
-    def _inputs_hash_without_feedback(self, step: StepDef, feedback: list[str]) -> str:
+    def _inputs_hash_without_feedback(self, step: StepDef, feedback: list[str], files: dict[str, str] | None = None) -> str:
         """The inputs hash as it was before `feedback` was queued (to tell if anything else changed)."""
         saved = self.state.feedback.get(step.name, [])
         self.state.feedback[step.name] = [f for f in saved if f not in feedback]
         try:
-            return self.inputs_hash(step)
+            return self.inputs_hash(step, files)
         finally:
             self.state.feedback[step.name] = saved
 
-    def inputs_hash(self, step: StepDef) -> str:
+    def inputs_hash(self, step: StepDef, files: dict[str, str] | None = None) -> str:
         data = {
-            "files": self._hash_files(step.inputs(self)),
+            "files": self._hash_files(step.inputs(self)) if files is None else files,
             "missing": sorted(self._key(f) for f in step.inputs(self) if not f.is_file()),
             "feedback": self.state.feedback.get(step.name, []),
         }
@@ -290,7 +377,7 @@ class Engine:
 
         if self.is_running(step.name):
             status: Status = "running"
-        elif rec and rec.status == "running" and self.other_run():
+        elif rec and rec.status == "running" and (_alive(rec.pid) and rec.pid != os.getpid() if rec.pid else bool(self.other_runs())):
             status, detail = "running", "running in another process"
         elif rec and rec.status == "running":
             # left "running" by a process that was killed mid-step: interrupted — it runs again (never "yours")
@@ -454,6 +541,7 @@ class Engine:
         if not step.implemented:
             raise EngineError(f"'{name}' is not implemented yet")
         self.state.feedback.setdefault(name, []).append(text.strip())
+        lanes.note_request(self.project, name, text.strip(), lanes.CURRENT_STEP.get())
         if self.gate_required(step):
             self.state.gates[name] = GateRecord(status="open")
         self.save()
@@ -583,6 +671,7 @@ class Engine:
             self.bus.emit("log", origin, message=f"decision not sent to {target}: its output is yours")
             return
         self.state.feedback.setdefault(target, []).append(f"{DECISION_PREFIX} {text}")
+        lanes.note_request(self.project, target, f"{DECISION_PREFIX} {text}", origin)
         if rebase:
             meta = self.state.step_meta.setdefault(target, {})
             meta["rebase"] = sorted(set(meta.get("rebase", [])) | {origin})
@@ -831,9 +920,24 @@ class Engine:
 
     # -- execution -----------------------------------------------------------------------------
 
+    def _forks(self, step: StepDef) -> bool:
+        """A checking flow's run (lanes.flows) is about to run a design step (spec … RTL) of the project folder for a change: it goes on in a
+        copy instead (core/lanes.py `fork_run`), so the design never changes under the other runs."""
+        flow = RUN_FLOW.get()
+        lc = self.project.cfg.lanes
+        if not flow or not lc.fork or flow not in lc.flows:
+            return False
+        if lanes.lane_info(self.project) or step.name not in lanes.design_steps(self.project):
+            return False
+        return bool(self.state.feedback.get(step.name) or self.state.step_meta.get(step.name, {}).get("deferred_decisions"))
+
     async def run_step(self, step: StepDef, regenerate: bool = False) -> None:
+        if self._forks(step):
+            raise ForkToLane(step.name)
         emit = self.bus.scoped(step.name)
         rec = self.state.step(step.name)
+        before = self._hash_files(step.inputs(self))  # (what it starts from: an input another run changes meanwhile does not count as read)
+        others = bool(self.other_runs())
         previous = rec.model_copy()  # restored if the run is cancelled
         meta = self.state.step_meta.setdefault(step.name, {})
         for d in meta.pop("deferred_decisions", []):  # the step runs anyway: fold in the defaults accepted meanwhile
@@ -845,7 +949,7 @@ class Engine:
         decisions_only = bool(feedback) and all(f.startswith(DECISION_PREFIX) for f in feedback)
         other_inputs_same = rec.status == "done" and rec.inputs_hash == self._inputs_hash_without_feedback(step, feedback)
         self._running.add(step.name)
-        rec.status, rec.error = "running", None
+        rec.status, rec.error, rec.pid = "running", None, os.getpid()
         self.save()
         emit("step_started", title=step.title, feedback=feedback, regenerate=regenerate)
         fspec = self.flow.spec(step.name)
@@ -853,7 +957,9 @@ class Engine:
         checkpoints = checkpoint_dir(self.project, step.name)
         if regenerate:
             shutil.rmtree(checkpoints, ignore_errors=True)
+        current = lanes.CURRENT_STEP.set(step.name)  # (who makes the change requests made meanwhile: a lane records them)
         try:
+            lanes.before_step(self, step)  # (a lane folder: the folders the step writes become its own copies of the tag's)
             await step.run(ctx)
             if fspec and fspec.passes:  # the flow file's pass conditions: a step that does not meet them has failed
                 from q3tui.flows import check_pass
@@ -869,7 +975,7 @@ class Engine:
             if isinstance(exc, StepFailed):  # its own checks failed: replaying the same answers would fail the same way
                 shutil.rmtree(checkpoints, ignore_errors=True)
             if isinstance(exc, Exception):
-                rec.status, rec.error = "failed", describe_error(exc)
+                rec.status, rec.error, rec.pid = "failed", describe_error(exc), None
                 rec.cost_usd += ctx.cost_usd
                 self.save()
                 emit("step_finished", status="failed", error=rec.error)
@@ -878,16 +984,25 @@ class Engine:
                 self.save()
                 emit("step_finished", status="cancelled")
             raise exc
+        finally:
+            lanes.CURRENT_STEP.reset(current)
         self._running.discard(step.name)
+        lanes.after_step(self, step, feedback)
         shutil.rmtree(checkpoints, ignore_errors=True)  # finished: nothing to resume
         if feedback:
             self.state.feedback_history.setdefault(step.name, []).extend(feedback)
             self.state.feedback[step.name] = self.state.feedback.get(step.name, [])[len(feedback):]
-        rec.status, rec.origin = "done", "generated"
+        rec.status, rec.origin, rec.pid = "done", "generated", None
         rec.outputs = self._hash_files(step.outputs(self))
+        # inputs another run changed while this one ran (the RTL fixed during a synthesis): the result is for what it read, so it stays stale
+        files = self._hash_files(step.inputs(self))
+        moved = sorted(k for k in set(before) | set(files) if before.get(k) != files.get(k) and k not in rec.outputs)
+        if moved and (others or self.other_runs()):
+            files = {k: v for k, v in {**files, **{k: before.get(k) for k in moved}}.items() if v is not None}
+            emit("warning", message=f"{', '.join(moved[:4])}{' …' if len(moved) > 4 else ''} changed in another run while {step.name} ran: it stays out of date")
         # change requests that arrived DURING the run are not in its result yet: it stays stale for them
         arrived = list(self.state.feedback.get(step.name, []))
-        rec.inputs_hash = self._inputs_hash_without_feedback(step, arrived) if arrived else self.inputs_hash(step)
+        rec.inputs_hash = self._inputs_hash_without_feedback(step, arrived, files) if arrived else self.inputs_hash(step, files)
         rec.finished = datetime.now().isoformat(timespec="seconds")
         rec.cost_usd += ctx.cost_usd  # (what the step cost in all its runs since the last cost reset)
         self.state.total_cost_usd += ctx.cost_usd
@@ -979,13 +1094,16 @@ class Engine:
             return "blocked"
         other = self.other_run()
         if other:
-            self.bus.emit("error", message=f"a run is already going on in another process (pid {other['pid']}, started "
+            self.bus.emit("error", message=f"a run of {self.flow.name} is already going on in another process (pid {other['pid']}, started "
                                            f"{other.get('started', '?').replace('T', ' ')}): watch it, or stop it first")
             return "blocked"
         self._take_lock()
+        token = RUN_FLOW.set(self.flow.name) if RUN_FLOW.get() is None else None  # (a flow run inside another run keeps the outer one)
         try:
             return await self._run_locked(start, stop, only, yes, regenerate)
         finally:
+            if token is not None:
+                RUN_FLOW.reset(token)
             self._drop_lock()
 
     def auto_reviews(self) -> bool:
@@ -1076,13 +1194,20 @@ class Engine:
         outcome: Outcome = "complete"
         self._apply_old_deferred()
         try:
-            outcome = await self._drive(selected, yes, regenerate)
+            try:
+                outcome = await self._drive(selected, yes, regenerate)
+            except ForkToLane as fork:
+                if RUN_FLOW.get() != self.flow.name:
+                    raise  # (a flow run inside the checking run: the checking run forks)
+                outcome = await lanes.fork_run(self, fork, yes)
         except StepFailed as exc:
             self.bus.emit("error", message=str(exc))
             outcome = "failed"
         except Exception as exc:  # noqa: BLE001 - reported to the user, state already saved
             self.bus.emit("error", message=describe_error(exc))
             outcome = "failed"
+        except ForkToLane:
+            raise  # (a flow run inside a checking run: that run forks, this one is not cancelled)
         except BaseException:
             self.bus.emit("run_finished", outcome="cancelled")
             raise
@@ -1093,7 +1218,15 @@ class Engine:
         first = selected[0]
         started = False
         for step in self.steps:
+            if self.other_runs():
+                self.sync()  # (runs of other flows: a step they finished, a change request they queued)
             view = self.evaluate(step)
+            if view.status == "running" and not self.is_running(step.name):  # another run executes it (a step two flows share): wait, then go on
+                self.bus.emit("log", step.name, message=f"{step.name} is running in another run: waiting for it")
+                while view.status == "running":
+                    await anyio.sleep(self.WAIT_S)
+                    self.sync()
+                    view = self.evaluate(step)
             in_range = step.name in selected
             if step.name == first:
                 started = True
