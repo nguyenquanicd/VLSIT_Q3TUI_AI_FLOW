@@ -731,6 +731,7 @@ async def test_auto_answer_runs_the_owner_flow_and_goes_round_again(proj, monkey
             f.write_text(f.read_text() + "// pipelined\n")
 
     monkeypatch.setattr(ReadsStep, "run", run)
+    proj.cfg.lanes.fork = False  # (the loop in the project folder itself; with forking it goes on in a copy: tests/test_parallel_runs.py)
     eng = Engine(proj)
     events = []
     eng.bus.subscribe(lambda e: events.append(e))
@@ -834,7 +835,7 @@ async def test_targets_met_on_changed_rtl_run_the_owners_functional_check(proj, 
 
 
 class StubRunner:
-    """A background run that is a process which holds run.lock and sleeps (stands in for `q3tui run`)."""
+    """A background run that is a process which holds its flow's run lock and sleeps (stands in for `q3tui run`)."""
 
     def __new__(cls):
         from q3tui.tui.runner import Runner
@@ -843,7 +844,7 @@ class StubRunner:
             def command(self, project, flow, **kw):
                 code = ("import json, os, time, pathlib\n"
                         f"p = pathlib.Path({str(project.state_dir)!r}); p.mkdir(exist_ok=True)\n"
-                        "(p / 'run.lock').write_text(json.dumps({'pid': os.getpid(), 'started': '2026-01-01T00:00:00'}))\n"
+                        f"(p / 'run.{flow}.lock').write_text(json.dumps({{'pid': os.getpid(), 'started': '2026-01-01T00:00:00', 'flow': {flow!r}}}))\n"
                         "time.sleep(60)\n")
                 return [sys.executable, "-c", code]
 
@@ -868,11 +869,29 @@ async def test_a_background_run_survives_a_flow_switch_and_stops_with_x(proj):
                 await asyncio.sleep(0.2)
                 if app.engine.other_run():
                     break
-            assert app.engine.other_run()["pid"] == runner.pid
+            assert app.engine.other_run()["pid"] == runner.pid("fpga")
             app.action_switch_flow("spec")  # no confirmation, no cancel: the run is not this TUI's
             await pilot.pause()
         assert app.return_value == ("flow", "spec") and runner.alive()
-        # the next TUI (the other flow) sees it, `x` stops it, quitting asks first
+        # another flow runs beside it: r there starts its own run, the header names the other one, x there stops only its own
+        proj.cfg.pipeline.flow = "spec"
+        app_s = Q3TUIApp(proj, background=True, runner=runner)
+        async with app_s.run_test(size=(150, 45)) as pilot:
+            await pilot.pause()
+            assert app_s.start_run().startswith("run started in the background") and runner.alive("spec") and runner.alive("fpga")
+            for _ in range(20):
+                await asyncio.sleep(0.3)
+                if getattr(app_s, "_others", None):
+                    break
+            assert app_s._others == ["fpga"] and "also running: fpga" in str(app_s._w("#header").render())
+            assert "stopping the background run of spec" in app_s.stop_any()
+            for _ in range(50):
+                await asyncio.sleep(0.2)
+                if not runner.alive("spec"):
+                    break
+            assert not runner.alive("spec") and runner.alive("fpga")
+        proj.cfg.pipeline.flow = "fpga"
+        # the next TUI (the flow that runs) sees it, `x` stops it, quitting asks first
         app2 = Q3TUIApp(proj, background=True, runner=runner)
         async with app2.run_test(size=(150, 45)) as pilot:
             await pilot.pause()
@@ -882,7 +901,6 @@ async def test_a_background_run_survives_a_flow_switch_and_stops_with_x(proj):
                 if not runner.alive():
                     break
             assert not runner.alive()
-        runner.child = None
         runner.start(proj, "fpga")
         app3 = Q3TUIApp(proj, background=True, runner=runner)
         async with app3.run_test(size=(150, 45)) as pilot:
@@ -925,7 +943,7 @@ async def test_the_real_background_run_is_a_q3tui_run(proj):
                 await asyncio.sleep(0.2)
                 if not runner.alive():
                     break
-            assert not runner.alive() and runner.child.returncode == 0
+            assert not runner.alive() and runner.returncode("fpga") == 0
             await asyncio.sleep(2.5)  # the TUI sees the end: it re-reads the state the run wrote
             views = {v.name: v for v in app.engine.status()}  # (it stopped at the report's review gate, as `q3tui run` does)
             assert [views[n].status for n in ("sdc", "fpga_synth", "timing_util_report")] == ["done"] * 3

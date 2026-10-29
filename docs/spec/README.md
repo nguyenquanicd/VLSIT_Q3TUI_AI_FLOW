@@ -21,6 +21,7 @@ Testbench, assertions, verification and the final document were removed.
 | [architecture.md](architecture.md) | Runtime layers: LLM stages, tools by role, HDL layer |
 | [config.md](config.md) | `q3tui.yaml` |
 | [team.md](team.md) | Team mode: persistent role sessions — init once, forks, compaction |
+| [lanes.md](lanes.md) | Lanes: DV, synthesis and sanity at the same time, each in its own folder over a frozen RTL tag (copying only what it changes); a failing lane fixes there; merge into the next tag, convergence gate |
 
 ## The pipeline
 
@@ -80,4 +81,5 @@ the flow starts at parse. `q3tui run` runs whatever is missing or stale, like `m
 |---|---|
 | History | M0–M10 built the engine, the TUI, the assistant, the spec step, team mode and two built-in Q3TUI flows (`units`, `steps`: requirements, architecture, Python golden model, cross-check, triage, signoff). Those flows and their steps have been removed |
 | **Current** | Flows as data ([flows.md](flows.md)); the **spec flow** ([spec-flow.md](spec-flow.md)) is the default and the `rtl` flow ([rtl-flow.md](rtl-flow.md)) builds on it; `example` is the template for your own |
+| **Current** | Lanes ([lanes.md](lanes.md)): RTL tags (`q3tui tag`), the checking flows at the same time each in its own folder over the tag (`q3tui lanes run`), their fixes merged into the next tag (`lanes merge`), until all pass on one tag (`lanes converge`); the TUI's `L` |
 | Later | Formal, existing-RTL upgrade, UVM, Verdi debug, web UI, MCP/skills |

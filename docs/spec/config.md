@@ -97,6 +97,15 @@ rtl:                              # the rtl flow's rtl step
   parallel: 4                     # modules written at once
   max_turns: (ignored)            # like Claude Code: no turn limit, Claude decides when a task is done
 
+lanes:                            # lanes (lanes.md): the checking flows at the same time on a frozen tag
+  flows: [dv, fpga, sanity]       # the lanes (`q3tui lanes run`, the TUI's L)
+  design_flows: [rtl]             # the flows whose steps make the design a tag freezes (rtl includes spec → parse → config)
+  dir: null                       # where the lane folders go (default: <project>.lanes beside the project folder)
+  max_rounds: null                # `q3tui lanes converge` (default pipeline.max_fix_iterations)
+  max_cost_usd: null              # converge stops when this much was spent
+  fork: true                      # a checking flow's run that would change the design goes on in a copy (lanes.md "A run that forks")
+  auto_merge: true                # a fork that fixed something merges back by itself (unattended runs) once no other run goes on
+
 team:                             # role sessions (team.md)
   enabled: false                  # every role's tasks go to that role's one persistent session (`q3tui team`)
   dedupe_chars: 300               # sections (then paragraphs) at least this long are sent once per session (0: never)

@@ -273,6 +273,131 @@ def loop_cmd(c: Ctx, owner: str | None, max_rounds: int | None, max_cost: float 
     sys.exit(0 if result.ok else 1)
 
 
+@main.command("tag")
+@click.argument("name", required=False)
+@click.option("--force", is_flag=True, help="Tag although a design step is not done and approved.")
+@pass_ctx
+def tag_cmd(c: Ctx, name: str | None, force: bool) -> None:
+    """Freeze the design (spec … RTL) as a tag the lanes check (docs/spec/lanes.md): a read-only copy in .q3tui/tags/<name>/ (default v<N>)."""
+    from q3tui.core import lanes
+
+    try:
+        info = lanes.make_tag(c.project, name, force)
+    except EngineError as exc:
+        raise click.ClickException(str(exc)) from exc
+    console.print(f"tag {info['name']}: {info['files']} file(s), {info['bytes'] / 1e6:.1f} MB" + (f" (from {info['previous']})" if info["previous"] else "")
+                  + (" — forced: " + "; ".join(info["forced"][:4]) if info["forced"] else ""), markup=False)
+
+
+def _lane_printer(lane: str, e: Event) -> None:
+    d, step = e.data, e.step or ""
+    k = e.kind
+    if k == "step_started":
+        console.print(f"[cyan]{lane:>8}[/cyan] ▶ {step}")
+    elif k == "step_finished" and d.get("status") != "done":
+        console.print(f"[cyan]{lane:>8}[/cyan] [red]✖ {step} {d.get('status')}[/red] {escape(_one_line(str(d.get('error') or ''), 140))}")
+    elif k == "warning":
+        console.print(f"[cyan]{lane:>8}[/cyan] [yellow]! {escape(_one_line(str(d.get('message')), 160))}[/yellow]")
+    elif k == "run_finished":
+        console.print(f"[cyan]{lane:>8}[/cyan] run: {d.get('outcome')}")
+
+
+@main.group("lanes")
+def lanes_group() -> None:
+    """Lanes (docs/spec/lanes.md): the checking flows (lanes.flows) at the same time, each in its own folder over a tag; fixes merged into the
+    next tag; until every lane passes on one tag."""
+
+
+@lanes_group.command("run")
+@click.option("--tag", help="The tag to check (default: the latest).")
+@click.option("--lanes", "names", help="Comma-separated lanes (default: lanes.flows).")
+@pass_ctx
+def lanes_run(c: Ctx, tag: str | None, names: str | None) -> None:
+    """Run the lanes on a tag at the same time, each in its own folder (<project>.lanes/<tag>/<lane>/); a failing lane fixes in its folder."""
+    from q3tui.core import lanes
+
+    try:
+        res = anyio.run(lambda: lanes.run_lanes(c.project, tag, names.split(",") if names else None, _lane_printer))
+    except EngineError as exc:
+        raise click.ClickException(str(exc)) from exc
+    console.print(lanes.status_text(c.project), markup=False, highlight=False)
+    sys.exit(0 if all(r["status"] == "passed" for r in res.values()) else 1)
+
+
+@lanes_group.command("status")
+@pass_ctx
+def lanes_status(c: Ctx) -> None:
+    """The tags and each lane's result on them."""
+    from q3tui.core import lanes
+
+    console.print(lanes.status_text(c.project), markup=False, highlight=False)
+
+
+@lanes_group.command("merge")
+@click.option("--tag", help="The tag the lanes ran on (default: the latest).")
+@click.option("--lanes", "names", help="Comma-separated lanes whose fixes to take (default: every lane that fixed something).")
+@click.option("--yes", "-y", is_flag=True, help="Do not ask first.")
+@pass_ctx
+def lanes_merge(c: Ctx, tag: str | None, names: str | None, yes: bool) -> None:
+    """Take the lanes' fixes into the project folder (their change requests replayed by the owning steps), run the design flows, tag the result."""
+    from q3tui.core import lanes
+
+    tag = tag or lanes.latest_tag(c.project)
+    if not tag:
+        raise click.ClickException("no tag yet")
+    plan = lanes.merge_plan(c.project, tag, names.split(",") if names else None)
+    console.print(f"merge of {tag}: requests of {', '.join(plan.lanes) or '(none)'} — {len(plan.requests)} change request(s) to the design; "
+                  f"own steps taken: {', '.join(f'{s} ({l})' for s, l in plan.own.items()) or '(none)'}", markup=False)
+    for r in plan.requests:
+        console.print(f"  {r['lane']:>8} → {r['target']}: {_one_line(r['feedback'], 150)}", markup=False)
+    for o in plan.overlaps:
+        console.print(f"  [yellow]both changed {escape(o)}: the owning step gets both requests[/yellow]")
+    for o in plan.conflicts:
+        console.print(f"  [red]conflict {escape(o)}[/red]")
+    if not yes and sys.stdin.isatty() and not click.confirm("merge?", default=True):
+        return
+    bus = EventBus()
+    bus.subscribe(print_event)
+    try:
+        m = anyio.run(lambda: lanes.merge(c.project, tag, names.split(",") if names else None, bus))
+    except EngineError as exc:
+        raise click.ClickException(str(exc)) from exc
+    console.print(f"merged into {m['tag']}" if m["merged"] else f"not merged: {m['stopped']}", markup=False)
+    sys.exit(0 if m["merged"] else 1)
+
+
+@lanes_group.command("converge")
+@click.option("--lanes", "names", help="Comma-separated lanes (default: lanes.flows).")
+@click.option("--max-rounds", type=click.IntRange(1, 20), help="Most rounds (default lanes.max_rounds, else pipeline.max_fix_iterations).")
+@click.option("--max-cost", type=float, help="Stop when this many dollars were spent.")
+@click.option("--yes", "-y", is_flag=True, help="Merge each round's fixes without asking (unattended).")
+@pass_ctx
+def lanes_converge(c: Ctx, names: str | None, max_rounds: int | None, max_cost: float | None, yes: bool) -> None:
+    """Lanes on the tag → merge their fixes → the next tag → lanes again, until every lane passes on one tag (the convergence gate)."""
+    from q3tui.core import lanes
+
+    merge_ok = yes or (sys.stdin.isatty() and click.confirm("merge each round's fixes without asking?", default=True))
+    bus = EventBus()
+    bus.subscribe(print_event)
+    try:
+        res = anyio.run(lambda: lanes.converge(c.project, names.split(",") if names else None, max_rounds, max_cost, merge_ok, _lane_printer, bus))
+    except EngineError as exc:
+        raise click.ClickException(str(exc)) from exc
+    console.print(lanes.converge_summary(res), markup=False, highlight=False)
+    sys.exit(0 if res.ok else 1)
+
+
+@lanes_group.command("clean")
+@click.option("--tag", help="Only this tag's lane folders.")
+@pass_ctx
+def lanes_clean(c: Ctx, tag: str | None) -> None:
+    """Delete the lane folders (their build output); the tags, the results and what each lane changed stay."""
+    from q3tui.core import lanes
+
+    gone = lanes.clean(c.project, tag)
+    console.print(f"deleted the lane folders of {', '.join(gone)}" if gone else "no lane folder", markup=False)
+
+
 def _status_table(views: list[StepView]) -> Table:
     t = Table(box=None, pad_edge=False, show_header=True, header_style="dim")
     for col in ("", "step", "status", "review", "questions", "notes"):

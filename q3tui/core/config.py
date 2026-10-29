@@ -143,7 +143,7 @@ class ProjectConfig(_Strict):
     src_dir: str = "src"
     rtl_dir: str = "src/rtl"
     tb_dir: str = "src/tb"
-    fpga_src_dir: str = "src/fpga"  # the FPGA flow's own sources: memory initialization files (fpga_synth's fix agent writes them)
+    fpga_src_dir: str = "src/fpga"  # the FPGA flow's own sources: memory initialization files (fpga_port makes them)
     build_dir: str = "build"  # disposable tool output
     syn_dir: str = "build/syn"  # build/syn/{fpga,asic}
     sim_dir: str = "build/sim"
@@ -229,6 +229,21 @@ class TuiConfig(_Strict):
     language: Literal["en", "vi", "ko"] = "en"
 
 
+class LanesConfig(_Strict):
+    """Lanes (docs/spec/lanes.md): the checking flows run at the same time, each in its own folder over a frozen RTL tag."""
+
+    flows: list[str] = Field(default_factory=lambda: ["dv", "fpga", "sanity"])  # the lanes (checking flows)
+    design_flows: list[str] = Field(default_factory=lambda: ["rtl"])  # the flows whose steps make the design a tag freezes (spec → … → RTL)
+    dir: str | None = None  # where the lane folders go (default: <project>.lanes beside the project folder)
+    max_rounds: int | None = Field(None, ge=1, le=20)  # `q3tui lanes converge` (default pipeline.max_fix_iterations)
+    max_cost_usd: float | None = Field(None, gt=0)
+    # `r` on a checking flow runs it in the project folder beside the others; when its run would change the design (a fix for spec … RTL) it
+    # goes on in a copy (a lane over a tag of the design as it is), so the design never changes under the other runs
+    fork: bool = True
+    # a fork that fixed something merges back by itself (unattended runs) once no other run is going on in the project folder; else `m`
+    auto_merge: bool = True
+
+
 class McpServerEntry(_Strict):
     name: str
     type: Literal["http", "sse", "stdio"]
@@ -249,6 +264,7 @@ class Config(_Strict):
     team: TeamConfig = TeamConfig()
     tools: ToolsConfig = ToolsConfig()
     tui: TuiConfig = TuiConfig()
+    lanes: LanesConfig = LanesConfig()
     mcp_servers: list[McpServerEntry] = Field(default_factory=list)
 
     # Where this config came from; not part of the file schema.

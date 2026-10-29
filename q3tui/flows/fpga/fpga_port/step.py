@@ -38,10 +38,12 @@ class Step(StepQuestions, FpgaStep):
 
     def outputs(self, engine) -> list[Path]:
         p = self.artifact(engine, port.PORT_JSON)
-        return [p] if p.is_file() else []
+        d = engine.project.fpga_src_dir  # (the memory images it makes: in a lane they become its own copies before it writes, and a merge takes them)
+        return [*([p] if p.is_file() else []), *(sorted(f for f in d.rglob("*") if f.is_file()) if d.is_dir() else [])]
 
     def reset_files(self, engine) -> list[Path]:
-        return [*self.outputs(engine), *(p for p in self._q_paths(engine) if p.is_file())]
+        p = self.artifact(engine, port.PORT_JSON)  # (not the images: you may have edited them)
+        return [*([p] if p.is_file() else []), *(q for q in self._q_paths(engine) if q.is_file())]
 
     def missing_input(self, engine) -> str | None:
         return self.missing_rtl(engine)

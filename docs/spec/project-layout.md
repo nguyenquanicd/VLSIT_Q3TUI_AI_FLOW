@@ -50,7 +50,13 @@ it any time). Internal state lives in `.q3tui/`. A step names no folder: it asks
     ├── fpga/ asic/ sanity/     ← per-step work directories of the tools
     ├── stats.jsonl             ← usage per LLM stage and step
     ├── tui/                    ← layout.json, the assistant's session.json
+    ├── tags/<name>/            ← lanes (docs/spec/lanes.md): files/ (the frozen design, read-only), pipeline.json, tag.json,
+    │                             results/<lane>.json, changes/<lane>.jsonl (after `q3tui lanes clean`), converged
+    ├── lane.json / lane_changes.jsonl   ← in a lane folder only: which tag and lane; what the lane changed (for the merge)
     └── runs/<run_id>/events.jsonl   ← every LLM/tool event
+
+<project>.lanes/<tag>/<lane>/  ← beside the project folder (lanes.dir): one project folder per lane over a tag; spec/ and src/
+                                 hard-linked to the tag, copied when a step writes there; its own .q3tui/ and build/       disposable
 ```
 
 The rtl flow keeps its own working files inside the RTL folder: `src/rtl/csr/` (register map, report, provided modules; `patches/`: the changes made
@@ -80,8 +86,9 @@ spec ─► parse ─► config          (the rtl flow continues: config ─► 
 ```
 
 `q3tui run` runs every step that is pending or stale, in dependency order, and stops
-at open gates. Only one process runs a project at a time (a run lock in `.q3tui/`; the
-TUI opened while another process runs follows it read-only).
+at open gates. One process runs a flow at a time (`.q3tui/run.<flow>.lock`; the TUI opened
+while another process runs that flow follows it read-only); runs of different flows go on at the
+same time (pipeline.md "Runs of several flows").
 
 ## Entry points: bring your own artifacts
 

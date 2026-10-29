@@ -118,11 +118,13 @@ approves; run `q3tui run` to continue.)
 ## Background runs and switching flows
 
 `q3tui tui` starts every run (`r`, the gate's approve-and-continue, the assistant's run tool) as a `q3tui run` process of its own
-(`tui/runner.py`; its output in `.q3tui/tui/run.log`), with the live model / effort and the auto-approve / auto-answer switches on its
-command line. The TUI follows it the way it follows any run of another process: `run.lock`, the latest `runs/*/events.jsonl` replayed
+(`tui/runner.py`; its output in `.q3tui/tui/run.<flow>.log`), with the live model / effort and the auto-approve / auto-answer switches on its
+command line. The TUI follows it the way it follows any run of another process: `run.<flow>.lock`, the latest `runs/*/events.jsonl` replayed
 into the activity log, the state re-read every 2 s, a badge `RUNNING in the background (pid N)`. So **a run goes on while you switch
-flows** (`F`, `/flow`: the TUI restarts on the other flow; the run is not cancelled), `x` stops it (Ctrl-C to the process: the step cancels
-and kills its tools), quitting the TUI asks first and then ends it (gently, then its whole process group). One run at a time per project.
+flows** (`F`, `/flow`: the TUI restarts on the other flow; the run is not cancelled), and **one run per flow**: `r` in dv, then in fpga,
+then in sanity runs the three at the same time (pipeline.md "Runs of several flows"); a badge `also running: …` names the other flows'
+runs. `x` stops the run of the flow you look at (Ctrl-C to the process: the step cancels and kills its tools), quitting the TUI asks first
+and then ends them all (gently, then each one's process group).
 What a background run does not see: settings changed for this session only other than model / effort / the auto switches, and gate modes
 set for this session only. A TUI that is not started by `q3tui tui` (tests, embedding) runs in-process as before.
 

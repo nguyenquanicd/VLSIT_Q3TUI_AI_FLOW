@@ -14,6 +14,7 @@ class StepRecord(BaseModel):
     inputs_hash: str | None = None
     outputs: dict[str, str] = Field(default_factory=dict)  # relpath -> sha256 at completion
     run_id: str | None = None
+    pid: int | None = None  # the process running it (status running): another run waits for it, a dead one left it interrupted
     finished: str | None = None
     error: str | None = None
     cost_usd: float = 0.0

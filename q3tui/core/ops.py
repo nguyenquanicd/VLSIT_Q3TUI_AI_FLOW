@@ -599,6 +599,37 @@ class Ops:
         per_step = ", ".join(f"{n} ${u:.2f}" for n, u in s["steps"].items()) or "no step costs"
         return f"pipeline ${s['total_usd']:.2f} ({per_step}); this session ${self.engine.bus.cost_usd:.2f}"
 
+    # -- lanes (docs/spec/lanes.md) -----------------------------------------------------------------------------------
+
+    def tag(self, name: str | None = None, force: bool = False) -> str:
+        """Freeze the design (the design flows' steps) as a tag the lanes check."""
+        from q3tui.core import lanes
+
+        self._not_running("tag the design")
+        info = lanes.make_tag(self.project, name or None, force)
+        return self._log(None, f"tag {info['name']}: {info['files']} file(s), {info['bytes'] / 1e6:.1f} MB"
+                               + (f" (from {info['previous']})" if info["previous"] else "")
+                               + (" — forced: " + "; ".join(info["forced"][:4]) if info["forced"] else ""))
+
+    def lanes_status(self) -> str:
+        """The tags and each lane's result on them."""
+        from q3tui.core import lanes
+
+        return lanes.status_text(self.project)
+
+    def lanes_merge_preview(self, tag: str | None = None) -> str:
+        """What `q3tui lanes merge` would take from the latest tag's lanes."""
+        from q3tui.core import lanes
+
+        tag = tag or lanes.latest_tag(self.project)
+        if not tag:
+            raise EngineError("no tag yet")
+        plan = lanes.merge_plan(self.project, tag)
+        lines = [f"{tag}: requests of {', '.join(plan.lanes) or '(no lane)'} ({len(plan.requests)}); own steps: "
+                 + (", ".join(f"{s} ({l})" for s, l in plan.own.items()) or "(none)")]
+        lines += [f"both changed {o}" for o in plan.overlaps] + [f"CONFLICT {o}" for o in plan.conflicts]
+        return "\n".join(lines)
+
     def reset_stats(self) -> str:
         """Usage statistics start over (tokens, cost, LLM and wall time per model / step / stage)."""
         from q3tui.core import stats

@@ -44,7 +44,7 @@ content now, write_section.
 - Intent: set_intent / append_intent. Questions: list_questions, answer_question. \
 Review: mark_reviewed (spec sections), approve, and the per-item reviews of the steps \
 (review_parse_requirement, review_config_parameter). \
-Pipeline: run_steps, stop_run, reset_step. Settings: get_settings / set_settings \
+Pipeline: run_steps, stop_run, reset_step. Lanes (the checking flows at the same time on a frozen tag): tag_design, lanes_status, run_lanes. Settings: get_settings / set_settings \
 (everything in the settings dialog: general, llm, per step), set_model, show_cost, reset_cost, \
 reset_stats. Bring your own spec / RTL / tests / whole project folder: import_file (kind all for a folder).
 - You can also Edit/Write files under spec/, schemas/ and src/ directly (as the user could \
@@ -91,6 +91,8 @@ class AssistantHost(Protocol):
                            regenerate: set[str] | None = None) -> str: ...
 
     def stop_run(self) -> str: ...
+
+    def start_lanes(self, args: list[str]) -> str: ...  # a `q3tui lanes …` command in the background
 
     async def confirm(self, question: str, detail: str = "") -> bool: ...
 
@@ -237,6 +239,34 @@ def assistant_tools(host: AssistantHost) -> list[SdkMcpTool]:
         if a.get("wait"):
             return await host.run_and_wait(*args)
         return host.start_run(*args)
+
+    @add("tag_design", "Lanes (docs/spec/lanes.md): freeze the design (the design flows' steps, done and approved) as a tag the lanes check: "
+         "a read-only copy. name: optional (default v<N>); force=true tags an unfinished design (the user is asked to confirm).",
+         _schema({"name": ("string", ""), "force": ("boolean", "")}, []))
+    async def _tag(a):
+        if a.get("force") and not await host.confirm("Tag the design although a design step is not done and approved?"):
+            return "the user declined"
+        return ops.tag(a.get("name") or None, bool(a.get("force")))
+
+    @add("lanes_status", "Lanes: the tags and each lane's (checking flow's) result on them: passed / fixed (in its own folder) / failed / "
+         "needs_you, with the cost and why.", none)
+    async def _lanes_status(a):
+        return ops.lanes_status()
+
+    @add("run_lanes", "Lanes in the background: what='run' (the lanes on the latest tag, at the same time, each fixing in its own folder), "
+         "'merge' (take their fixes into the project folder and tag the result; the user confirms), 'converge' (run → merge → … until every "
+         "lane passes on one tag; the user confirms). lanes: optional comma-separated subset.",
+         _schema({"what": ("string", "run | merge | converge"), "lanes": ("string", "")}, ["what"]))
+    async def _run_lanes(a):
+        what = a["what"]
+        if what not in ("run", "merge", "converge"):
+            raise ValueError("what is run, merge or converge")
+        args = ["lanes", what, *(["--lanes", a["lanes"]] if a.get("lanes") else []), *(["--yes"] if what != "run" else [])]
+        if what == "merge" and not await host.confirm("Merge the lanes' fixes into the project folder?", ops.lanes_merge_preview()):
+            return "the user declined"
+        if what == "converge" and not await host.confirm("Converge the lanes?", "Lanes → merge → next tag → lanes, until all pass on one tag."):
+            return "the user declined"
+        return host.start_lanes(args)
 
     @add("stop_run", "Stop the running pipeline.", none)
     async def _stop(a):
