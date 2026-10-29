@@ -18,10 +18,10 @@ from q3tui.flows.rtl.lib.models import CsrField, CsrMap
 
 REPO = "https://github.com/nguyenquanicd/APB-CSR-Generator.git"
 SCRIPT = "CSR_Generation.py"
-SYNC_MODEL = "m_vlsi_synch"  # the CDC synchronizer the generated module instantiates when Asynchronous=1
+SYNC_MODELS = ("m_csr_sync", "m_vlsi_synch")  # the CDC synchronizer the generated module instantiates when Asynchronous=1 (tool v2.x, v1.x)
 SHEET = "CSR"
 _IDENT = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
-_VOLATILE = re.compile(r"^//\s*(Generator|Date and time):.*$", re.M)
+_VOLATILE = re.compile(r"^(//\s*(Generator|Date and time):.*|\s*\*\s*(Author|Date)\s*:.*)$", re.M)  # (v1.x: `// Generator:`, v2.x: ` * Author :`)
 
 
 # -- where the tool is ------------------------------------------------------------------------------------------------
@@ -39,8 +39,21 @@ def tool_dirs(project_root: Path, option: str | None = None, role_env: str | Non
     return out
 
 
+def missing(tool_dir: Path) -> list[str]:
+    """What a generator folder lacks (empty: it is the generator): the script and a synchronizer model of either version."""
+    out = [] if (tool_dir / SCRIPT).is_file() else [SCRIPT]
+    if sync_model(tool_dir) is None:
+        out.append(" or ".join(f"models/{s}.sv" for s in SYNC_MODELS))
+    return out
+
+
 def find_tool(project_root: Path, option: str | None = None, role_env: str | None = None) -> Path | None:
-    return next((d for d in tool_dirs(project_root, option, role_env) if (d / SCRIPT).is_file() and (d / "models" / f"{SYNC_MODEL}.sv").is_file()), None)
+    return next((d for d in tool_dirs(project_root, option, role_env) if not missing(d)), None)
+
+
+def sync_model(folder: Path) -> str | None:
+    """The synchronizer model in `folder`/models (the tool's own folder, or the RTL/ it generated): `m_csr_sync` from v2.0, `m_vlsi_synch` before."""
+    return next((s for s in SYNC_MODELS if (folder / "models" / f"{s}.sv").is_file()), None)
 
 
 # -- the register map -------------------------------------------------------------------------------------------------
@@ -172,19 +185,35 @@ def volatile(line: str) -> bool:
     return bool(_VOLATILE.match(line))
 
 
-_PORT = re.compile(r"^\s*(input|output|inout)\s*(\[[^\]]+\])?\s*(\w+)\s*,?\s*$", re.M)
+_PORT = re.compile(r"^\s*(input|output|inout)\b\s*(?:(?:wire|logic|reg|var)\b\s*)?(\[[^\]]+\])?\s*(\w+)\s*,?\s*(?://.*)?$", re.M)
+_LPARA = re.compile(r"\blocalparam\b[^=;,]*?\b(\w+)\s*=\s*(?:\d*'[dD])?(\d+)\s*[,)\n]")
+# the APB, clock / reset and access-check ports: v2.x names, then v1.x
+BUS_PORTS = {"i_clk_apb", "i_rst_n_apb", "i_clk_reg", "i_rst_n_reg", *(f"i_apb_{s}" for s in ("psel", "penable", "pwrite", "paddr", "pwdata", "pstrb", "pprot")),
+             "o_apb_pready", "o_apb_pslverr", "o_apb_prdata",
+             "i_bus_clk", "i_bus_rstn", "i_reg_clk", "i_reg_rstn", "i_psel", "i_penable", "i_pwrite", "i_paddr", "i_pwdata", "i_pstrb", "i_pprot",
+             "o_pready", "o_pslverr", "o_prdata", "i_protect_en", "i_slverr_en"}
 
 
 def ports(sv: str) -> list[tuple[str, str, str]]:
-    """(direction, width, name) of the ports of a generated module, in order."""
+    """(direction, width, name) of the ports of a generated module, in order; a width written with the module's localparams (v2.x:
+    `[LPARA_ADDR_W-1:0]`) is given in numbers (`[15:0]`)."""
     head = sv.split(");", 1)[0]
-    return [(d, (w or "").replace(" ", ""), n) for d, w, n in _PORT.findall(head)]
+    params = dict(_LPARA.findall(head))
+    return [(d, _width(w or "", params), n) for d, w, n in _PORT.findall(head)]
+
+
+def _width(w: str, params: dict[str, str]) -> str:
+    w = w.replace(" ", "")
+    if params and re.search(r"[A-Za-z_]", w):
+        w = re.sub(r"\b[A-Za-z_]\w*\b", lambda m: params.get(m.group(0), m.group(0)), w)
+        w = re.sub(r"\b(\d+)-1\b", lambda m: str(int(m.group(1)) - 1), w)
+    return w
 
 
 def port_summary(sv: str, module: str) -> str:
     """The generated module's ports as the integrator reads them: APB bus, clocks/resets, then the register ports grouped by register."""
     ps = ports(sv)
-    bus = [n for _, _, n in ps if n.startswith(("i_bus_", "i_p", "o_p", "i_protect", "i_slverr", "i_reg_"))]
+    bus = [n for _, _, n in ps if n in BUS_PORTS]
     rest = [(d, w, n) for d, w, n in ps if n not in bus]
     lines = [f"module {module}", "bus / clocks: " + ", ".join(f"{n}" for n in bus), "register ports:"]
     lines += [f"  {d}{' ' + w if w else ''} {n}" for d, w, n in rest]

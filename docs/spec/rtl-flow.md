@@ -53,7 +53,11 @@ The generator's folder is `project.rtl_dir` (default `src/rtl/`; `options.rtl_di
 [APB-CSR-Generator](https://github.com/nguyenquanicd/APB-CSR-Generator) turns an Excel register map into an APB4 slave (address decode, SLVERR / PREADY,
 `rw` / `ro` / `rwi` / `w1c` fields, an optional clock-domain-crossing bridge). Q3TUI drives it; it is not shipped (the repository has no license):
 `q3tui act csr_tool_install` clones it to `~/.q3tui/tools/APB-CSR-Generator`; also found by `options.tool_dir`, `env.CSR_GEN_HOME` of the `csr_gen` role in `config/tools.json` (no shell export needed), `$CSR_GEN_HOME`, `<project>/tools/…`. Role `csr_gen`
-(`{python} {tool}/CSR_Generation.py {workbook} {sheet}`, Q3TUI's interpreter: it has `openpyxl`).
+(`{python} {tool}/CSR_Generation.py {workbook} {sheet}`, Q3TUI's interpreter: it has `openpyxl`). Both versions of the tool work. Version 2.0
+(2026-10-28) renamed the bus, clock and reset ports (`i_clk_apb`, `i_apb_psel`, `o_apb_prdata`… instead of `i_bus_clk`, `i_psel`, `o_prdata`…), the
+synchronizer model (`m_csr_sync` instead of `m_vlsi_synch`) and the header (` * Author :` / ` * Date :` lines). Q3TUI reads the ports from the generated
+file, takes whichever synchronizer model the tool wrote and ignores either header's per-run lines. A module made by the older version keeps its names until
+the map changes. The next generation then renames its ports, and the `rtl` step updates the parent that instantiates it.
 
 `csr` (mode `auto`: only when the spec says register / CSR / SFR / memory-mapped, else no LLM and nothing generated; `on` always; `off` never):
 
