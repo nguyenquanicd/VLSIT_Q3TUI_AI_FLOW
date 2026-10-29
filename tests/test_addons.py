@@ -100,12 +100,12 @@ async def test_tui_slash_act_and_panels(proj):
         await pilot.pause()
         assert getattr(app.engine.flow, "_panels_loaded", False)  # the flow's panels.py was imported
         assert app._completions("action") == ["greet"]
-        from textual.widgets import Input
+        from q3tui.tui.screens import HistoryInput
 
         said: list[str] = []
         app.log_info = said.append  # what the command reports
-        box = app.query_one("#cmd", Input)
+        box = app.query_one("#cmd", HistoryInput)
         box.value = "/act greet who=Zed"
-        await box.action_submit()
+        box.action_submit()
         await pilot.pause()
         assert said == ["hello Zed! (1 steps)"]

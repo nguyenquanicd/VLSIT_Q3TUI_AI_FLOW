@@ -241,6 +241,13 @@ Assistant replies render as Markdown; `z` zooms the activity/chat to full height
 Focus starts on the pipeline so single-key actions work; `i` (or `/`) moves to the
 command line and `Esc` returns.
 
+The command line takes several lines: **Enter** sends, **Ctrl+J** (or Shift+Enter where the terminal sends it) starts a new line, and
+the box grows with its text (up to 10 lines, then it scrolls). A large paste (more than 5 lines or 1000 characters) shows as one
+placeholder, `[+text 40 lines]` (`[+text 1200 chars]` for one long line), so the box stays readable. The assistant gets the whole
+text, while the chat shows the placeholder. Paste with the terminal's paste (Ctrl+Shift+V, right click, middle click). The terminal
+sends Ctrl+V to the TUI as a key, so it pastes only text copied in Q3TUI, and says so when there is none. **↑ / ↓** move the cursor between lines and recall history from the first / last line.
+The history (`.q3tui/tui/history.json`) keeps an entry's pastes, for the last 20 entries that had any.
+
 ## Architecture
 
 ```text

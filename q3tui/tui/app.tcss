@@ -110,6 +110,8 @@ PaneToggle:hover {
 
 #cmd {
     dock: bottom;  /* flush above the footer: the row the old margin-bottom wasted goes back to #main above */
+    height: auto;  /* grows with its lines (Ctrl+J), scrolls past max-height */
+    max-height: 10;
 }
 
 .modal-box {

@@ -14,10 +14,11 @@ from rich.console import Group, RenderableType
 from rich.markdown import Markdown as RichMarkdown
 from rich.padding import Padding
 from rich.text import Text
+from textual import events
 from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, Vertical
-from textual.widgets import ContentSwitcher, Footer, Input, Label, ListItem, ListView, RichLog, Static
+from textual.widgets import ContentSwitcher, Footer, Label, ListItem, ListView, RichLog, Static, TextArea
 from textual.css.query import NoMatches
 from textual.worker import Worker
 
@@ -30,7 +31,7 @@ from q3tui.pipeline.engine import Engine, EngineError, StepView
 from q3tui.core.project import Project, read_json, write_json
 from q3tui.tui.runner import LANES
 from q3tui.tui.splitter import Splitter
-from q3tui.tui.commands import CommandSuggester, hint as command_hint
+from q3tui.tui.commands import hint as command_hint
 from q3tui.tui.picker import Choice, ChoiceScreen, choices_from
 from q3tui.tui.screens import EFFORTS, MODELS, ConfirmScreen, ResetScreen, SettingsScreen, StatsScreen, GateScreen, HistoryInput, ModelScreen, TextPromptScreen
 from q3tui import addons
@@ -184,11 +185,16 @@ class Q3TUIApp(App):
                 yield Label("ACTIVITY", classes="panel-title", id="activity-title")
                 yield RichLog(id="activity", wrap=True, markup=False, highlight=False, max_lines=3000)
                 yield Static(id="cmd-hint", markup=False)
-        yield HistoryInput(history_file=self.project.state_dir / "tui" / "history.json",
-                           placeholder="Ask the assistant, or /help for commands (↑/↓ history, Tab completes)", id="cmd",
-                           suggester=CommandSuggester(self._completions),
-                           select_on_focus=False)  # else "/" from the shortcut is selected and the next key replaces it
+        yield HistoryInput(history_file=self.project.state_dir / "tui" / "history.json", completions=self._completions, id="cmd",
+                           placeholder="Ask the assistant, or /help for commands (↑/↓ history, Tab completes, Ctrl+J new line)")
         yield Footer()
+
+    async def on_event(self, event: events.Event) -> None:
+        # a paste from the terminal's menu comes while the window is blurred, and Textual takes the focus away on blur (it gives it back on
+        # a key or a click, not on a paste): give it back first, else the paste goes to no widget
+        if isinstance(event, events.Paste) and not event.is_forwarded and not self.app_focus:
+            self.app_focus = True
+        await super().on_event(event)
 
     def on_mount(self) -> None:
         self.bus.subscribe(self._on_event)
@@ -1056,10 +1062,9 @@ class Q3TUIApp(App):
         self._w("#steps").focus()
 
     def action_focus_input(self, prefix: str = "") -> None:
-        cmd = self.query_one("#cmd", Input)
+        cmd = self.query_one("#cmd", HistoryInput)
         if prefix and not cmd.value:
             cmd.value = prefix
-            cmd.cursor_position = len(prefix)
         cmd.focus()
 
     def action_help(self) -> None:
@@ -1257,10 +1262,11 @@ class Q3TUIApp(App):
             return sorted({self.project.rel(p) for st in self.engine.steps for p in st.outputs(self.engine) if p.is_file()})
         return []
 
-    def on_input_changed(self, event: Input.Changed) -> None:
-        if event.input.id != "cmd":
+    def on_text_area_changed(self, event: TextArea.Changed) -> None:
+        if event.text_area.id != "cmd":
             return
-        text = command_hint(event.value, self._completions) if event.value.startswith("/") else ""
+        value = event.text_area.text
+        text = command_hint(value, self._completions) if value.startswith("/") else ""
         box = self._w("#cmd-hint")
         box.display = bool(text)
         if text:
@@ -1333,26 +1339,24 @@ class Q3TUIApp(App):
         self.push_screen(TextPromptScreen(f"Comment on {where.replace(chr(96), '')}", body=shown or "(no text selected: the comment is about the file)",
                                           placeholder="what should change?"), done)
 
-    async def on_input_submitted(self, event: Input.Submitted) -> None:
-        if event.input.id != "cmd":
-            return
+    async def on_history_input_submitted(self, event: HistoryInput.Submitted) -> None:
         text = event.value.strip()
-        event.input.value = ""
         if not text:
             return
-        if isinstance(event.input, HistoryInput):
-            event.input.remember(text)
+        event.input.remember(event.shown, event.pastes)
         if text.startswith("/"):
+            event.input.value = ""
             self._command(text)
             return
-        if self._assistant_worker and self._assistant_worker.is_running:
-            event.input.value = text  # keep what they typed
+        if self._assistant_worker and self._assistant_worker.is_running:  # (what they typed stays in the box)
             self.notify("the assistant is still answering — Esc stops it, or send again when it is done", severity="warning")
             return
-        self._send_to_assistant(text)
+        event.input.value = ""
+        self._send_to_assistant(text, shown=event.shown)
 
-    def _send_to_assistant(self, text: str) -> None:
-        self._log_chat("you", text, "bold blue")
+    def _send_to_assistant(self, text: str, shown: str | None = None) -> None:
+        """Ask the assistant `text`; the chat shows `shown` (a large paste as its `[+text N lines]` placeholder) when given."""
+        self._log_chat("you", shown or text, "bold blue")
 
         # the step the user is working on is fixed when they send the message (the view may
         # follow a running step afterwards)

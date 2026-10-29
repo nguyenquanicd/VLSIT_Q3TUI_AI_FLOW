@@ -5,8 +5,6 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass
 
-from textual.suggester import Suggester
-
 
 @dataclass(frozen=True)
 class Command:
@@ -111,13 +109,3 @@ def hint(value: str, source: Source) -> str:
     found = candidates(value, source)
     return f"{usage}   ▸ {' · '.join(found[:12])}{' …' if len(found) > 12 else ''}" if found else usage
 
-
-class CommandSuggester(Suggester):
-    """Ghost-text completion for slash commands; accept with Tab or →."""
-
-    def __init__(self, source: Source) -> None:
-        super().__init__(use_cache=False, case_sensitive=True)
-        self.source = source
-
-    async def get_suggestion(self, value: str) -> str | None:
-        return complete(value, self.source)

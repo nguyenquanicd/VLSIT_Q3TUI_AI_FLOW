@@ -50,6 +50,22 @@ open("Debug/debug.json", "w").write("{}")
 print("End of the CSR generation!")
 '''
 
+
+
+def _v2(src: str) -> str:
+    """The fake tool as version 2.x of the generator writes: the synchronizer m_csr_sync, `input wire` / `output logic` ports with the new names, a
+    block-comment header whose Author / Date lines change on every run."""
+    for old, new in (("m_vlsi_synch", "m_csr_sync"),
+                     ("// Generator: someone\n// Date and time: {time.time()}\n", "/*\n * Author       : someone\n * Date         : {time.time()}\n */\n"),
+                     ("  input i_bus_clk,\n  input i_bus_rstn,\n  input [", "  input  wire i_clk_apb,\n  input  wire i_rst_n_apb,\n  input  wire ["),
+                     ("i_paddr", "i_apb_paddr"), ('"  output o_pready"', '"  output logic o_apb_pready"')):
+        assert old in src, old
+        src = src.replace(old, new)
+    return src
+
+
+FAKE_TOOL_V2 = _v2(FAKE_TOOL)
+
 SPEC_TEXT = "# blk\nThe block has a register map on an APB bus.\n| Offset | Register | Bits | Access | Reset |\n| 0x0 | ctrl | [0] en RW, [5:4] mode RW | | 0 |\n| 0x4 | stat | [0] busy RO, [1] done W1C | | 0 |\n"
 
 MAP = {"has_registers": True, "module_name": "m_blk_csr", "addr_width": 16, "asynchronous": True, "req_ids": ["REQ-001"],
@@ -103,6 +119,13 @@ def test_ports_are_read_from_the_generated_text():
     assert csr.ports(sv) == [("input", "", "i_bus_clk"), ("input", "[15:0]", "i_paddr"), ("output", "", "o_pready"), ("input", "", "i_x_a"), ("output", "[1:0]", "o_x_b")]
     assert "register ports:\n input i_x_a\n output [1:0] o_x_b" in csr.port_summary(sv, "m_x").replace("  ", " ")
     assert csr.stable("// Generator: a\n// Date and time: 5\nmodule m;") == "\n\nmodule m;" and csr.mentions_registers("see the Register map") and not csr.mentions_registers("a fifo")
+    # version 2.x of the tool: `wire` / `logic`, widths written with its localparams, new bus names, a block-comment header
+    sv2 = ("module m_x #(\n  localparam logic [31:0] LPARA_ADDR_W = 32'd16,\n  localparam logic [31:0] LPARA_X_OFFSET = 32'h0004\n) (\n  // APB clock and reset\n"
+           "  input  wire                     i_clk_apb,\n  input  wire  [LPARA_ADDR_W-1:0] i_apb_paddr,\n  output logic                    o_apb_pready,\n\n"
+           "  // Register x\n  input  wire                     i_x_a,\n  output logic [1:0]              o_x_b\n);\nendmodule\n")
+    assert csr.ports(sv2) == [("input", "", "i_clk_apb"), ("input", "[15:0]", "i_apb_paddr"), ("output", "", "o_apb_pready"), ("input", "", "i_x_a"), ("output", "[1:0]", "o_x_b")]
+    assert "bus / clocks: i_clk_apb, i_apb_paddr, o_apb_pready\nregister ports:\n input i_x_a\n output [1:0] o_x_b" in csr.port_summary(sv2, "m_x").replace("  ", " ")
+    assert csr.stable("/*\n * Author       : a\n * Date         : 2026-10-29\n */\nmodule m;") == "/*\n\n\n */\nmodule m;"
 
 
 # -- the step ---------------------------------------------------------------------------------------------------------
@@ -161,6 +184,29 @@ def test_the_registers_come_from_the_tool_not_from_the_llm(csr_proj):
     n = len(fake.calls)
     run_csr(eng)
     assert len(fake.calls) == n  # the snapshot is the same: no LLM at all
+
+
+def test_version_2_of_the_tool_replaces_the_module_and_its_synchronizer(csr_proj):
+    """Version 2.0 of the generator renamed the synchronizer (m_csr_sync), the ports and the header: it is found, and a module made by 1.x is replaced,
+    its synchronizer too; its own date is no change."""
+    root, eng, fake = csr_proj
+    run_csr(eng)  # (version 1.x)
+    gen = root / "gen"
+    (gen / "models" / "m_vlsi_synch.sv").unlink()
+    (gen / "models" / "m_csr_sync.sv").write_text("module m_csr_sync; endmodule\n")
+    (gen / "CSR_Generation.py").write_text(FAKE_TOOL_V2)
+    assert eng.by_name["csr"].tool(eng) == gen and csr.missing(gen) == []
+    eng.state.step_meta["csr"].pop("snapshot")
+    run_csr(eng)
+    rtl = root / "src" / "rtl"
+    text = (rtl / "m_blk_csr.sv").read_text()
+    assert "i_apb_paddr" in text and "m_csr_sync u_s" in text and (rtl / "m_csr_sync.sv").is_file() and not (rtl / "m_vlsi_synch.sv").exists()
+    assert csr.read_provided(rtl)["m_blk_csr"]["instances"] == ["m_csr_sync"] and "m_vlsi_synch" not in csr.read_provided(rtl)
+    assert "i_apb_paddr" in json.loads((rtl / "csr" / "csr_report.json").read_text())["ports"]
+    time.sleep(0.01)
+    eng.state.step_meta["csr"].pop("snapshot")
+    run_csr(eng)
+    assert (rtl / "m_blk_csr.sv").read_text() == text  # (a new Date line is not a change)
 
 
 def test_you_own_the_map_after_the_first_draft(csr_proj):
@@ -433,9 +479,10 @@ def test_the_real_generator(tmp_path):
     assert res.ok, res.summary
     sv = (work / "RTL" / "m_blk_csr.sv").read_text()
     names = [n for _, _, n in csr.ports(sv)]
-    assert {"i_bus_clk", "o_pready", "i_reg_clk", "o_ctrl_en", "o_ctrl_mode", "i_hw_wdata_ctrl_mode", "i_hw_we_ctrl_mode", "i_stat_busy", "o_stat_done",
-            "i_hw_we_stat_done"} <= set(names)
-    assert not any("reserved" in n for n in names) and (work / "RTL" / "models" / "m_vlsi_synch.sv").is_file()
+    bus = {"i_clk_apb", "o_apb_pready", "i_clk_reg"} if csr.sync_model(work / "RTL") == "m_csr_sync" else {"i_bus_clk", "o_pready", "i_reg_clk"}  # (v2.x, v1.x)
+    assert bus | {"o_ctrl_en", "o_ctrl_mode", "i_hw_wdata_ctrl_mode", "i_hw_we_ctrl_mode", "i_stat_busy", "o_stat_done", "i_hw_we_stat_done"} <= set(names)
+    assert not any("reserved" in n for n in names) and csr.sync_model(work / "RTL") == csr.sync_model(REAL)
+    assert set(csr.port_summary(sv, "m_blk_csr").split("bus / clocks: ")[1].split("\n")[0].split(", ")) >= bus  # (the bus ports are told apart)
 
 
 def test_the_generator_is_found_through_the_csr_gen_role_env(tmp_path, monkeypatch):
@@ -445,7 +492,7 @@ def test_the_generator_is_found_through_the_csr_gen_role_env(tmp_path, monkeypat
     tool = tmp_path / "gen"
     (tool / "models").mkdir(parents=True)
     (tool / csr.SCRIPT).write_text("")
-    (tool / "models" / f"{csr.SYNC_MODEL}.sv").write_text("")
+    (tool / "models" / f"{csr.SYNC_MODELS[0]}.sv").write_text("")
     assert csr.find_tool(tmp_path) is None
     assert csr.find_tool(tmp_path, None, str(tool)) == tool
     assert csr.find_tool(tmp_path, str(tmp_path / "nope"), str(tool)) == tool  # (an option that points nowhere is skipped)

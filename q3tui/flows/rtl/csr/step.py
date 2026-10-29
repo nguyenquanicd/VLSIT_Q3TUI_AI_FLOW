@@ -210,11 +210,15 @@ class Step(RtlFlowStep):
             tail = Path(res.log_path).read_text(errors="replace")[-1200:] if res.log_path else res.summary
             raise StepFailed(f"the APB-CSR-Generator did not produce {m.module_name}.sv (see {project.rel(Path(res.log_path)) if res.log_path else 'its log'}):\n{tail}")
         top = m.parent or snap["top"] or ""
+        sync = csr.sync_model(work / "RTL") if m.asynchronous else None  # (its name depends on the tool's version)
+        if m.asynchronous and sync is None:
+            raise StepFailed(f"the APB-CSR-Generator made no synchronizer model for the asynchronous {m.module_name} (no {project.rel(work / 'RTL' / 'models')}/"
+                             + " or ".join(f"{s}.sv" for s in csr.SYNC_MODELS) + ")")
         files: dict[str, str] = {m.module_name: self._with_header(sv.read_text(), m)}
-        provided = {m.module_name: {"kind": "csr", "parent": top, "req_ids": m.req_ids, "instances": [csr.SYNC_MODEL] if m.asynchronous else []}}
-        if m.asynchronous:
-            files[csr.SYNC_MODEL] = (work / "RTL" / "models" / f"{csr.SYNC_MODEL}.sv").read_text()
-            provided[csr.SYNC_MODEL] = {"kind": "model", "parent": m.module_name, "req_ids": [], "instances": []}
+        provided = {m.module_name: {"kind": "csr", "parent": top, "req_ids": m.req_ids, "instances": [sync] if sync else []}}
+        if sync:
+            files[sync] = (work / "RTL" / "models" / f"{sync}.sv").read_text()
+            provided[sync] = {"kind": "model", "parent": m.module_name, "req_ids": [], "instances": []}
         rtl.mkdir(parents=True, exist_ok=True)
         written, dropped, refixed, reapplied = [], [], [], []
         # what the tool made last time, per module: the file may have been changed since (the rtl step's lint fixes and change requests, edits by

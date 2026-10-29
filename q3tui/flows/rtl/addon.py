@@ -53,7 +53,7 @@ def register(api) -> None:
             return ops._log("csr", f"the APB-CSR-Generator is already at {found}")
         dest = Path(os.environ.get("Q3TUI_HOME") or "~/.q3tui").expanduser() / "tools" / "APB-CSR-Generator"
         if dest.exists():
-            raise EngineError(f"{dest} exists but is not the generator (no {csr.SCRIPT}): remove it or set options.tool_dir")
+            raise EngineError(f"{dest} exists but is not the generator (no {', '.join(csr.missing(dest))}): remove it or set options.tool_dir")
         dest.parent.mkdir(parents=True, exist_ok=True)
         res = subprocess.run(["git", "clone", "--depth", "1", csr.REPO, str(dest)], capture_output=True, text=True, timeout=300)
         if res.returncode:
