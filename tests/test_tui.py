@@ -286,8 +286,56 @@ async def test_command_history(app, llm):
         await pilot.press("down", "down")    # back to the draft
         assert cmd.value == "half-typed"
     # persisted for the next session
-    assert HistoryInput(history_file=app.project.state_dir / "tui" / "history.json").history[-2:] == ["/status", "/cost"]
+    assert HistoryInput(history_file=app.project.state_dir / "tui" / "history.json").entries[-2:] == ["/status", "/cost"]
 
+
+
+async def test_chat_box_multiline_and_large_paste(app, llm):
+    """Ctrl+J starts a new line (Enter sends); a large paste shows as `[+text N lines]` and is sent in full; history keeps the paste."""
+    from textual import events
+
+    from q3tui.tui.screens import HistoryInput
+
+    big = "\n".join(f"log line {i}" for i in range(40))
+    async with app.run_test(size=(140, 45)) as pilot:
+        box = app.query_one("#cmd", HistoryInput)
+        await pilot.press("i", "h", "i", "ctrl+j", "t", "h", "e", "r", "e")
+        assert box.value == "hi\nthere" and box.size.height == 2                 # two lines: the box grew
+        await pilot.press("up")                                                   # inside the text: the cursor moves, no history
+        assert box.value == "hi\nthere" and box.cursor_location[0] == 0
+        box.value = "see: "
+        app.post_message(events.Paste("short paste"))
+        await pilot.pause()
+        assert box.value == "see: short paste"                                    # small: pasted as it is
+        box.value = "see: "
+        app.post_message(events.Paste(big))
+        await pilot.pause()
+        assert box.value == "see: [+text 40 lines]"
+        await pilot.press("enter")
+        await settle(app, pilot)
+        assert llm.calls[-1].prompt.endswith("see: " + big)                       # the assistant gets the whole paste
+        chat = "\n".join(line.text for line in app.query_one("#activity").lines)
+        assert "[+text 40 lines]" in chat and "log line 39" not in chat           # the chat shows the placeholder
+        assert box.value == "" and not box.pastes
+        await pilot.press("up")                                                   # recalled with its paste
+        assert box.value == "see: [+text 40 lines]" and box.expanded() == "see: " + big
+        box.value = ""
+        app.post_message(events.Paste("a\r\nb"))                                # (the terminal's line ends)
+        await pilot.pause()
+        assert box.value == "a\nb"
+        box.value = ""
+        app.post_message(events.AppBlur())                                        # the terminal's menu: focus out, then the paste
+        await pilot.pause()
+        assert app.focused is None
+        app.post_message(events.Paste("x\ry"))
+        await pilot.pause()
+        assert app.focused is box and box.value == "x\ny"
+        box.value = ""
+        app.copy_to_clipboard(big)                                                # Ctrl+V: text copied in the TUI, as a paste
+        await pilot.press("ctrl+v")
+        assert box.value == "[+text 40 lines]" and box.expanded() == big
+    entry = HistoryInput(history_file=app.project.state_dir / "tui" / "history.json").entries[-1]
+    assert entry == {"text": "see: [+text 40 lines]", "pastes": {"[+text 40 lines]": big}}
 
 async def test_reset_restarts_assistant_conversation(app, llm):
     from q3tui.tui.screens import ConfirmScreen

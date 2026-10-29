@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+from textual import events
 from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, ScrollableContainer, Vertical
+from textual.message import Message
 from textual.screen import ModalScreen
-from textual.widgets import Button, Input, Label, Static
+from textual.widgets import Button, Input, Label, Static, TextArea
 
 from q3tui.tui.picker import Choice, ChoiceResult, ChoiceScreen  # noqa: F401 - re-exported with the other screens
 
@@ -519,57 +521,168 @@ class EditScreen(ModalScreen[dict | None]):
         self.dismiss(None)
 
 
-class HistoryInput(Input):
-    """Command line with shell-like history: ↑/↓ recall earlier entries (persisted per project)."""
+class HistoryInput(TextArea):
+    """Command line / chat box: Enter sends, Ctrl+J (or Shift+Enter) starts a new line, the box grows with its text. A large paste
+    shows as `[+text N lines]` and is sent in full. Shell-like history: ↑ on the first line / ↓ on the last recall earlier entries
+    (persisted per project); Tab or → accepts a slash-command completion."""
 
     BINDINGS = [Binding("up", "history(-1)", "Previous", show=False), Binding("down", "history(1)", "Next", show=False),
-                Binding("tab", "complete", "Complete", show=False)]
+                Binding("tab", "complete", "Complete", show=False), Binding("ctrl+j,shift+enter", "newline", "New line", show=False)]
     MAX = 200
+    MAX_PASTED = 20          # entries whose pastes the history keeps (older ones are dropped: a paste can be long)
+    PASTE_LINES, PASTE_CHARS = 5, 1000   # a paste above either is shown as a placeholder
 
-    def __init__(self, history_file=None, **kw):
+    class Submitted(Message):
+        """Enter: `value` is the text to act on (pastes in full), `shown` what the box showed, `pastes` its placeholders' texts."""
+
+        def __init__(self, box: HistoryInput, value: str, shown: str, pastes: dict[str, str]) -> None:
+            super().__init__()
+            self.input, self.value, self.shown, self.pastes = box, value, shown, pastes
+
+        @property
+        def control(self) -> HistoryInput:
+            return self.input
+
+    def __init__(self, history_file=None, completions=None, **kw):
+        kw.setdefault("soft_wrap", True)
+        kw.setdefault("highlight_cursor_line", False)
         super().__init__(**kw)
-        self.history_file = history_file
-        self.history: list[str] = self._load()
-        self._pos = len(self.history)  # len(history) = the current draft
-        self._draft = ""
+        self.entries_file = history_file
+        self.completions = completions  # (kind) -> candidates: slash-command completion, as the hint line under the views
+        self.pastes: dict[str, str] = {}  # placeholder -> the pasted text
+        self.entries: list[str | dict] = self._load()  # (not `history`: TextArea's undo)
+        self._pos = len(self.entries)  # len(entries) = the current draft
+        self._draft: tuple[str, dict[str, str]] = ("", {})
 
-    def _load(self) -> list[str]:
+    @property
+    def value(self) -> str:
+        return self.text
+
+    @value.setter
+    def value(self, text: str) -> None:
+        """Replace the text (cursor at its end); pastes whose placeholder is gone are forgotten."""
+        self.pastes = {k: v for k, v in self.pastes.items() if k in text}
+        self.load_text(text)
+        self.move_cursor(self.document.end)
+
+    def expanded(self, text: str | None = None) -> str:
+        """The text with each placeholder replaced by its paste."""
+        text = self.text if text is None else text
+        for token, pasted in self.pastes.items():
+            text = text.replace(token, pasted)
+        return text
+
+    def _load(self) -> list[str | dict]:
         import json
 
         try:
-            data = json.loads(self.history_file.read_text()) if self.history_file and self.history_file.is_file() else []
-            return [str(x) for x in data][-self.MAX:]
+            data = json.loads(self.entries_file.read_text()) if self.entries_file and self.entries_file.is_file() else []
+            return [x if isinstance(x, dict) else str(x) for x in data if isinstance(x, (str, dict))][-self.MAX:]
         except (OSError, ValueError):
             return []
 
-    def remember(self, text: str) -> None:
+    def remember(self, text: str, pastes: dict[str, str] | None = None) -> None:
         import json
 
         text = text.strip()
-        if text and (not self.history or self.history[-1] != text):
-            self.history.append(text)
-            self.history = self.history[-self.MAX:]
-            if self.history_file:
-                self.history_file.parent.mkdir(parents=True, exist_ok=True)
-                self.history_file.write_text(json.dumps(self.history, indent=0))
-        self._pos, self._draft = len(self.history), ""
+        entry: str | dict = {"text": text, "pastes": pastes} if pastes else text
+        if text and (not self.entries or self.entries[-1] != entry):
+            self.entries.append(entry)
+            self.entries = self.entries[-self.MAX:]
+            pasted = [i for i, e in enumerate(self.entries) if isinstance(e, dict)]
+            drop = set(pasted[:-self.MAX_PASTED])
+            self.entries = [e for i, e in enumerate(self.entries) if i not in drop]
+            if self.entries_file:
+                self.entries_file.parent.mkdir(parents=True, exist_ok=True)
+                self.entries_file.write_text(json.dumps(self.entries, indent=0))
+        self._pos, self._draft = len(self.entries), ("", {})
+
+    def action_submit(self) -> None:
+        shown = self.text
+        used = {k: v for k, v in self.pastes.items() if k in shown}
+        self.post_message(self.Submitted(self, self.expanded(shown), shown, used))
+
+    def action_newline(self) -> None:
+        self.insert("\n")
+
+    async def _on_key(self, event: events.Key) -> None:
+        if event.key == "enter":  # (TextArea would insert a line break: here Enter sends)
+            event.stop()
+            event.prevent_default()
+            self.action_submit()
+
+    async def _on_paste(self, event: events.Paste) -> None:
+        """The terminal's paste (Ctrl+Shift+V, right click, middle click: bracketed paste)."""
+        event.prevent_default()
+        self.paste(event.text)
+        self.focus()
+
+    def action_paste(self) -> None:
+        """Ctrl+V: the terminal sends it as a key, so only text copied in Q3TUI is there to paste."""
+        if self.app.clipboard:
+            self.paste(self.app.clipboard)
+        else:
+            self.notify("Ctrl+V pastes only text copied in Q3TUI: paste from elsewhere with your terminal's paste (Ctrl+Shift+V)",
+                        severity="warning")
+
+    def paste(self, text: str) -> None:
+        """Insert pasted text at the cursor (terminal line ends made \\n); a large one as a `[+text N lines]` placeholder."""
+        text = text.replace("\r\n", "\n").replace("\r", "\n")
+        lines = text.count("\n") + 1
+        if self.read_only or not text:
+            return
+        if lines > self.PASTE_LINES or len(text) > self.PASTE_CHARS:
+            label = f"{lines} lines" if lines > 1 else f"{len(text)} chars"
+            token, n = f"[+text {label}]", 1
+            while token in self.pastes or token in self.text:
+                n += 1
+                token = f"[+text {label} #{n}]"
+            self.pastes[token] = text
+            text = token
+        self.move_cursor(self.replace(text, *self.selection, maintain_selection_offset=False).end_location)
+
+    def update_suggestion(self) -> None:
+        """Ghost-text completion of a slash command, shown at the end of a one-line text."""
+        from q3tui.tui.commands import complete
+
+        text, suggestion = self.text, ""
+        if self.completions and text.startswith("/") and "\n" not in text and self.selection.is_empty and self.cursor_location == self.document.end:
+            full = complete(text, self.completions) or ""
+            suggestion = full[len(text):] if full.startswith(text) else ""
+        self.suggestion = suggestion
+
+    def on_text_area_changed(self, event: TextArea.Changed) -> None:
+        self.update_suggestion()
+
+    def on_text_area_selection_changed(self, event: TextArea.SelectionChanged) -> None:
+        self.update_suggestion()
 
     def action_complete(self) -> None:
         """Tab accepts the completion (like →); without one it moves focus as usual."""
-        if self._suggestion and self.cursor_at_end:
-            self.value = self._suggestion
-            self.cursor_position = len(self.value)
+        if self.suggestion:
+            self.insert(self.suggestion)
         else:
             self.screen.focus_next()
 
     def action_history(self, step: int) -> None:
-        if not self.history:
+        row = self.cursor_location[0]
+        if (step < 0 and row > 0) or (step > 0 and row < self.document.line_count - 1):  # inside a multi-line text: move the cursor
+            (self.action_cursor_up if step < 0 else self.action_cursor_down)()
             return
-        if self._pos == len(self.history):
-            self._draft = self.value  # keep what was being typed
-        self._pos = max(0, min(len(self.history), self._pos + step))
-        self.value = self._draft if self._pos == len(self.history) else self.history[self._pos]
-        self.cursor_position = len(self.value)
+        if not self.entries:
+            return
+        if self._pos == len(self.entries):
+            self._draft = (self.text, dict(self.pastes))  # keep what was being typed
+        self._pos = max(0, min(len(self.entries), self._pos + step))
+        entry = self._draft if self._pos == len(self.entries) else self.entries[self._pos]
+        if isinstance(entry, tuple):
+            text, pastes = entry
+        elif isinstance(entry, dict):
+            text, pastes = str(entry.get("text", "")), dict(entry.get("pastes") or {})
+        else:
+            text, pastes = entry, {}
+        self.pastes = pastes
+        self.value = text
 
 
 class StatsScreen(ModalScreen[None]):
