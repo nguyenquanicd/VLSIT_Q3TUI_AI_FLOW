@@ -32,6 +32,7 @@ def script_text(files: list[Path], top: str, sdc_dir: Path, workdir: Path, optio
     if cfg.get("implement"):
         lines += ["opt_design", "place_design", "route_design"]
     lines += [f'report_utilization -file "{workdir / "utilization.rpt"}"',
+              f'report_utilization -hierarchical -file "{workdir / "utilization_hier.rpt"}"',  # (per instance: where the logic went)
               f'report_timing_summary -delay_type min_max -max_paths 10 -file "{workdir / "timing.rpt"}"',
               f'report_clock_utilization -file "{workdir / "clocks.rpt"}"',
               f'check_timing -verbose -file "{workdir / "check_timing.rpt"}"',

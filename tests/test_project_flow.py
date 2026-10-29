@@ -33,8 +33,9 @@ def proj(tmp_path):
 
 def test_flow_loads():
     flow = flows.load_flow("project", Path.cwd())
-    assert [s.id for s in flow.steps] == ["project", "tools", "libraries"] and flow.gates == {}
-    assert {"lib_scan", "lib_add", "lib_remove", "lib_list", "lib_use", "tools_check", "tools_modules"} <= set(flow.actions)
+    assert [s.id for s in flow.steps] == ["project", "tools", "libraries", "fpga"] and flow.gates == {}
+    assert {"lib_scan", "lib_add", "lib_remove", "lib_list", "lib_use", "tools_check", "tools_modules",
+            "fpga_list", "fpga_use", "fpga_add", "fpga_remove"} <= set(flow.actions)
 
 
 # -- scanning and adding a library ---------------------------------------------------------------------------------------------------------
@@ -748,3 +749,67 @@ def test_a_folder_with_many_tools_gives_one_entry_per_tool(proj, tooldir, monkey
     msg = Ops(Engine(proj)).run_action("tool_add", path=str(tooldir))  # no role given: every tool found is saved
     roles = json.loads((proj.root / "config" / "tools.json").read_text())["roles"]
     assert "'sim' saved" in msg and "'lint' saved" in msg and roles["sim"]["cmd"] == "vsim -c -do {tc}" and roles["lint"]["cmd"].endswith("vlog -lint {filelist}")
+
+
+# -- fpga: the devices the FPGA flow can synthesize for -----------------------------------------------------------------------------------------
+
+
+def test_an_fpga_part_gets_its_family_from_its_name_and_the_specs_part_is_shown(proj):
+    from q3tui.flows.fpga.lib import devices
+
+    assert devices.identify("xc7a100tcsg324-1")["template"] == "xilinx7" and devices.identify("LFE5UM5G-85F-8BG381C")["device"] == "um5g-85k"
+    assert devices.identify("iCE40UP5K-SG48")["device"] == "up5k" and devices.identify("10AXF40GAA")["template"] == "arria10"
+    assert devices.identify("xczu9eg-ffvb1156-2-e")["template"] is None and "UltraScale" in devices.identify("xczu9eg-ffvb1156-2-e")["note"]
+    (proj.root / "spec").mkdir()
+    (proj.root / "spec" / "spec.md").write_text("| Technology | Intel Arria 10 1150, part 10AXF40GAA (DEP-003) | Quartus |\n")
+    assert devices.spec_parts(proj) == ["10AXF40GAA"]
+    e = {x["part"]: x for x in devices.entries(proj)}
+    assert e["10AXF40GAA"]["sources"] == ["spec"] and e["10AXF40GAA"]["supported"] and e["10AXF40GAA"]["family"] == "Arria 10"
+    assert e["10AX115N2F40E2LG"]["template"] == "arria10" and e["5CEBA4F23C7"]["template"] == "cyclonev"       # (the Intel families' own parts)
+    assert e["xc7k325tffg900-2"]["template"] == "xilinx7" and e["85k"]["template"] == "ecp5" and e["up5k"]["template"] == "ice40"
+    probs = devices.problems(proj)
+    assert any("the spec names 10AXF40GAA" in p and "uses the default xc7k325tffg900-2" in p for p in probs)
+
+
+def test_the_fpga_actions_add_use_and_remove_a_part(proj):
+    from q3tui.flows.fpga.lib import devices
+
+    ops = Ops(Engine(proj))
+    assert "(Xilinx 7-series)" in ops.run_action("fpga_add", part="xc7a75tfgg484-1", title="my board")
+    assert json.loads((proj.config_dir / "fpgas.json").read_text())["parts"] == [{"part": "xc7a75tfgg484-1", "title": "my board"}]
+    assert "xc7a75tfgg484-1 | my board | Xilinx 7-series | yours" in ops.run_action("fpga_list")
+    assert "saved to q3tui.yaml" in ops.run_action("fpga_use", part="LFE5U-85F")  # (a part from its name: ECP5's device flag)
+    use = devices.in_use(Project.open(proj.root))
+    assert (use["template"], use["device"], use["set"]) == ("ecp5", "85k", True) and "fpga_synth" in (proj.root / "q3tui.yaml").read_text()
+    ops.run_action("fpga_use", part="10AX115N2F40E2LG")                                    # an Intel part: Quartus
+    assert (devices.in_use(Project.open(proj.root))["template"]) == "arria10"
+    with pytest.raises(EngineError, match="no family here synthesizes Xilinx UltraScale"):
+        ops.run_action("fpga_use", part="xczu9eg-ffvb1156-2-e")
+    ops.run_action("fpga_use", part="xc7a75tfgg484-1")
+    assert devices.in_use(Project.open(proj.root))["device"] == "xc7a75tfgg484-1"
+    ops.run_action("fpga_remove", part="xc7a75tfgg484-1")
+    with pytest.raises(EngineError, match="not in config/fpgas.json"):
+        ops.run_action("fpga_remove", part="xc7a75tfgg484-1")
+
+
+async def test_the_fpga_view_lists_the_devices_and_u_uses_one(proj):
+    from textual.widgets import DataTable
+
+    from q3tui.flows.fpga.lib import devices
+
+    mine = Project.open(proj.root)
+    app = Q3TUIApp(mine)
+    async with app.run_test(size=(160, 60)) as pilot:
+        await pilot.pause()
+        app._select_step("fpga")
+        await pilot.pause()
+        tab = _tab(app, "FpgaTab")
+        tab.refresh_view()
+        table = tab.query_one(DataTable)
+        keys = [table.coordinate_to_cell_key((i, 0)).row_key.value for i in range(table.row_count)]
+        assert {"xc7k325tffg900-2", "85k", "up5k"} <= set(keys)
+        table.move_cursor(row=keys.index("xc7a100tcsg324-1"))
+        await pilot.pause()
+        tab.action_use()
+        await pilot.pause()
+    assert devices.in_use(Project.open(proj.root))["device"] == "xc7a100tcsg324-1"   # saved to q3tui.yaml

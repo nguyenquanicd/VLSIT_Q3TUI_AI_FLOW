@@ -1,5 +1,5 @@
 {
-  "_comment": "Tool roles of the FPGA flow (docs/spec/fpga-flow.md), by template: Vivado (Xilinx 7-series), Yosys + nextpnr (Lattice ECP5 / iCE40, open source). `q3tui tools init` copies them into the project's config/tools.json: edit the module or the command there.",
+  "_comment": "Tool roles of the FPGA flow (docs/spec/fpga-flow.md), by template: Vivado (Xilinx 7-series), Yosys + nextpnr (Lattice ECP5 / iCE40, open source), Quartus Prime Pro / Standard (Intel). `q3tui tools init` copies them into the project's config/tools.json: edit the module or the command there.",
   "roles": {
     "fpga_synth": {"cmd": "vivado -mode batch -nojournal -log {workdir}/vivado.log -source {script}", "parse": "vivado", "modules": ["xilinx/vivado"], "timeout_s": 3600,
                    "description": "Vivado batch run of the Tcl script Q3TUI writes (read RTL + SDC, synth_design -mode out_of_context, reports)"},
@@ -8,6 +8,10 @@
     "fpga_pnr_ecp5": {"cmd": "nextpnr-ecp5 {args}", "parse": {"error": ["^ERROR:"], "warning": ["^Warning:"]}, "modules": ["oss-cad-suite"], "timeout_s": 3600,
                       "description": "nextpnr-ecp5 place and route, out of context, against the clock frequencies of the SDC"},
     "fpga_pnr_ice40": {"cmd": "nextpnr-ice40 {args}", "parse": {"error": ["^ERROR:"], "warning": ["^Warning:"]}, "modules": ["oss-cad-suite"], "timeout_s": 3600,
-                       "description": "nextpnr-ice40 place and route against the clock frequency of the SDC (no out-of-context mode: the IOs are placed automatically)"}
+                       "description": "nextpnr-ice40 place and route against the clock frequency of the SDC (no out-of-context mode: the IOs are placed automatically)"},
+    "fpga_quartus_pro": {"cmd": "quartus_sh -t {script}", "parse": {"error": ["^Error"], "warning": ["^Warning", "^Critical Warning"]}, "modules": ["quartus/pro"], "timeout_s": 7200,
+                         "description": "Quartus Prime Pro (Arria 10, Stratix 10, Agilex, Cyclone 10 GX) on the Tcl script Q3TUI writes: the project, quartus_syn (quartus_fit with implement), quartus_sta; set the module of your Pro version"},
+    "fpga_quartus_std": {"cmd": "quartus_sh -t {script}", "parse": {"error": ["^Error"], "warning": ["^Warning", "^Critical Warning"]}, "modules": ["quartus/std"], "timeout_s": 7200,
+                         "description": "Quartus Prime Standard (Cyclone V, MAX 10, Cyclone 10 LP / IV) on the Tcl script Q3TUI writes: the project, quartus_map (quartus_fit with implement), quartus_sta; set the module of your Standard version"}
   }
 }

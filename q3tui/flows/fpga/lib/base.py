@@ -40,12 +40,18 @@ class FpgaStep(StepDef):
         return None
 
     def template(self) -> templates.Template:
-        """The FPGA template of the step's options (`template`, default Xilinx 7-series / Vivado)."""
-        return templates.get(self.options.get("template"))
+        """The FPGA family of the step's part (lib/templates.py `resolve`: the part decides it); a part no family here synthesizes fails the step."""
+        t, _device, note = templates.resolve(self.options)
+        if t is None:
+            from q3tui.pipeline.base import StepFailed
+
+            raise StepFailed(note)
+        return t
 
     def part(self) -> tuple[str, str]:
-        """(device, note): `options.part` (or the older `fpga.part`) when it belongs to the template, else the template's default."""
-        return templates.device(self.template(), self.options.get("part") or (self.options.get("fpga") or {}).get("part"))
+        """(device, note): the device of `options.part` in its family's form, or the default part (said in the note) when none is chosen."""
+        _t, device, note = templates.resolve(self.options)
+        return device, note
 
     def workdir(self, engine) -> Path:
         d = engine.project.state_dir / "fpga" / self.name

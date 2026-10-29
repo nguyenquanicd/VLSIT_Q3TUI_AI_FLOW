@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+
 import re
 from pathlib import Path
 from typing import Literal
@@ -219,3 +221,46 @@ def split_feedback(feedback: list[str], step: str) -> tuple[dict[str, list[str]]
         else:
             general.append(f)
     return by_unit, general
+
+
+class StepQuestions:
+    """Questions of a step that is not a VLSIT step (their scheme: schemas/questions/<step>.json, .answers.json, .md): mix it into a
+    StepDef and the engine, the TUI and the assistant list, answer and render them."""
+
+    def _q_paths(self, engine) -> tuple[Path, Path, Path]:
+        d = engine.project.schemas_dir / "questions"
+        return d / f"{self.name}.json", d / f"{self.name}.answers.json", d / f"{self.name}.md"
+
+    def questions_list(self, engine) -> list[Question]:
+        import json
+
+        f = self._q_paths(engine)[0]
+        return [Question.model_validate(q) for q in (json.loads(f.read_text()) if f.is_file() else [])]
+
+    def save_questions(self, engine, questions: list[Question]) -> None:
+        f = self._q_paths(engine)[0]
+        f.parent.mkdir(parents=True, exist_ok=True)
+        f.write_text(json.dumps([q.model_dump() for q in questions], indent=2) + "\n")
+
+    def question_list(self, engine) -> list[dict]:
+        answers = load_answers(self._q_paths(engine)[1])
+        return [dict(q.model_dump(), answer=answers.get(q.id)) for q in self.questions_list(engine)]
+
+    def open_questions(self, engine) -> int:
+        answers = load_answers(self._q_paths(engine)[1])
+        return sum(q.id not in answers for q in self.questions_list(engine))
+
+    def answer(self, engine, question_id: str, text: str) -> bool:
+        if question_id not in {q.id for q in self.questions_list(engine)}:
+            return False
+        save_answer(self._q_paths(engine)[1], question_id, text)
+        return True
+
+    def write_questions_file(self, engine) -> Path | None:
+        qs = self.questions_list(engine)
+        if not qs:
+            return None
+        _, answers, q_md = self._q_paths(engine)
+        q_md.parent.mkdir(parents=True, exist_ok=True)
+        q_md.write_text(render_questions(qs, load_answers(answers), f"Open questions — {self.title}", engine.state.accepted_defaults.get(self.name, {})))
+        return q_md

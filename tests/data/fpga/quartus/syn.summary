@@ -1,0 +1,9 @@
+Synthesis Status : Successful - Thu Oct 29 00:44:33 2026
+Revision Name : q3tui_fpga
+Top-level Entity Name : tiny
+Family : Arria 10
+Quartus Prime Version : 25.1.0 Build 129 03/26/2025 Patches 0.36 SC Pro Edition
+Device : 10AX115N2F40E2LG
+Logic utilization estimate (in ALMs) : 17 / 427,200 ( < 1 % )
+Total registers : 16
+Estimated DSP Blocks Post-Merging : 0

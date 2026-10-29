@@ -373,3 +373,26 @@ def test_a_steps_cost_adds_up_over_its_runs(engine, llm):
     rec = engine.state.steps["spec"]
     assert rec.cost_usd > first and rec.cost_usd == pytest.approx(engine.state.total_cost_usd)
     assert engine.cost_summary()["steps"]["spec"] == pytest.approx(rec.cost_usd)
+
+
+def test_a_builtin_input_has_the_same_name_in_every_checkout(engine, tmp_path_factory, monkeypatch):
+    """A built-in file (a template, the default rules) is named relative to the q3tui package in the hashes: running the TUI from a second
+    checkout of Q3TUI left every step with such an input stale, though its content was the same."""
+    from pathlib import Path
+
+    from q3tui.pipeline import engine as enginemod
+
+    builtin = enginemod.PACKAGE / "flows" / "spec" / "spec" / "vlsit_template.yaml"
+    here = engine._hash_files([builtin])
+    assert list(here) == ["q3tui/flows/spec/spec/vlsit_template.yaml"]
+    other = tmp_path_factory.mktemp("other_checkout") / "q3tui"  # (the same file in another checkout, outside the project)
+    (other / "flows" / "spec" / "spec").mkdir(parents=True)
+    (other / "flows" / "spec" / "spec" / "vlsit_template.yaml").write_bytes(builtin.read_bytes())
+    monkeypatch.setattr(enginemod, "PACKAGE", other)
+    assert engine._hash_files([other / "flows" / "spec" / "spec" / "vlsit_template.yaml"]) == here
+    (other / "flows" / "spec" / "spec" / "vlsit_template.yaml").write_text("changed")  # (its content still counts)
+    assert engine._hash_files([other / "flows" / "spec" / "spec" / "vlsit_template.yaml"]) != here
+    inside = engine.project.root / "spec" / "x.md"
+    inside.parent.mkdir(exist_ok=True)
+    inside.write_text("x")
+    assert list(engine._hash_files([inside])) == ["spec/x.md"] and list(engine._hash_files([Path("/etc/hostname")])) == ["/etc/hostname"]

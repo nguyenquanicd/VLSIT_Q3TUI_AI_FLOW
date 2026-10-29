@@ -118,6 +118,10 @@ class Project:
         return self._dir("tb_dir")
 
     @property
+    def fpga_src_dir(self) -> Path:
+        return self._dir("fpga_src_dir")
+
+    @property
     def state_dir(self) -> Path:
         return self._dir("state_dir")
 

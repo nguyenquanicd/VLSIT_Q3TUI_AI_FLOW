@@ -12,6 +12,7 @@ it any time). Internal state lives in `.q3tui/`. A step names no folder: it asks
 ├── config/                 ← what you configure                                                             yours
 │   ├── tools.json              tools by role (docs/spec/flows.md): the one place every flow reads; `q3tui tools init` writes it
 │   ├── pdks.json               your standard-cell libraries (the ASIC flow's catalog; same id replaces a built-in)
+│   ├── fpgas.json              your FPGA parts (the project flow's FPGA step; the part in use is fpga_synth's option in q3tui.yaml)
 │   ├── rtl_rules.md            your RTL rules (rtl flow; `q3tui act rtl_rules_init` writes a skeleton)
 │   ├── skills/<name>/SKILL.md  your playbooks (replace or add one the LLM stages may read)
 │   └── sanity/<role>_knowledge.md   your CDC / RDC waiver knowledge (cases U1…)
@@ -27,6 +28,7 @@ it any time). Internal state lives in `.q3tui/`. A step names no folder: it asks
 ├── src/
 │   ├── rtl/                ← RTL (+ filelist.f); rtl flow: also csr/, style_lint/, smoke/ (below)           generated
 │   ├── tb/                 ← the dv flow's UVM testbench (scaffold, integration, tests)      generated
+│   ├── fpga/               ← the FPGA flow's own sources: memory initialization files (fpga_port)          generated, you edit
 │   └── sva/                ← (reserved: no flow writes assertions now)
 ├── schemas/                ← JSON artifacts: structured_spec.json, final_config.json, synth_report.json,    generated
 │                             fpga_synth / ppa / asic_* / cdc_* / rdc_* …; structured_spec.md;

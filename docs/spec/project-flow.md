@@ -10,8 +10,20 @@ project's own files — `q3tui.yaml`, `config/pdks.json`. The design flows (spec
 | `project` | **Settings**: the project root, the config file, the start-up flow, then the settings of the Settings dialog's General and LLM tabs (auto-approve, auto-answer, model, effort, budgets, icons, language, …) | Enter / `e` edits the highlighted setting in place and saves it to `q3tui.yaml` (`Ops.apply_settings`) |
 | `tools` | **Tools**: every tool role the flows need or `config/tools.json` defines (Vivado, Design Compiler, Formality, Yosys, nextpnr, the lint / sim roles of the rtl flow) — tool, found ✔ / ✘ / ? (not checked yet), modules, where the role comes from (the project's tools file, `tools.roles`) or `not configured` when the file lacks a role a flow needs; listed as soon as the file exists, `c` fills in found / not found | `a` add tools (give a path: every tool found is listed to check, the rest is filled in), Enter / `e` edits the role (command, modules, time limit), `c` checks which tools are found (loads the modules: a few seconds, in a thread), `m` sets the modules loaded before every tool (`tools.modules`) |
 | `libraries` | **Libraries**: the technologies of the ASIC flow's catalog (built-in open-source + the project's `config/pdks.json`), their corners, which corner is in use | `a` add (give the folder; the rest is filled in), Enter / `e` edit, `d` remove, `u` pick the corner used as the ASIC library |
+| `fpga` | **FPGA**: the devices the FPGA flow can synthesize for — the families' own (Xilinx 7-series parts for Vivado, the ECP5 / iCE40 devices for Yosys + nextpnr, the Intel families' parts for Quartus), yours (`config/fpgas.json`), the parts your spec names (found by code) — with the family and tool of each (worked out from the part's name), which one is in use | `u` use the highlighted part (`fpga_synth`'s part, saved to `q3tui.yaml`), `a` add a part, Enter / `e` edit yours, `d` remove yours |
 
-Enter edits the highlighted row in all three views, as in the other flows' views.
+Enter edits the highlighted row in all four views, as in the other flows' views.
+
+## The FPGA (`fpga`)
+
+Like the ASIC libraries, the FPGA flow's device is a choice of the project, made from a list instead of typed into the settings. Without one,
+the FPGA flow synthesized for the default part (Kintex-7 xc7k325t), whatever the spec said. The view lists the templates' devices,
+the parts you add and the parts your spec names, each with its template from its name (`xc7…` → Xilinx 7-series / Vivado, `LFE5U…` / `85k` →
+ECP5, `iCE40…` / `up5k` → iCE40, `10AX…` → Arria 10 with Quartus Prime Pro, `5CE…` / `10M…` → Cyclone V / MAX 10 with Quartus Prime Standard;
+UltraScale, Versal and Gowin parts are listed with "no family here synthesizes them"). `u` uses a part: the device form it takes (ECP5's
+`LFE5UM5G-85F` is nextpnr's `um5g-85k`) is saved to `q3tui.yaml` (`pipeline.step_options.fpga_synth.part`); there is no template to choose.
+The step's run reports the device in use, whether the template's tools are found, and warns when the spec names another part (or nothing is
+chosen while it names one). Actions: `fpga_list`, `fpga_use`, `fpga_add`, `fpga_remove` (the assistant, `q3tui act`).
 
 ## Adding a library (`libraries`, `a`)
 

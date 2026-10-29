@@ -54,6 +54,7 @@ project:                          # folder names inside the project (docs/spec/p
   src_dir: src                    # src/rtl (the rtl flow) and src/tb (the dv flow)
   rtl_dir: src/rtl                # where the rtl flow writes (its csr/, style_lint/, smoke/ are inside)
   tb_dir: src/tb                  # the dv flow's testbench; denied to the RTL stages (independence)
+  fpga_src_dir: src/fpga          # the FPGA flow's own sources: the memory initialization files fpga_port makes
   build_dir: build                # disposable tool output; gitignored by `q3tui init`
   syn_dir: build/syn              #   build/syn/fpga, build/syn/asic
   sim_dir: build/sim              #   lint / synthesis / simulation logs
